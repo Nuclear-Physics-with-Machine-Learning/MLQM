@@ -4,7 +4,7 @@ import numpy
 from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
 
 
-class HarmonicOscillator(torch.nn.Module):
+class HarmonicOscillatorWavefunction(torch.nn.Module):
     """Implememtation of the harmonic oscillator wave funtions
     
     Create a polynomial, up to `degree` in every dimension `n`, that is the
@@ -31,7 +31,7 @@ class HarmonicOscillator(torch.nn.Module):
         
         self.n = n
         if self.n < 1 or self.n > 3: 
-            raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillator")
+            raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillatorWavefunction")
 
         # Use numpy to broadcast to the right dimension:
         degree = numpy.asarray(degree, dtype=numpy.int32)
@@ -43,11 +43,13 @@ class HarmonicOscillator(torch.nn.Module):
         if numpy.min(self.degree) < 0 or numpy.max(self.degree) > 4:
             raise Exception("Only the first 5 hermite polynomials are supported")
 
+        alpha = numpy.asarray(alpha, dtype=numpy.int32)
+        alpha = numpy.broadcast_to(alpha, (self.n,))
         self.alpha = alpha
         
         # Normalization:
         self.norm = numpy.power(self.alpha / numpy.pi, 0.25)
-        self.norm = self.norm ** self.n
+        self.norm = numpy.prod(self.norm)
         
 
         # Craft the polynomial coefficients:
