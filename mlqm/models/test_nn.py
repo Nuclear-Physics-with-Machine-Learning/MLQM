@@ -4,7 +4,7 @@ import torch
 import numpy
 
 from . import NeuralWavefunction
-from ..samplers.CartesianSampler import CartesianSampler
+from ..samplers import CartesianSampler
 
 
 @pytest.mark.parametrize('dimension', [1,2,3])
@@ -12,7 +12,7 @@ def test_create_polynomial(dimension):
 
     # For each dimension, randomly pick a degree
 
-    nn_w = NeuralWavefunction.NeuralWavefunction(dimension)
+    nn_w = NeuralWavefunction(dimension)
 
     assert True
 
@@ -22,7 +22,7 @@ def test_run_polynomial(dimension):
 
     # For each dimension, randomly pick a degree
 
-    nn_w = NeuralWavefunction.NeuralWavefunction(dimension)
+    nn_w = NeuralWavefunction(dimension)
 
 
     delta = 2.0

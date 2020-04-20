@@ -5,8 +5,8 @@ import numpy
 
 from .. import H_BAR
 from . import HarmonicOscillator
-from ..models import HarmonicOscillatorWavefunction
-from ..samplers.CartesianSampler import CartesianSampler
+from ..models   import HarmonicOscillatorWavefunction
+from ..samplers import CartesianSampler
 
 @pytest.mark.parametrize('dimension', [1, 2, 3])
 def test_run_harmonic_oscillator(dimension):
@@ -17,7 +17,7 @@ def test_run_harmonic_oscillator(dimension):
 
     # For each dimension, randomly pick a degree
     degree = [ numpy.random.randint(0,4) for d in range(dimension)]
-    ho_w = HarmonicOscillatorWavefunction.HarmonicOscillatorWavefunction(dimension, degree, alpha=alpha)
+    ho_w = HarmonicOscillatorWavefunction(dimension, degree, alpha=alpha)
 
 
     delta = 0.5
@@ -26,7 +26,7 @@ def test_run_harmonic_oscillator(dimension):
 
     x = sampler.sample()
 
-    ho = HarmonicOscillator.HarmonicOscillator(dimension, m, omega)
+    ho = HarmonicOscillator(dimension, m, omega)
 
     measured_energy = ho.energy(ho_w, x, delta)
 

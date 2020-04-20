@@ -4,7 +4,7 @@ import torch
 import numpy
 
 from . import HarmonicOscillatorWavefunction
-from ..samplers.CartesianSampler import CartesianSampler
+from ..samplers import CartesianSampler
 
 @pytest.mark.parametrize('dimension', [1,2,3])
 def test_create_harmonic_oscillator(dimension):
@@ -12,7 +12,7 @@ def test_create_harmonic_oscillator(dimension):
     # For each dimension, randomly pick a degree
     degree = [ numpy.random.randint(0,4) for d in range(dimension)]
 
-    ho_w = HarmonicOscillatorWavefunction.HarmonicOscillatorWavefunction(dimension, degree, alpha=1.0)
+    ho_w = HarmonicOscillatorWavefunction(dimension, degree, alpha=1.0)
 
     assert True
 
@@ -21,7 +21,7 @@ def test_run_harmonic_oscillator(dimension):
 
     # For each dimension, randomly pick a degree
     degree = [ numpy.random.randint(0,4) for d in range(dimension)]
-    ho_w = HarmonicOscillatorWavefunction.HarmonicOscillatorWavefunction(dimension, degree, alpha=1.0)
+    ho_w = HarmonicOscillatorWavefunction(dimension, degree, alpha=1.0)
 
 
     delta = 0.5

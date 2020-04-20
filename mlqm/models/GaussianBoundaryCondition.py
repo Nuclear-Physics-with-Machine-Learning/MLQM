@@ -1,7 +1,7 @@
 import torch
 import numpy
 
-class ExponentialBoundaryCondition(torch.nn.Module):
+class GaussianBoundaryCondition(torch.nn.Module):
     """A simple module for applying an exponential boundary condition in N dimensions
     
     Note that the exponent is *inside* of the power of 2 in the exponent. 
@@ -28,8 +28,11 @@ class ExponentialBoundaryCondition(torch.nn.Module):
 
 
         if n < 1: 
-            raise Exception("Dimension must be at least 1 for ExponentialBoundaryCondition")
+            raise Exception("Dimension must be at least 1 for GaussianBoundaryCondition")
 
+        # Use numpy to broadcast to the right dimension:
+        exp = numpy.asarray(exp, dtype=numpy.float32)
+        exp = numpy.broadcast_to(exp, (n,))
 
         # This is the parameter controlling the shape of the exponent:
         self.exponent = torch.nn.Parameter(torch.tensor(exp), requires_grad=trainable)
@@ -38,13 +41,8 @@ class ExponentialBoundaryCondition(torch.nn.Module):
 
     def forward(self, inputs):
         
-        r = torch.sum(inputs**2, dim=1)
-        # print(r.shape)
-        exponent_term = torch.abs(self.exponent) * r / 2.
-        # print(exponent_term)
-        # print(torch.sqrt(exponent_term))
-        result = torch.exp(- exponent_term)
-        # print(result)
+        exponent_term = torch.sum((self.exponent * inputs)**2, dim=1)
+        result = torch.exp(- (exponent_term) / 2.)
         return result
         
 

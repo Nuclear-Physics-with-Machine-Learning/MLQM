@@ -3,24 +3,19 @@ import numpy
 
 from mlqm import H_BAR
 
-class HarmonicOscillator(object):
-    """Harmonic Oscillator Potential
+class Hydrogen(object):
+    """Hydrogen Hamiltonian
     
-    Implementation of the quantum harmonic oscillator hamiltonian
+    Implementation of the Hydrogen atom hamiltonian
     """
 
-    def __init__(self,  n : int, M : float, omega : float):
+    def __init__(self, mu : float, e : float):
 
         object.__init__(self)
 
 
-        self.n = n
-        if self.n < 1 or self.n > 3: 
-            raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillator")
-
-        self.M = M
-
-        self.omega = omega
+        self.mu = mu
+        self.e  = e
 
         # Several objects get stored for referencing, if needed, after energy computation:
         self.pe = None
@@ -56,8 +51,8 @@ class HarmonicOscillator(object):
         if w_of_x is None:
             w_of_x = wavefunction(inputs)
 
-        x_squared =torch.sum(inputs**2, dim=1) 
-        self.pe = (0.5 * self.M * self.omega**2 ) * torch.sum(w_of_x**2 * x_squared * delta )
+        r = torch.sqrt(torch.sum(inputs**2, dim=1))
+        self.pe = - (self.e**2 ) * torch.sum((w_of_x**2  / (r+0.00001)) * delta )
 
         return self.pe
 
@@ -81,7 +76,7 @@ class HarmonicOscillator(object):
         if self.ke is not None:
             if w_prime_dx is None and delta is None:
                 return self.ke
-        self.ke = (H_BAR**2 / (2 * self.M)) * torch.sum(w_prime_dx**2 * delta)
+        self.ke = (H_BAR**2 / (2 * self.mu)) * torch.sum(w_prime_dx**2 * delta)
         return self.ke
 
 
@@ -116,10 +111,16 @@ class HarmonicOscillator(object):
         # Now we can compute integrals:
         normalization = torch.sum(w_of_x**2 * delta)
         
+        # print("normalization: ", normalization)
+
         pe = self.potential_energy(wavefunction=wavefunction, inputs=inputs, delta=delta, w_of_x=w_of_x) 
         
+        # print("pe: ", pe)
+
         ke = self.kinetic_energy(w_prime_dx=w_prime_dx, delta=delta)
         
+        # print("ke: ", ke)
+
         energy = (pe + ke) / normalization
         
         return energy

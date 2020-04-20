@@ -1,7 +1,7 @@
 import torch
 import numpy
 
-from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
+from .GaussianBoundaryCondition import GaussianBoundaryCondition
 
 
 class HarmonicOscillatorWavefunction(torch.nn.Module):
@@ -85,7 +85,7 @@ class HarmonicOscillatorWavefunction(torch.nn.Module):
 
 
 
-        self.exp = ExponentialBoundaryCondition(n=self.n, exp=numpy.sqrt(self.alpha), trainable=False)
+        self.exp = GaussianBoundaryCondition(n=self.n, exp=numpy.sqrt(self.alpha), trainable=False)
     
     def forward(self, inputs):
     

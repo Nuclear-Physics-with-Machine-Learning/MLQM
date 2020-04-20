@@ -13,7 +13,7 @@ def test_create_polynomial(dimension):
     # For each dimension, randomly pick a degree
     degree = [ numpy.random.randint(1,4) for d in range(dimension)]
 
-    poly_w = PolynomialWavefunction.PolynomialWavefunction(dimension, degree)
+    poly_w = PolynomialWavefunction(dimension, degree)
 
     assert True
 
@@ -23,7 +23,7 @@ def test_run_polynomial(dimension):
 
     # For each dimension, randomly pick a degree
     degree = [ numpy.random.randint(0,4) for d in range(dimension)]
-    poly_w = PolynomialWavefunction.PolynomialWavefunction(dimension, degree)
+    poly_w = PolynomialWavefunction(dimension, degree)
 
 
     delta = 0.5

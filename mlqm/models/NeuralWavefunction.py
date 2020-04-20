@@ -29,9 +29,9 @@ class NeuralWavefunction(torch.nn.Module):
             self.bc = boundary_condition
 
 
-        self.layer1 = torch.nn.Linear(self.n, 32)
-        self.layer2 = torch.nn.Linear(32, 32)
-        self.layer3 = torch.nn.Linear(32, 1)
+        self.layer1 = torch.nn.Linear(self.n, 64)
+        self.layer2 = torch.nn.Linear(64, 64)
+        self.layer3 = torch.nn.Linear(64, 1)
     
 
 
@@ -43,12 +43,13 @@ class NeuralWavefunction(torch.nn.Module):
         x = torch.sigmoid(x)
         x = self.layer3(x)
 
-        print(x.shape)
-        print(self.bc)
-        boundary_condition = self.bc(inputs)
+        x = x.view([x.shape[0],])
 
+        # boundary_condition = self.bc(inputs)
 
-        return self.norm*x*boundary_condition
+        result = self.norm * x
+        # result = self.norm*x*boundary_condition
+        return result
 
 
     def update_normalization(self, inputs, delta):
