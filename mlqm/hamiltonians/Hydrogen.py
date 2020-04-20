@@ -51,8 +51,8 @@ class Hydrogen(object):
         if w_of_x is None:
             w_of_x = wavefunction(inputs)
 
-        r = torch.sqrt(torch.sum(inputs**2, dim=1))
-        self.pe = - (self.e**2 ) * torch.sum((w_of_x**2  / (r+0.00001)) * delta )
+        r = torch.sqrt(torch.sum(inputs**2, dim=1) + 1e-8)
+        self.pe = - (self.e**2 ) * torch.sum((w_of_x**2  / (r)) * delta )
 
         return self.pe
 

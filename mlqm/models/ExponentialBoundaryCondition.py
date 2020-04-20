@@ -38,9 +38,10 @@ class ExponentialBoundaryCondition(torch.nn.Module):
 
     def forward(self, inputs):
         
-        r = torch.sum(inputs**2, dim=1)
+        r = torch.sqrt(torch.sum(inputs**2, dim=1) + 1e-8)
         # print(r.shape)
         exponent_term = torch.abs(self.exponent) * r / 2.
+        # exponent_term = torch.abs(self.exponent) * r / 2.
         # print(exponent_term)
         # print(torch.sqrt(exponent_term))
         result = torch.exp(- exponent_term)

@@ -29,9 +29,9 @@ class NeuralWavefunction(torch.nn.Module):
             self.bc = boundary_condition
 
 
-        self.layer1 = torch.nn.Linear(self.n, 64)
-        self.layer2 = torch.nn.Linear(64, 64)
-        self.layer3 = torch.nn.Linear(64, 1)
+        self.layer1 = torch.nn.Linear(self.n, 256)
+        self.layer2 = torch.nn.Linear(256, 256)
+        self.layer3 = torch.nn.Linear(256, 1)
     
 
 
