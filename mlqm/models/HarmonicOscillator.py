@@ -45,26 +45,25 @@ class HarmonicOscillator(torch.nn.Module):
         self.alpha = alpha
         
         # Normalization:
-        self.norm  = numpy.power(self.alpha / numpy.pi, 0.25)
+        self.norm = numpy.power(self.alpha / numpy.pi, 0.25)
+        self.norm = self.norm ** self.n
         
 
         # Craft the polynomial coefficients:
 
         # Add one to the degree since they start at "0"
+        # Polynomial is of shape [degree, largest_dimension]
         self.polynomial = torch.zeros(size=(max(self.degree) + 1, self.n))
         #  Loop over the coefficents and set them:
 
-        print(self.polynomial)
-        print(self.polynomial.shape)
-        print(self.degree)       
         # Loop over dimension:
+        self.polynomial_norm = torch.zeros(size=(self.n,))
         for _n in range(self.n):
             # Loop over degree:
             _d = self.degree[_n]
             if _d == 0:
                 self.polynomial[0][_n] = 1.0
             elif _d == 1:
-                self.polynomial[0][_n] = 0.0
                 self.polynomial[1][_n] = 2.0
             elif _d == 2:
                 self.polynomial[0][_n] = -2.0
@@ -77,30 +76,44 @@ class HarmonicOscillator(torch.nn.Module):
                 self.polynomial[2][_n] = -48.0
                 self.polynomial[4][_n] = 16.0
 
+            # Set the polynomial normalization as a function of the degree
+            # For each dimension:
+            self.polynomial_norm[_n] = 1.0 / numpy.sqrt(2**_d * numpy.math.factorial(_d))
 
-        print(self.polynomial)
 
-        self.norm = torch.zeros(size=(self.n,))
 
-        # Loop over dimension:
-        for _n in range(self.n):
-            print(_n)
-            self.norm[_n] = 1.0 / numpy.sqrt(2**_n * numpy.math.factorial(_n))
-    
         self.exp = ExponentialBoundaryCondition(n=self.n, exp=numpy.sqrt(self.alpha), trainable=False)
     
     def forward(self, inputs):
     
         y = inputs
         
-        boundary_condition = self.exp(y)
-        
-        if self.n == 0:
-            polynomial = 1
-        elif self.n == 1:
-            polynomial = y
-        elif self.n == 2:
-            polynomial = 2 * y**2 - 1
+        # Create the output tensor with the right shape, plus the constant term:
+        polynomial_result = torch.zeros(inputs.shape)
+
+        # This is a somewhat basic implementation:
+        # Loop over degree:
+        for d in range(max(self.degree) + 1):
+            # Loop over dimension:
+
+            # This is raising every element in the input to the d power (current degree)
+            # This gets reduced by summing over all degrees for a fixed dimenions
+            # Then they are reduced by multiplying over dimensions
+            poly_term = y**d
             
-        return self.norm * boundary_condition * polynomial
+            # Multiply every element (which is the dth power) by the appropriate 
+            # coefficient in it's dimension
+            res_vec = poly_term * self.polynomial[d]
+
+            # Add this to the result:
+            polynomial_result += res_vec
+
+        # Multiply the results across dimensions at every point:
+        polynomial_result = torch.prod(polynomial_result, dim=1)
+
+        boundary_condition = self.exp(y)
+
+        total_normalization = self.norm * torch.prod(self.polynomial_norm)
+            
+        return boundary_condition * polynomial_result * total_normalization
 
