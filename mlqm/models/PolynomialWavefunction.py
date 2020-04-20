@@ -12,7 +12,7 @@ class PolynomialWavefunction(torch.nn.Module):
         torch.nn.Module
     """
 
-    def __init__(self,  n : int, degree : int, alpha : float, boundary_condition :torch.nn.Module = None):
+    def __init__(self,  n : int, degree : int, boundary_condition :torch.nn.Module = None):
         """Initializer
         
         Create a polynomial wave function with exponential boundary condition
@@ -25,11 +25,12 @@ class PolynomialWavefunction(torch.nn.Module):
         Raises:
             Exception -- [description]
         """
+
         torch.nn.Module.__init__(self)
         
         self.n = n
         if self.n < 1 or self.n > 3: 
-            raise Exception("Dimension must be 1, 2, or 3 for PolynomialWavefunction")
+            raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillator")
 
         # Use numpy to broadcast to the right dimension:
         degree = numpy.asarray(degree, dtype=numpy.int32)
@@ -38,17 +39,18 @@ class PolynomialWavefunction(torch.nn.Module):
         # Degree of the polynomial:
         self.degree = degree
         
-        if numpy.min(self.degree) < 1:
-            raise Exception("Degree must be at least 1 in all dimensions")
+        if numpy.min(self.degree) < 0 or numpy.max(self.degree) > 4:
+            raise Exception("Degree must be at least 0 in all dimensions")
 
-        self.alpha = alpha
-        
         # Normalization:
-        self.norm  = numpy.power(self.alpha / numpy.pi, 0.25)
+        self.norm = 1.0
         
-        # Initialize the polynomial coefficients:
 
-        self.polynomial = torch.ones(size=(max(self.degree), self.n))
+        # Craft the polynomial coefficients:
+
+        # Add one to the degree since they start at "0"
+        # Polynomial is of shape [degree, largest_dimension]
+        self.polynomial = torch.ones(size=(max(self.degree) +1 , self.n))
 
         if boundary_condition is None:
             self.bc = ExponentialBoundaryCondition(self.n)
@@ -58,32 +60,45 @@ class PolynomialWavefunction(torch.nn.Module):
 
 
     def forward(self, inputs):
-        x = inputs
+        y = inputs
+        
+        # Create the output tensor with the right shape, plus the constant term:
+        polynomial_result = torch.zeros(inputs.shape)
 
-        # compute the boundary condition:
-        boundary_condition = self.bc(x)
+        # This is a somewhat basic implementation:
+        # Loop over degree:
+        for d in range(max(self.degree) + 1):
+            # Loop over dimension:
 
+            # This is raising every element in the input to the d power (current degree)
+            # This gets reduced by summing over all degrees for a fixed dimenions
+            # Then they are reduced by multiplying over dimensions
+            poly_term = y**d
+            
+            # Multiply every element (which is the dth power) by the appropriate 
+            # coefficient in it's dimension
+            res_vec = poly_term * self.polynomial[d]
 
+            # Add this to the result:
+            polynomial_result += res_vec
 
+        # Multiply the results across dimensions at every point:
+        polynomial_result = torch.prod(polynomial_result, dim=1)
 
+        boundary_condition = self.bc(y)
 
+            
+        return boundary_condition * polynomial_result * self.norm
 
-        poly = self.const + self.linear * x + self.quad * x**2
-
-        # Multiply by a factor to enforce normalization and boundary conditions:
-        # Note the exponent is within the power of 2 to make it's sign irrelevant
-        x = self.norm *  poly * boundary_condition
-        return x
     
-    def update_normalization(self, inputs):
+    def update_normalization(self, inputs, delta):
         # Inputs is expected to be a range of parameters along an x axis.
         with torch.no_grad():
             value = self.forward(inputs)
             N = value ** 2
 
-            delta = inputs[1]-inputs[0]
 
-            N = torch.sum(N) * delta
+            N = torch.sum(N * delta)
             self.norm *= 1/torch.sqrt(N)
 
             # The normalization condition is that the integral of the wavefunction squared
@@ -91,16 +106,7 @@ class PolynomialWavefunction(torch.nn.Module):
 
         return
     
-    def analytic_derivative(self, inputs):
-        
-        poly = self.const + self.linear * x + self.quad * x**2
-        poly_prime = self.linear + 2 * self.quad * inputs
-        exp = self.exp(x)
-        
-        res = exp * (-inputs) *poly + poly_prime * exp
-        
-        return self.norm * res
-    
+
     def zero_grad(self):
         """Sets gradients of all model parameters to zero."""
         for p in self.parameters():
