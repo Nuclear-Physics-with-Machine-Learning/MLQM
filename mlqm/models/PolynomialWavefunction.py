@@ -6,7 +6,10 @@ from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
 class PolynomialWavefunction(torch.nn.Module):
     """Implememtation of a Polynomial wave funtion in N dimensions
     
-    [description]
+    Create a polynomial, up to `degree` in every dimension `n`, fittable
+    for optimization.
+
+    Boundary condition, if not supplied, is gaussian like in every dimension.
     
     Extends:
         torch.nn.Module
@@ -30,7 +33,7 @@ class PolynomialWavefunction(torch.nn.Module):
         
         self.n = n
         if self.n < 1 or self.n > 3: 
-            raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillator")
+            raise Exception("Dimension must be 1, 2, or 3 for PolynomialWavefunction")
 
         # Use numpy to broadcast to the right dimension:
         degree = numpy.asarray(degree, dtype=numpy.int32)

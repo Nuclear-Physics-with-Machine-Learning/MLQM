@@ -41,7 +41,9 @@ class ExponentialBoundaryCondition(torch.nn.Module):
 
     def forward(self, inputs):
         
-        return torch.exp(- (self.exponent * inputs) **2 / 2.)
+        exponent_term = torch.sum((self.exponent * inputs)**2, dim=1)
+        result = torch.exp(- (exponent_term) / 2.)
+        return result
         
 
 

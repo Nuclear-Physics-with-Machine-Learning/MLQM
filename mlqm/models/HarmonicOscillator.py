@@ -7,8 +7,9 @@ from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
 class HarmonicOscillator(torch.nn.Module):
     """Implememtation of the harmonic oscillator wave funtions
     
-    [description]
-    
+    Create a polynomial, up to `degree` in every dimension `n`, that is the
+    exact solution to the harmonic oscillator wave function.
+
     Extends:
         torch.nn.Module
     """
