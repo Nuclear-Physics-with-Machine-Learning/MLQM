@@ -19,7 +19,6 @@ class CartesianSampler(object):
         self.n = n
         self.delta = delta
 
-
         # Use numpy to broadcast to the right dimension:
         mins = numpy.asarray(mins, dtype=numpy.float32)
         mins = numpy.broadcast_to(mins, (n,))
@@ -61,6 +60,9 @@ class CartesianSampler(object):
 
         # Stack:
         mesh = numpy.stack(mesh, axis=-1)
+
+
+        print("mesh=", mesh)
 
         mesh = torch.tensor(mesh, device=device, requires_grad = True)
 

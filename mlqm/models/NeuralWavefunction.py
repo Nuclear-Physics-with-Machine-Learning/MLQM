@@ -1,7 +1,7 @@
 import numpy
 import torch
 
-from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
+#from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
 
 class NeuralWavefunction(torch.nn.Module):
     """Create a neural network eave function in N dimensions
@@ -23,15 +23,15 @@ class NeuralWavefunction(torch.nn.Module):
         self.norm = 1.0
         
         # Create a boundary condition if needed:
-        if boundary_condition is None:
-            self.bc = ExponentialBoundaryCondition(self.n)
-        else:
-            self.bc = boundary_condition
+#        if boundary_condition is None:
+#            self.bc = ExponentialBoundaryCondition(self.n)
+#        else:
+#            self.bc = boundary_condition
 
 
-        self.layer1 = torch.nn.Linear(self.n, 256)
-        self.layer2 = torch.nn.Linear(256, 256)
-        self.layer3 = torch.nn.Linear(256, 1)
+        self.layer1 = torch.nn.Linear(self.n, 32)
+        self.layer2 = torch.nn.Linear(32, 32)
+        self.layer3 = torch.nn.Linear(32, 1)
     
 
 
@@ -42,13 +42,14 @@ class NeuralWavefunction(torch.nn.Module):
         x = self.layer2(x)
         x = torch.sigmoid(x)
         x = self.layer3(x)
-
         x = x.view([x.shape[0],])
+       # boundary_condition = self.bc(inputs)
+        result = x * torch.exp(-0.1*inputs.view([inputs.shape[0],])**2)
 
-        # boundary_condition = self.bc(inputs)
-
-        result = self.norm * x
-        # result = self.norm*x*boundary_condition
+# Exact wave function
+#        x = inputs
+#        x = x.view([x.shape[0],])
+#        result = torch.exp(-0.5*x**2)
         return result
 
 

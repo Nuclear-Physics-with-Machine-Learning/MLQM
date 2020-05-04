@@ -1,8 +1,8 @@
 import torch
-import numpy
+import numpy 
 
 import sys
-sys.path.insert(0, "/Users/corey.adams/ML_QM/")
+sys.path.insert(0, "/Users/lovato/Dropbox/AI-for-QM/")
 
 from mlqm.samplers      import CartesianSampler
 from mlqm.hamiltonians  import HarmonicOscillator
@@ -11,10 +11,10 @@ from mlqm.models        import NeuralWavefunction
 
 def train():
 
-    dimension = 2
+    dimension = 1
 
     # First, create an instance of the sampler and the hamiltonian:
-    delta   = 0.5
+    delta   = 1.
     mins    = -20.
     maxes   = 20.
     sampler = CartesianSampler(dimension, delta, mins, maxes)
@@ -32,12 +32,14 @@ def train():
     print("Initial Energy is ", energy)
 
     # Create an optimizer for the initial wave function:
-    optimizer = torch.optim.Adam(wavefunction.parameters(), lr=0.001)
+#    optimizer = torch.optim.Adam(wavefunction.parameters(), lr=0.001)
+#    optimizer = torch.optim.SGD(wavefunction.parameters(), lr=0.01)
 
     # Now, iterate until the energy stops decreasing:
 
 
-    for i in range(3000):
+    for i in range(100000):
+#        optimizer.zero_grad()
 
         # Reset the gradient on the inputs:
         inputs.grad = None
@@ -50,14 +52,22 @@ def train():
         
         energy.backward()
 
-        # print([p.grad for p in wavefunction.parameters()])
+#        i = 0 
+        for p in wavefunction.parameters():
+#            i = i + 1
+ #           print("p=",i,p.data)
+ #           print("p grad=",i,p.grad)
+            p.data = p.data - p.grad * 0.005
 
-        optimizer.step()
+      #  print([p.grad for p in wavefunction.parameters()])
+
+      #  optimizer.step()
         if i % 100 == 0:
             print(f"step = {i}, energy = {energy.data:.2f}")
         
         # Lastly, update the normaliztion 
         wavefunction.update_normalization(inputs, delta**dimension)
+    exit()
 
     print(f"First wavefunction energy is {energy.data}")
 

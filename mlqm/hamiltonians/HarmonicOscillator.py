@@ -67,7 +67,7 @@ class HarmonicOscillator(object):
         If the potential energy is already computed, and no arguments are supplied,
         return the cached value
 
-        If all arguments are supplied, calculate and return the PE.
+        If all arguments are supplied, calculate and return the KE.
 
         Otherwise, exception
         
