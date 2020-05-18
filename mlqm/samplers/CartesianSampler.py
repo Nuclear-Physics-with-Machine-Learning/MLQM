@@ -62,8 +62,6 @@ class CartesianSampler(object):
         mesh = numpy.stack(mesh, axis=-1)
 
 
-        print("mesh=", mesh)
-
         mesh = torch.tensor(mesh, device=device, requires_grad = True)
 
 

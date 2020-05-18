@@ -3,7 +3,6 @@ import time
 import numpy 
 
 import sys
-#sys.path.insert(0, "/Users/rocconoe/Dropbox/AI-for-QM/")
 sys.path.insert(0, "/Users/lovato/Dropbox/AI-for-QM/")
 
 #from mlqm.samplers      import CartesianSampler
@@ -36,7 +35,7 @@ wavefunction = NeuralWavefunction(ndim)
 wavefunction.count_parameters()
 
 # Initialize Hamiltonian 
-hamiltonian =  HarmonicOscillator_mc(ndim, mass, omega, nwalk, ndim)
+hamiltonian =  HarmonicOscillator_mc(ndim, mass, omega, nwalk)
 
 #Initialize Optimizer
 opt=Optimizer(delta,eps,wavefunction.npt)
@@ -131,7 +130,7 @@ print("elapsed time", t1 - t0)
 
 #print("initial_gradient", gradient)
 
-for i in range(80):
+for i in range(4):
 #        optimizer.zero_grad()
 
         # Compute the energy:

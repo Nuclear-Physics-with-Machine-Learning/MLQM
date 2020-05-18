@@ -9,21 +9,18 @@ class HarmonicOscillator_mc(object):
     Implementation of the quantum harmonic oscillator hamiltonian
     """
 
-    def __init__(self,  n : int, M : float, omega : float, nwalk : int, ndim : int):
+    def __init__(self,  ndim : int, M : float, omega : float):
 
         object.__init__(self)
 
-        self.n = n
-        if self.n < 1 or self.n > 3: 
+        self.ndim = ndim
+        if self.ndim < 1 or self.ndim > 3: 
             raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillator")
 
         self.M = M
 
         self.omega = omega
 
-        self.nwalk = nwalk
-
-        self.ndim = ndim
 
         # Several objects get stored for referencing, if needed, after energy computation:
         self.pe = None
@@ -58,7 +55,8 @@ class HarmonicOscillator_mc(object):
         """
 
 
-        # This function takes the coordinates as inputs and computes the expectation value of the energy.
+        # This function takes the coordinates as inputs and
+        # computes the expectation value of the energy.
         
         # This is the value of the wave function:
 #        w_of_x = wavefunction(inputs)
@@ -84,14 +82,17 @@ class HarmonicOscillator_mc(object):
 #        print("exact wave function", torch.sum(torch.exp(-0.5*(aa*torch.sum(inputs,1)+bb*torch.ones(self.nwalk))**2)))
 
 #        inputs.grad.data.zero_()
+
+        # Make sure the wavefunction has no gradients accumulated yet:
         wavefunction.zero_grad()
         psi = wavefunction(inputs)
         log_psi = torch.log(psi)
 #        print()
 #        print("inputs", inputs)
 #        print("log_psi", log_psi)
-        vt = torch.ones(self.nwalk)
-
+        
+        # vt is used to accumulate the gradients of each walker
+        vt = torch.ones(len(inputs))
         
         d_log_psi = torch.autograd.grad(log_psi, inputs, vt, create_graph=True, retain_graph=True)[0]
         d_psi = d_log_psi

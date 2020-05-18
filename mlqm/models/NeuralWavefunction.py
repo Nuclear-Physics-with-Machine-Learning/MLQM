@@ -35,14 +35,6 @@ class NeuralWavefunction(torch.nn.Module):
 #        self.layer5 = torch.nn.Linear(16, 16)
 #        self.layer6 = torch.nn.Linear(16, 1)
 
-# Test solution psi = exp(-(a*x+b)**2/2)
-#        self.layer1 = torch.nn.Linear(self.n, 1)
-#        self.layer1.weight.data.fill_(0.7)
-#        self.layer1.bias.data.fill_(0.1)
-
-#        self.exponent = torch.nn.Parameter(2. * torch.ones(self.n), requires_grad=True)
-#        self.shift = torch.nn.Parameter(0.1 * torch.ones(self.n), requires_grad=True)
-
     def forward(self, inputs):
         x = inputs
         x = self.layer1(x)
@@ -75,7 +67,7 @@ class NeuralWavefunction(torch.nn.Module):
                 p.grad.data.zero_()
 
     def count_parameters(self):
-        self.np =sum(p.numel() for p in self.parameters() )
+        self.np = sum(p.numel() for p in self.parameters() )
         self.npt =sum(p.numel() for p in self.parameters() if p.requires_grad)
 
     def flatten_params(self, parameters):
@@ -111,6 +103,20 @@ class NeuralWavefunction(torch.nn.Module):
         flat = torch.cat(l).view(-1, 1)
         return flat, indices
 
+    def update_normalization(self, inputs):
+        # Inputs is expected to be a range of parameters along an x axis.
+        with torch.no_grad():
+            value = self.forward(inputs)
+            N = value ** 2
+
+
+            N = torch.sum(N)
+            self.norm *= 1/torch.sqrt(N)
+
+            # The normalization condition is that the integral of the wavefunction squared
+            # should be equal to 1 (probability sums to 1.)
+
+        return
 
 
     def recover_flattened(self, flat_params, indices, model):
