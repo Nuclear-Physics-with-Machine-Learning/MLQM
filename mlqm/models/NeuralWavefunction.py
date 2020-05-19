@@ -11,16 +11,14 @@ class NeuralWavefunction(torch.nn.Module):
     Extends:
         torch.nn.Module
     """
-    def __init__(self, n : int, boundary_condition :torch.nn.Module = None):
+    def __init__(self, n : int, npart: int, boundary_condition :torch.nn.Module = None):
         torch.nn.Module.__init__(self)
         
         self.n = n
-        if self.n < 1 or self.n > 3: 
-            raise Exception("Dimension must be 1, 2, or 3 for NeuralWavefunction")
+#        if self.n < 1 or self.n > 3: 
+#            raise Exception("Dimension must be 1, 2, or 3 for NeuralWavefunction")
 
-        
-        # Normalization:
-        self.norm = 1.0
+        self.npart = npart
         
         # Create a boundary condition if needed:
 #        if boundary_condition is None:
@@ -28,27 +26,37 @@ class NeuralWavefunction(torch.nn.Module):
 #        else:
 #            self.bc = boundary_condition
 
-        self.layer1 = torch.nn.Linear(self.n, 16)
-        self.layer2 = torch.nn.Linear(16, 16)
-        self.layer3 = torch.nn.Linear(16, 1)
+        self.layer1 = torch.nn.Linear(self.n * self.npart, 128)
+#        self.layer2 = torch.nn.Linear(16, 16)
+        self.layer3 = torch.nn.Linear(128, 1)
 #        self.layer4 = torch.nn.Linear(16, 16)
 #        self.layer5 = torch.nn.Linear(16, 16)
 #        self.layer6 = torch.nn.Linear(16, 1)
 
+# Test solution psi = exp(-(a*x+b)**2/2)
+#        self.layer1 = torch.nn.Linear(self.n, 1)
+#        self.layer1.weight.data.fill_(0.7)
+#        self.layer1.bias.data.fill_(0.1)
+
+#        self.exponent = torch.nn.Parameter(2. * torch.ones(self.n), requires_grad=True)
+#        self.shift = torch.nn.Parameter(0.1 * torch.ones(self.n), requires_grad=True)
+
     def forward(self, inputs):
-        x = inputs
+        x = torch.flatten(inputs, start_dim = 1)
         x = self.layer1(x)
 #        x = torch.relu(x)
-#        x = torch.nn.functional.softplus(x, beta=1.)
+        x = torch.nn.functional.softplus(x, beta=1.)
 #        x = torch.celu(x, True)
 #        x = torch.tanh(x)
-        x = torch.sigmoid(x)
-        x = self.layer2(x)
-        x = torch.sigmoid(x)
+#        x = torch.sigmoid(x)
+#        x = self.layer2(x)
+#        x = torch.sigmoid(x)
         x = self.layer3(x)
-        x = torch.exp(x)       
+#        x = torch.exp(x)       
         x = x.view([x.shape[0],]) 
-        result = x * torch.exp(torch.sum(- 0.001 * inputs**4, dim=1))
+        x = x - torch.sum( 0.001 * inputs**4, dim=(1,2))
+        result = x
+#        result = torch.exp(x)       
 
 # Exact wave function
 #        x = inputs
@@ -67,7 +75,7 @@ class NeuralWavefunction(torch.nn.Module):
                 p.grad.data.zero_()
 
     def count_parameters(self):
-        self.np = sum(p.numel() for p in self.parameters() )
+        self.np =sum(p.numel() for p in self.parameters() )
         self.npt =sum(p.numel() for p in self.parameters() if p.requires_grad)
 
     def flatten_params(self, parameters):
@@ -103,20 +111,6 @@ class NeuralWavefunction(torch.nn.Module):
         flat = torch.cat(l).view(-1, 1)
         return flat, indices
 
-    def update_normalization(self, inputs):
-        # Inputs is expected to be a range of parameters along an x axis.
-        with torch.no_grad():
-            value = self.forward(inputs)
-            N = value ** 2
-
-
-            N = torch.sum(N)
-            self.norm *= 1/torch.sqrt(N)
-
-            # The normalization condition is that the integral of the wavefunction squared
-            # should be equal to 1 (probability sums to 1.)
-
-        return
 
 
     def recover_flattened(self, flat_params, indices, model):

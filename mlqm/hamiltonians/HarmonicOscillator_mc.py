@@ -9,18 +9,21 @@ class HarmonicOscillator_mc(object):
     Implementation of the quantum harmonic oscillator hamiltonian
     """
 
-    def __init__(self,  ndim : int, M : float, omega : float):
+    def __init__(self, M : float, omega : float, nwalk : int, ndim : int, npart : int):
 
         object.__init__(self)
 
         self.ndim = ndim
-        if self.ndim < 1 or self.ndim > 3: 
-            raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillator")
+#        if self.ndim < 1 or self.ndim > 3: 
+#            raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillator")
 
         self.M = M
 
         self.omega = omega
 
+        self.nwalk = nwalk
+
+        self.npart = npart
 
         # Several objects get stored for referencing, if needed, after energy computation:
         self.pe = None
@@ -55,8 +58,7 @@ class HarmonicOscillator_mc(object):
         """
 
 
-        # This function takes the coordinates as inputs and
-        # computes the expectation value of the energy.
+        # This function takes the coordinates as inputs and computes the expectation value of the energy.
         
         # This is the value of the wave function:
 #        w_of_x = wavefunction(inputs)
@@ -82,17 +84,13 @@ class HarmonicOscillator_mc(object):
 #        print("exact wave function", torch.sum(torch.exp(-0.5*(aa*torch.sum(inputs,1)+bb*torch.ones(self.nwalk))**2)))
 
 #        inputs.grad.data.zero_()
-
-        # Make sure the wavefunction has no gradients accumulated yet:
         wavefunction.zero_grad()
-        psi = wavefunction(inputs)
-        log_psi = torch.log(psi)
+        log_psi = wavefunction(inputs)
 #        print()
 #        print("inputs", inputs)
 #        print("log_psi", log_psi)
-        
-        # vt is used to accumulate the gradients of each walker
-        vt = torch.ones(len(inputs))
+        vt = torch.ones(size=[self.nwalk])
+
         
         d_log_psi = torch.autograd.grad(log_psi, inputs, vt, create_graph=True, retain_graph=True)[0]
         d_psi = d_log_psi
@@ -100,33 +98,27 @@ class HarmonicOscillator_mc(object):
         
         ke = 0
         for i in range (self.ndim):
-            d_log_psi_i = d_log_psi[:,i]
-#            print("d_log_psi_i",i, d_log_psi_i)
-            d2_log_psi = torch.autograd.grad(d_log_psi_i, inputs, vt, retain_graph=True)[0]
-            d2_log_psi_ii = d2_log_psi[:,i]
-            d2_psi_i = d2_log_psi_ii + d_log_psi_i**2
+            for j in range (self.npart):
+                d_log_psi_ij = d_log_psi[:,j,i]
+#                print("d_log_psi_ij",i,j, d_log_psi_ij)
+                d2_log_psi = torch.autograd.grad(d_log_psi_ij, inputs, vt, retain_graph=True)[0]
+#                print("d2_log_psi_ij",i,j, d2_log_psi)
+                d2_log_psi_ii_jj = d2_log_psi[:,j,i]
+                d2_psi_ij = d2_log_psi_ii_jj + d_log_psi_ij**2
 #            print("d2_log_psi_ii",i, d2_log_psi_ii)
-            ke -= d2_psi_i / 2.
+                ke -= d2_psi_ij / 2.
 
 
-#        d_log_psi = torch.autograd.grad(log_psi, inputs, vt, create_graph=True, retain_graph=True)
-#        d_psi = d_log_psi
-#        print("dlog_psi", d_log_psi)
+        
+#        print("d_psi**2", d_psi**2)
+        ke_jf = torch.sum(d_psi**2, (1,2)) / 2.
+#        print("ke_jf", ke_jf)
 
 
-
-#        d2_log_psi = torch.autograd.grad(d_log_psi, inputs, vtt, create_graph=False, retain_graph=False)[0]
-
-#       print("d2log_psi", d2_log_psi)
-
+        
 #        exit()
-
-
-#        d2_psi = d_log_psi**2 + d2_log_psi
-
-#        ke = - torch.sum(d2_psi, 1) / 2.
-        ke_jf = torch.sum(d_psi**2, 1) / 2.
-        pe = ( 0.5 * self.M * self.omega**2 ) * torch.sum(inputs**2, 1)
+        
+        pe = ( 0.5 * self.M * self.omega**2 ) * torch.sum(inputs**2, dim=(1,2))
 
         energy_jf = ke_jf + pe
 

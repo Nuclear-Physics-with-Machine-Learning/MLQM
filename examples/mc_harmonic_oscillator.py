@@ -3,7 +3,8 @@ import time
 import numpy 
 
 import sys
-sys.path.insert(0, "/Users/lovato/Dropbox/AI-for-QM/")
+sys.path.insert(0, "/Users/rocconoe/Desktop/AI-for-QM/")
+#sys.path.insert(0, "/Users/lovato/Dropbox/AI-for-QM/")
 
 #from mlqm.samplers      import CartesianSampler
 from mlqm.hamiltonians  import HarmonicOscillator_mc
@@ -12,18 +13,19 @@ from mlqm.samplers      import Estimator
 from mlqm.optimization  import Optimizer
 
 
-sig = 0.2
-dx = .5
+sig = 0.1
+dx = .2
 neq = 10
 nav = 10
 nprop = 10
 nvoid = 20
-nwalk = 200
-ndim = 3
+nwalk = 100
+ndim = 1
+npart = 12
 seed = 17
 mass = 1.
 omega = 1.
-delta = 0.04
+delta = 0.10
 eps = 0.001
 
 
@@ -31,11 +33,11 @@ eps = 0.001
 torch.manual_seed(seed)
 
 # Initialize neural wave function and compute the number of parameters
-wavefunction = NeuralWavefunction(ndim)
+wavefunction = NeuralWavefunction(ndim, npart)
 wavefunction.count_parameters()
 
 # Initialize Hamiltonian 
-hamiltonian =  HarmonicOscillator_mc(ndim, mass, omega, nwalk)
+hamiltonian =  HarmonicOscillator_mc(mass, omega, nwalk, ndim, npart)
 
 #Initialize Optimizer
 opt=Optimizer(delta,eps,wavefunction.npt)
@@ -44,36 +46,39 @@ opt=Optimizer(delta,eps,wavefunction.npt)
 def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
     nblock = neq + nav
     nstep = nprop * nvoid
-    block_estimator = Estimator(info=False)
+    block_estimator = Estimator(info=None)
     block_estimator.reset()
-    total_estimator = Estimator(info=False)
+    total_estimator = Estimator(info=None)
     total_estimator.reset()
 # Sample initial configurations uniformy between -sig and sig
-    x_o = torch.normal(0., sig, size=[nwalk,ndim])
+    x_o = torch.normal(0., sig, size=[nwalk, npart, ndim])
     for i in range (nblock):
         block_estimator.reset()
         if (i == neq) :
            total_estimator.reset()
         for j in range (nstep):
             with torch.no_grad(): 
-                wpsi_o = wavefunction(x_o)
+                log_wpsi_o = wavefunction(x_o)
 
 # Gaussian transition probability 
-                x_n = x_o + torch.normal(0., dx, size=[nwalk,ndim])
-                wpsi_n = wavefunction(x_n)
+                x_n = x_o + torch.normal(0., dx, size=[nwalk, npart, ndim])
+                log_wpsi_n = wavefunction(x_n)
 
 # Accepance probability |psi_n|**2 / |psi_o|**2
-                prob = torch.FloatTensor.abs(wpsi_n)**2 / torch.FloatTensor.abs(wpsi_o)**2
-                accept = torch.ge(prob, torch.rand(size=[nwalk]) )
+                prob = 2 * ( log_wpsi_n - log_wpsi_o )
+                accept = torch.ge(prob, torch.log(torch.rand(size=[nwalk])) )
 #                print("wpsi_o=", wpsi_o)
 #                print("wpsi_n=", wpsi_n)
 #                print("prob=", prob)
 #                print("accept=", accept)
-                x_o = torch.where(accept.view([nwalk,1]), x_n, x_o)
+#                print("x_o=", x_o)
+#                print("x_proposed=", x_n)
+                x_o = torch.where(accept.view([nwalk,1,1]), x_n, x_o)
+#                print("x_n=", x_o)
                 acceptance = torch.sum(torch.where(accept.view([nwalk,1]), torch.ones(size=[nwalk,1]), torch.zeros(size=[nwalk,1]))) / nwalk
 
 # Compute energy and accumulate estimators within a given block
-            if ( (j+1) % nvoid == 0):
+            if ( (j+1) % nvoid == 0 and i >= neq ):
                 x_o.requires_grad_(True)
                 energy, energy_jf = hamiltonian.energy(wavefunction, x_o)
 #                x_o.grad.data.zero_()
@@ -84,16 +89,16 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
                 energy_jf.detach_()
 
 # Compute < O^i >, < H O^i >,  and < O^i O^j > 
-                wpsi = wavefunction(x_o)
+                log_wpsi = wavefunction(x_o)
                 jac = torch.zeros(size=[nwalk,wavefunction.npt])
                 for n in range(nwalk):
-                    log_wpsi_n = torch.log(wpsi[n])
+                    log_wpsi_n = log_wpsi[n]
                     wavefunction.zero_grad()
                     params = wavefunction.parameters()
                     dpsi_dp = torch.autograd.grad(log_wpsi_n, params, retain_graph=True)
                     dpsi_i_n, indeces_flat = wavefunction.flatten_params(dpsi_dp)
                     jac[n,:] = torch.t(dpsi_i_n)
-                log_wpsi_n.detach_()
+#                log_wpsi_n.detach_()
                 dpsi_i = torch.sum(jac, dim=0) / nwalk
                 dpsi_i = dpsi_i.view(-1,1)
                 dpsi_i_EL = torch.matmul(energy, jac).view(-1,1)
@@ -102,7 +107,8 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
                 block_estimator.accumulate(torch.sum(energy),torch.sum(energy_jf),acceptance,1,dpsi_i,dpsi_i_EL,dpsi_ij,1.)
 
 # Accumulate block averages
-        total_estimator.accumulate(block_estimator.energy,block_estimator.energy_jf,block_estimator.acceptance,0,block_estimator.dpsi_i,
+        if ( i >= neq ):
+            total_estimator.accumulate(block_estimator.energy,block_estimator.energy_jf,block_estimator.acceptance,0,block_estimator.dpsi_i,
                 block_estimator.dpsi_i_EL,block_estimator.dpsi_ij,block_estimator.weight)
 
     error, error_jf = total_estimator.finalize(nav)
@@ -130,7 +136,7 @@ print("elapsed time", t1 - t0)
 
 #print("initial_gradient", gradient)
 
-for i in range(4):
+for i in range(160):
 #        optimizer.zero_grad()
 
         # Compute the energy:
