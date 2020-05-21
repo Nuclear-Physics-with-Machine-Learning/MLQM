@@ -9,19 +9,20 @@ sys.path.insert(0, "/Users/rocconoe/Desktop/AI-for-QM/")
 #from mlqm.samplers      import CartesianSampler
 from mlqm.hamiltonians  import HarmonicOscillator_mc
 from mlqm.models        import NeuralWavefunction
+from mlqm.hamiltonians  import NuclearPotential
 from mlqm.samplers      import Estimator
 from mlqm.optimization  import Optimizer
 
 
 sig = 0.1
-dx = .2
+dx = .1
 neq = 10
 nav = 10
 nprop = 10
 nvoid = 20
-nwalk = 100
-ndim = 1
-npart = 12
+nwalk = 200
+ndim = 3
+npart = 2
 seed = 17
 mass = 1.
 omega = 1.
@@ -35,6 +36,9 @@ torch.manual_seed(seed)
 # Initialize neural wave function and compute the number of parameters
 wavefunction = NeuralWavefunction(ndim, npart)
 wavefunction.count_parameters()
+
+# Initialize Potential
+potential = NuclearPotential(nwalk)
 
 # Initialize Hamiltonian 
 hamiltonian =  HarmonicOscillator_mc(mass, omega, nwalk, ndim, npart)
@@ -80,7 +84,7 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
 # Compute energy and accumulate estimators within a given block
             if ( (j+1) % nvoid == 0 and i >= neq ):
                 x_o.requires_grad_(True)
-                energy, energy_jf = hamiltonian.energy(wavefunction, x_o)
+                energy, energy_jf = hamiltonian.energy(wavefunction, potential, x_o)
 #                x_o.grad.data.zero_()
                 energy = energy / nwalk
                 energy_jf = energy_jf / nwalk

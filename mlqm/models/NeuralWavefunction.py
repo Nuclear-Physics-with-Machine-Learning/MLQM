@@ -54,7 +54,7 @@ class NeuralWavefunction(torch.nn.Module):
         x = self.layer3(x)
 #        x = torch.exp(x)       
         x = x.view([x.shape[0],]) 
-        x = x - torch.sum( 0.001 * inputs**4, dim=(1,2))
+        x = x - torch.sum( 0.01 * inputs**4, dim=(1,2))
         result = x
 #        result = torch.exp(x)       
 

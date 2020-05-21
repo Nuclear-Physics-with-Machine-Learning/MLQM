@@ -3,6 +3,7 @@ import numpy
 
 from mlqm import H_BAR
 
+
 class HarmonicOscillator_mc(object):
     """Harmonic Oscillator Potential
     
@@ -28,23 +29,43 @@ class HarmonicOscillator_mc(object):
         # Several objects get stored for referencing, if needed, after energy computation:
         self.pe = None
         self.ke = None
+        self.ke_jf= None
 
-    def potential_energy_old(self, *, wavefunction=None, inputs=None, w_of_x=None):
+    def potential_energy(self, potential, inputs):
         "Returns potential energy"
-
-        self.pe = ( 0.5 * self.M * self.omega**2 ) * torch.sum( inputs**2 )
-
+        v_ij=torch.zeros(size=[self.nwalk,6])
+        for i in range (self.npart):
+            for j in range (i+1,self.npart):
+                x_ij=inputs[:,i,:]-inputs[:,j,:]
+                r_ij=torch.sqrt(torch.sum(x_ij**2,dim=1))
+                v_ij+=potential.pionless(r_ij)
+         
+        #self.pe = ( 0.5 * self.M * self.omega**2 ) * torch.sum(inputs**2, dim=(1,2))
+        self.pe=v_ij[:,0]
         return self.pe
 
-    def kinetic_energy_old(self, *, w_prime_dx=None):
-        "Return Kinetic energy"
-
-        self.ke = (H_BAR**2 / (2 * self.M)) * torch.sum(torch.pow(w_prime_dx,2))
+    def kinetic_energy(self, wavefunction, inputs):
+        "Returns kinetic energy"
+      
+        wavefunction.zero_grad()
+        log_psi = wavefunction(inputs)
+        vt = torch.ones(size=[self.nwalk])
         
-        return self.ke
+        d_log_psi = torch.autograd.grad(log_psi, inputs, vt, create_graph=True, retain_graph=True)[0]
+        d_psi = d_log_psi
+        self.ke_jf = torch.sum(d_psi**2, (1,2)) / 2.        
+        self.ke = 0
+        for i in range (self.ndim):
+            for j in range (self.npart):
+                d_log_psi_ij = d_log_psi[:,j,i]
+                d2_log_psi = torch.autograd.grad(d_log_psi_ij, inputs, vt, retain_graph=True)[0]
+                d2_log_psi_ii_jj = d2_log_psi[:,j,i]
+                d2_psi_ij = d2_log_psi_ii_jj + d_log_psi_ij**2
+                self.ke -= d2_psi_ij / 2.
 
+        return self.ke, self.ke_jf
 
-    def energy(self, wavefunction, inputs):
+    def energy(self, wavefunction, potential, inputs):
         """Compute the expectation valye of energy of the supplied wavefunction.
         
         Computes the integral of the wavefunction in this potential
@@ -56,142 +77,15 @@ class HarmonicOscillator_mc(object):
         Returns:
             torch.tensor - Energy of shape [1]
         """
-
-
-        # This function takes the coordinates as inputs and computes the expectation value of the energy.
+      
+        ke, ke_jf = self.kinetic_energy(wavefunction,inputs)
+        pe= self.potential_energy(potential, inputs)
         
-        # This is the value of the wave function:
-#        w_of_x = wavefunction(inputs)
-
-        # This is the first derivative of the logarithm of the wave function: dlog(psi)/dx = 1/psi dpsi/dx
-#        log_psi_2 = torch.sum(torch.log(w_of_x**2))
-#        wavefunction.zero_grad()
-#        log_psi_2.backward(retain_graph = True, create_graph = True)
-#        w_prime_dx = inputs.grad / 2
-
-#        pe_old = self.potential_energy_old(wavefunction=wavefunction, inputs=inputs, w_of_x=w_of_x) 
-#        ke_old = self.kinetic_energy_old(w_prime_dx=w_prime_dx)
-
-#        i = 0
-#        for p in wavefunction.parameters():
-#            i = i + 1
-#            if (i==1): aa = p.data
-#            if (i==2): bb = p.data
-
-
-#        print()
-#        print("nn wave function", torch.sum(w_of_x))
-#        print("exact wave function", torch.sum(torch.exp(-0.5*(aa*torch.sum(inputs,1)+bb*torch.ones(self.nwalk))**2)))
-
-#        inputs.grad.data.zero_()
-        wavefunction.zero_grad()
-        log_psi = wavefunction(inputs)
-#        print()
-#        print("inputs", inputs)
-#        print("log_psi", log_psi)
-        vt = torch.ones(size=[self.nwalk])
-
-        
-        d_log_psi = torch.autograd.grad(log_psi, inputs, vt, create_graph=True, retain_graph=True)[0]
-        d_psi = d_log_psi
-#        print("dlog_psi", d_log_psi)
-        
-        ke = 0
-        for i in range (self.ndim):
-            for j in range (self.npart):
-                d_log_psi_ij = d_log_psi[:,j,i]
-#                print("d_log_psi_ij",i,j, d_log_psi_ij)
-                d2_log_psi = torch.autograd.grad(d_log_psi_ij, inputs, vt, retain_graph=True)[0]
-#                print("d2_log_psi_ij",i,j, d2_log_psi)
-                d2_log_psi_ii_jj = d2_log_psi[:,j,i]
-                d2_psi_ij = d2_log_psi_ii_jj + d_log_psi_ij**2
-#            print("d2_log_psi_ii",i, d2_log_psi_ii)
-                ke -= d2_psi_ij / 2.
-
-
-        
-#        print("d_psi**2", d_psi**2)
-        ke_jf = torch.sum(d_psi**2, (1,2)) / 2.
-#        print("ke_jf", ke_jf)
-
-
-        
-#        exit()
-        
-        pe = ( 0.5 * self.M * self.omega**2 ) * torch.sum(inputs**2, dim=(1,2))
-
         energy_jf = ke_jf + pe
 
         energy = ke + pe
 
-        if (1 == 0) : 
-            i = 0
-            for p in wavefunction.parameters():
-                i = i + 1
-                if (i==1): aa = p
-                if (i==2): bb = p
-
-
-#            print()
-#            print("input", inputs)
-
-#            print()
-#            print("aa=", aa)
-#            print("bb=", bb)
-
-            x0 = inputs
-            x1 = x0 + bb
-            x2 = torch.sum(aa * x1**2, dim=1)
-            psi_exact = torch.exp( - x2 / 2)
-
-            print()
-            print("wave function", psi)
-            print("exact wave function", psi_exact ) 
-
-            print()
-            print("derivative", d_psi )
-            print("exact derivative", -aa * x1)
-
-            print()
-            print("squared derivative", d_psi**2)
-            print("exact squared derivative", (-aa * x1)**2 )
-
-            print()
-            print("second derivative", d2_psi)
-            print("exact second derivative", aa**2 * x1**2 - aa )
-
-
-            print()
-            print("kinetic energy", torch.sum(ke))
-            print("exact kinetic energy",-torch.sum(aa**2 * x1**2 - aa)/2)
-            print("jf kinetic energy", torch.sum(ke_jf))
-            print("exact jf kinetic energy",torch.sum((-aa * x1)**2)/2)
-
-            print()
-            print("potential energy", pe)
-
-            wavefunction.zero_grad()
-            energy.backward(vt, retain_graph = True)
-
-            dE_da = - aa * x1**2 + 0.5 
-
-#            dE_da = aa * x1**2 
-            
-            dE_db = - aa**2 * x1  
-
-# 2-d case
-#            dE_da = self.ndim * dE_da
-#            dE_db = self.ndim * dE_db
-        
-            print()
-            i = 0
-            for p in wavefunction.parameters():
-                i = i + 1
-                if (i==1): print("p grad inside=",i,torch.sum(p.grad), torch.sum(dE_da))
-                if (i==2): print("p grad inside=",i,torch.sum(p.grad), torch.sum(dE_db))
-#            exit()
-
-
+ 
         return energy, energy_jf
 
 
