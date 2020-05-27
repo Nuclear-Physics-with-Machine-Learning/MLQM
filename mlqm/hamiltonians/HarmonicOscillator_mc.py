@@ -36,12 +36,12 @@ class HarmonicOscillator_mc(object):
         v_ij=torch.zeros(size=[self.nwalk,6])
         for i in range (self.npart):
             for j in range (i+1,self.npart):
-                x_ij=inputs[:,i,:]-inputs[:,j,:]
-                r_ij=torch.sqrt(torch.sum(x_ij**2,dim=1))
-                v_ij+=potential.pionless(r_ij)
+                x_ij = inputs[:,i,:]-inputs[:,j,:]
+                r_ij = torch.sqrt(torch.sum(x_ij**2,dim=1))
+                v_ij += potential.pionless(r_ij)
          
         #self.pe = ( 0.5 * self.M * self.omega**2 ) * torch.sum(inputs**2, dim=(1,2))
-        self.pe=v_ij[:,0]
+        self.pe = v_ij[:,0] + v_ij[:,2]
         return self.pe
 
     def kinetic_energy(self, wavefunction, inputs):
@@ -53,7 +53,9 @@ class HarmonicOscillator_mc(object):
         
         d_log_psi = torch.autograd.grad(log_psi, inputs, vt, create_graph=True, retain_graph=True)[0]
         d_psi = d_log_psi
-        self.ke_jf = torch.sum(d_psi**2, (1,2)) / 2.        
+        self.ke_jf = torch.sum(d_psi**2, (1,2)) / 2. 
+        self.ke_jf = self.ke_jf * 197.327**2 / 938.95
+        
         self.ke = 0
         for i in range (self.ndim):
             for j in range (self.npart):
@@ -62,6 +64,7 @@ class HarmonicOscillator_mc(object):
                 d2_log_psi_ii_jj = d2_log_psi[:,j,i]
                 d2_psi_ij = d2_log_psi_ii_jj + d_log_psi_ij**2
                 self.ke -= d2_psi_ij / 2.
+        self.ke = self.ke * 197.327**2 / 938.95
 
         return self.ke, self.ke_jf
 

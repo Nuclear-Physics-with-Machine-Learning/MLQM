@@ -11,51 +11,59 @@ class NeuralWavefunction(torch.nn.Module):
     Extends:
         torch.nn.Module
     """
-    def __init__(self, n : int, npart: int, boundary_condition :torch.nn.Module = None):
+    def __init__(self, ndim : int, npart: int, boundary_condition :torch.nn.Module = None):
         torch.nn.Module.__init__(self)
         
-        self.n = n
-#        if self.n < 1 or self.n > 3: 
+        self.ndim = ndim
+#        if self.ndim < 1 or self.ndim > 3: 
 #            raise Exception("Dimension must be 1, 2, or 3 for NeuralWavefunction")
 
         self.npart = npart
         
         # Create a boundary condition if needed:
 #        if boundary_condition is None:
-#            self.bc = ExponentialBoundaryCondition(self.n)
+#            self.bc = ExponentialBoundaryCondition(self.ndim)
 #        else:
 #            self.bc = boundary_condition
 
-        self.layer1 = torch.nn.Linear(self.n * self.npart, 128)
-#        self.layer2 = torch.nn.Linear(16, 16)
-        self.layer3 = torch.nn.Linear(128, 1)
-#        self.layer4 = torch.nn.Linear(16, 16)
-#        self.layer5 = torch.nn.Linear(16, 16)
-#        self.layer6 = torch.nn.Linear(16, 1)
+        self.layer1 = torch.nn.Linear(self.ndim, 16)
+        self.layer2 = torch.nn.Linear(16, 16)
+        self.layer3 = torch.nn.Linear(16, 1, bias = False)
 
 # Test solution psi = exp(-(a*x+b)**2/2)
-#        self.layer1 = torch.nn.Linear(self.n, 1)
+#        self.layer1 = torch.nn.Linear(self.ndim, 1)
 #        self.layer1.weight.data.fill_(0.7)
 #        self.layer1.bias.data.fill_(0.1)
 
-#        self.exponent = torch.nn.Parameter(2. * torch.ones(self.n), requires_grad=True)
-#        self.shift = torch.nn.Parameter(0.1 * torch.ones(self.n), requires_grad=True)
+#        self.exponent = torch.nn.Parameter(2. * torch.ones(self.ndim), requires_grad=True)
+#        self.shift = torch.nn.Parameter(torch.ones(1), requires_grad=True)
+#        self.alpha = torch.nn.Parameter(torch.ones(1), requires_grad=True)
+#        self.beta = torch.nn.Parameter(0.5 * torch.ones(1), requires_grad=True)
+
 
     def forward(self, inputs):
-        x = torch.flatten(inputs, start_dim = 1)
-        x = self.layer1(x)
+#        xinputs = torch.zeros_like(inputs)
+#        print("inputs=", inputs)
+#        for i in range (self.npart):
+#            xcm = torch.sum(inputs, dim = 1)
+#            xinputs[:,i,:] = inputs[:,i,:] - torch.sum(inputs, dim = 1) / self.npart
+#        print("xinputs=", xinputs)
+#        exit()
+#        x = torch.flatten(xinputs, start_dim = 1)
+#        x = self.layer1(x)
 #        x = torch.relu(x)
-        x = torch.nn.functional.softplus(x, beta=1.)
+#        x = torch.nn.functional.softplus(x, beta=1.)
 #        x = torch.celu(x, True)
 #        x = torch.tanh(x)
 #        x = torch.sigmoid(x)
 #        x = self.layer2(x)
+#        x = torch.nn.functional.softplus(x, beta=1.)
 #        x = torch.sigmoid(x)
-        x = self.layer3(x)
+#        x = self.layer3(x)
 #        x = torch.exp(x)       
-        x = x.view([x.shape[0],]) 
-        x = x - torch.sum( 0.01 * inputs**4, dim=(1,2))
-        result = x
+#        x = x.view([x.shape[0],]) 
+#        x = x - torch.sum( 0.01 * xinputs**4, dim=(1,2))
+#        result = x
 #        result = torch.exp(x)       
 
 # Exact wave function
@@ -66,6 +74,69 @@ class NeuralWavefunction(torch.nn.Module):
 #        x = 1. * (x[:,0]**2 + 2*x[:,1]**2 + 3*x[:,0]*x[:,1])
         
 #        result = torch.exp( - x / 2)
+
+
+
+
+        inputs_12 = torch.zeros(size = [800,self.ndim])
+        inputs_12 = inputs[:,1,:] - inputs[:,0,:] 
+        x_12 = self.layer1(inputs_12)
+        x_12 = torch.nn.functional.softplus(x_12, beta=1.)
+        x_12 = self.layer2(x_12)
+        x_12 = torch.nn.functional.softplus(x_12, beta=1.)
+        x_12 = self.layer3(x_12)
+        x_12 = x_12.view([x_12.shape[0],]) 
+        result = x_12
+
+        inputs_21 = torch.zeros(size = [800,self.ndim])
+        inputs_21 = inputs[:,0,:] - inputs[:,1,:] 
+        x_21 = self.layer1(inputs_21)
+        x_21 = torch.nn.functional.softplus(x_21, beta=1.)
+        x_21 = self.layer2(x_21)
+        x_21 = torch.nn.functional.softplus(x_21, beta=1.)
+        x_21 = self.layer3(x_21)
+        x_21 = x_21.view([x_21.shape[0],]) 
+        result += x_21
+
+        result -= torch.sum( 0.05 * inputs_12**2, dim=1)
+        
+
+# Exact wave function
+#        inputs_12 = torch.zeros(size = [8000,self.ndim])
+#        inputs_12 = inputs[:,1,:] - inputs[:,0,:] 
+#        r_12 = torch.sqrt(torch.sum(inputs_12**2,dim=1))
+#        a0 = 4.14877 
+#        a1 = 23.5426  
+#        a2 = -3.64539
+#        a3 = -8.11022
+#        a4 = 14.4502
+#        a5 = -5.00758
+#        a6 = 0.765287
+#        ll = 2.94036
+#        mm = 0.799155
+#        f_12 = (a0 + a1*r_12 + a2*r_12**2 + a3*r_12**3 + a4*r_12**4 + a5*r_12**5 +a6*r_12**6) * torch.exp(-ll*r_12**mm)
+#        f_12 = self.shift*f_12
+#        result = torch.log(f_12)
+#        for i in range (200):
+#            print(r_12[i].item(), f_12[i].item())
+#        exit()
+
+#        print("inputs_12", inputs_12)
+#        print("self.shift", self.shift)
+#        r2 = torch.sum(inputs_12**2,dim=1)
+#        f_12 =  (1. + self.beta * r2) * torch.exp(- self.alpha  * r2)
+#        result = torch.log(f_12)
+#        print("f_12", result)
+#        exit()
+        
+        return result
+
+    def importance(self, inputs):
+#        result = inputs.view([inputs.shape[0],]) 
+        result = torch.sum( 0.01 * inputs**4, dim=(1,2))
+        print("inputs=", inputs)
+        print("wf_I result=", result)
+        exit()
         return result
 
     def zero_grad(self):

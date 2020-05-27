@@ -3,8 +3,8 @@ import time
 import numpy 
 
 import sys
-sys.path.insert(0, "/Users/rocconoe/Desktop/AI-for-QM/")
-#sys.path.insert(0, "/Users/lovato/Dropbox/AI-for-QM/")
+#sys.path.insert(0, "/Users/rocconoe/Desktop/AI-for-QM/")
+sys.path.insert(0, "/Users/lovato/Dropbox/AI-for-QM/")
 
 #from mlqm.samplers      import CartesianSampler
 from mlqm.hamiltonians  import HarmonicOscillator_mc
@@ -14,20 +14,20 @@ from mlqm.samplers      import Estimator
 from mlqm.optimization  import Optimizer
 
 
-sig = 0.1
-dx = .1
+sig = 0.5
+dx = 0.5
 neq = 10
 nav = 10
 nprop = 10
-nvoid = 20
-nwalk = 200
+nvoid = 50
+nwalk = 800
 ndim = 3
 npart = 2
 seed = 17
 mass = 1.
 omega = 1.
-delta = 0.10
-eps = 0.001
+delta = 0.002
+eps = 0.0001
 
 
 # Initialize Seed
@@ -63,10 +63,17 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
         for j in range (nstep):
             with torch.no_grad(): 
                 log_wpsi_o = wavefunction(x_o)
+#                print("wf_o=", log_wpsi_o)
+                
+#                log_wpsiI_o = wavefunction.importance(x_o)
 
 # Gaussian transition probability 
                 x_n = x_o + torch.normal(0., dx, size=[nwalk, npart, ndim])
                 log_wpsi_n = wavefunction(x_n)
+#                print("wf_n=", log_wpsi_n)
+#                print()
+                
+#                log_wpsiI_n = wavefunction.importance(x_n)
 
 # Accepance probability |psi_n|**2 / |psi_o|**2
                 prob = 2 * ( log_wpsi_n - log_wpsi_o )
@@ -107,6 +114,11 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
                 dpsi_i = dpsi_i.view(-1,1)
                 dpsi_i_EL = torch.matmul(energy, jac).view(-1,1)
                 dpsi_ij = torch.mm(torch.t(jac), jac) / nwalk
+
+#                print("dpsi_i", dpsi_i)
+#                print("dpsi_ij", dpsi_ij)
+#                exit()
+                
                 
                 block_estimator.accumulate(torch.sum(energy),torch.sum(energy_jf),acceptance,1,dpsi_i,dpsi_i_EL,dpsi_ij,1.)
 
@@ -140,7 +152,7 @@ print("elapsed time", t1 - t0)
 
 #print("initial_gradient", gradient)
 
-for i in range(160):
+for i in range(200):
 #        optimizer.zero_grad()
 
         # Compute the energy:

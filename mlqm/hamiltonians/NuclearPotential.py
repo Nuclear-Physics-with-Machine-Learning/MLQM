@@ -19,8 +19,8 @@ class NuclearPotential(object):
         #ar3b=677.79890
         x= vkr*rr
         vr=torch.exp(-x**2/4.0)
-        pot[:,0]=vr*v0r*rr
-        pot[:,2]=vr*v0s*rr
+        pot[:,0]=vr*v0r
+        pot[:,2]=vr*v0s
         return pot
 
 
