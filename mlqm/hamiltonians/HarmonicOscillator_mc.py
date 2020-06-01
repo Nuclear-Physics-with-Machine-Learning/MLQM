@@ -26,6 +26,11 @@ class HarmonicOscillator_mc(object):
 
         self.npart = npart
 
+        if (self.npart == 2):
+           self.alpha = 1.
+        elif (self.npart == 3):
+           self.alpha = -1.
+
         # Several objects get stored for referencing, if needed, after energy computation:
         self.pe = None
         self.ke = None
@@ -33,15 +38,30 @@ class HarmonicOscillator_mc(object):
 
     def potential_energy(self, potential, inputs):
         "Returns potential energy"
-        v_ij=torch.zeros(size=[self.nwalk,6])
-        for i in range (self.npart):
+        v_ij = torch.zeros(size=[self.nwalk,6])
+        gr3b = torch.zeros(size=[self.nwalk,self.npart])
+        V_ijk = torch.zeros(size=[self.nwalk])
+        for i in range (self.npart-1):
             for j in range (i+1,self.npart):
                 x_ij = inputs[:,i,:]-inputs[:,j,:]
                 r_ij = torch.sqrt(torch.sum(x_ij**2,dim=1))
-                v_ij += potential.pionless(r_ij)
+                v_ij += potential.pionless_2b(r_ij)
+                if (self.npart > 2 ):
+                   t_ij = potential.pionless_3b(r_ij)
+#                   print("r_ij=", r_ij)
+#                   print("t_ij=", t_ij)
+                   gr3b[:,i] += t_ij
+                   gr3b[:,j] += t_ij
+                   V_ijk -= t_ij**2
          
         #self.pe = ( 0.5 * self.M * self.omega**2 ) * torch.sum(inputs**2, dim=(1,2))
-        self.pe = v_ij[:,0] + v_ij[:,2]
+        V_ijk += 0.5 * torch.sum(gr3b**2, dim = 1)
+#        print("V_ijk=", V_ijk)
+#        print("v_ij=", v_ij[:,0])
+#        print("self.alpha", self.alpha)
+#        exit()
+        self.pe = v_ij[:,0] + self.alpha * v_ij[:,2] + V_ijk
+
         return self.pe
 
     def kinetic_energy(self, wavefunction, inputs):

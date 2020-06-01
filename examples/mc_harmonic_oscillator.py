@@ -14,15 +14,15 @@ from mlqm.samplers      import Estimator
 from mlqm.optimization  import Optimizer
 
 
-sig = 0.5
-dx = 0.5
+sig = 0.2
+dx = 0.2
 neq = 10
 nav = 10
 nprop = 10
 nvoid = 50
-nwalk = 800
+nwalk = 400
 ndim = 3
-npart = 2
+npart = 3
 seed = 17
 mass = 1.
 omega = 1.
@@ -152,7 +152,7 @@ print("elapsed time", t1 - t0)
 
 #print("initial_gradient", gradient)
 
-for i in range(200):
+for i in range(400):
 #        optimizer.zero_grad()
 
         # Compute the energy:
