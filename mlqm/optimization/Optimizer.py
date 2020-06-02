@@ -30,20 +30,27 @@ class Optimizer(object):
         
         for i in range (1000):
             S_ij_d = torch.clone(torch.detach(S_ij)).double()
-            S_ij_d += 2**i * self.eps * torch.eye(self.npt)
-#            print("S_ij_d", S_ij_d)
-            U_ij = torch.cholesky(S_ij_d, upper=True, out=None)
-            dp_i = torch.cholesky_solve(f_i, U_ij, upper=True, out=None) 
-#            print("f_i", dp_i)
-            dp_0 = 1. - self.delta * energy - torch.sum(dpsi_i*dp_i) 
-            dp_i = dp_i / dp_0
-#            print("dp_i", dp_i)
-            dist = self.par_dist(dp_i, S_ij)
+            S_ij_d += 10**i * self.eps * torch.eye(self.npt)
+            det_test = torch.det(S_ij_d)
             torch.set_printoptions(precision=8)
-            print("dist param", dist.data[0])
-            dp_i = dp_i.float()
-            if (dist < 0.0005):
-                break
+            try:
+               U_ij = torch.cholesky(S_ij_d, upper=True, out=None)
+               positive_definite = True
+            except RuntimeError:
+               positive_definite = False
+               print("Warning, Cholesky did not find a positive definite matrix")
+            if (positive_definite):
+               dp_i = torch.cholesky_solve(f_i, U_ij, upper=True, out=None) 
+#            print("f_i", dp_i)
+               dp_0 = 1. - self.delta * energy - torch.sum(dpsi_i*dp_i) 
+               dp_i = dp_i / dp_0
+#            print("dp_i", dp_i)
+               dist = self.par_dist(dp_i, S_ij)
+               torch.set_printoptions(precision=8)
+               print("dist param", dist.data[0])
+               dp_i = dp_i.float()
+               if (dist < 0.0005):
+                  break
         return dp_i
 
 
