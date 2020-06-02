@@ -16,7 +16,7 @@ class Optimizer(object):
 
         # This replaces the double for loop.  Don't do that in python.
         D_ij = S_ij * (dp_i * dp_i.T)
-        dist = torch.sum(D_ij_fast.flatten())
+        dist = torch.sum(D_ij.flatten())
 
 
         return dist
