@@ -15,15 +15,12 @@ class HarmonicOscillator_mc(object):
         object.__init__(self)
 
         self.ndim = ndim
-#        if self.ndim < 1 or self.ndim > 3: 
-#            raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillator")
+        if self.ndim < 1 or self.ndim > 3: 
+            raise Exception("Dimension must be 1, 2, or 3")
 
         self.M = M
-
         self.omega = omega
-
         self.nwalk = nwalk
-
         self.npart = npart
 
         if (self.npart == 2):
@@ -48,25 +45,17 @@ class HarmonicOscillator_mc(object):
                 v_ij += potential.pionless_2b(r_ij)
                 if (self.npart > 2 ):
                    t_ij = potential.pionless_3b(r_ij)
-#                   print("r_ij=", r_ij)
-#                   print("t_ij=", t_ij)
                    gr3b[:,i] += t_ij
                    gr3b[:,j] += t_ij
                    V_ijk -= t_ij**2
-         
-        #self.pe = ( 0.5 * self.M * self.omega**2 ) * torch.sum(inputs**2, dim=(1,2))
         V_ijk += 0.5 * torch.sum(gr3b**2, dim = 1)
-#        print("V_ijk=", V_ijk)
-#        print("v_ij=", v_ij[:,0])
-#        print("self.alpha", self.alpha)
-#        exit()
         self.pe = v_ij[:,0] + self.alpha * v_ij[:,2] + V_ijk
 
         return self.pe
 
     def kinetic_energy(self, wavefunction, inputs):
         "Returns kinetic energy"
-      
+        inputs.requires_grad_(True)
         wavefunction.zero_grad()
         log_psi = wavefunction(inputs)
         vt = torch.ones(size=[self.nwalk])
@@ -85,7 +74,7 @@ class HarmonicOscillator_mc(object):
                 d2_psi_ij = d2_log_psi_ii_jj + d_log_psi_ij**2
                 self.ke -= d2_psi_ij / 2.
         self.ke = self.ke * 197.327**2 / 938.95
-
+        inputs.requires_grad_(False)
         return self.ke, self.ke_jf
 
     def energy(self, wavefunction, potential, inputs):

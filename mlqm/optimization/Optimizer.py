@@ -17,27 +17,23 @@ class Optimizer(object):
         # This replaces the double for loop.  Don't do that in python.
         D_ij = S_ij * (dp_i * dp_i.T)
         dist = torch.sum(D_ij.flatten())
-
-
         return dist
 
     def sr(self,energy,dpsi_i,dpsi_i_EL,dpsi_ij):
         f_i= (self.delta * ( dpsi_i * energy - dpsi_i_EL )).double()
-
         # This also replaces the double for loop ... don't do that :)
         S_ij = dpsi_ij - dpsi_i * dpsi_i.T
-
-        #
 
 #        print("dpsi_i", dpsi_i)
 #        print("dpsi_ij", dpsi_ij)
 #        print("S_ij=", S_ij)
 #        print("dpsi_i_EL", dpsi_i_EL)
 #        print("energy", energy)
-
-        for i in range (1000):
+        i = 0
+        while True:
             S_ij_d = torch.clone(torch.detach(S_ij)).double()
-            S_ij_d += 10**i * self.eps * torch.eye(self.npt)
+            S_ij_d += 2**i * self.eps * torch.eye(self.npt)
+            i += 1
             det_test = torch.det(S_ij_d)
             torch.set_printoptions(precision=8)
             try:

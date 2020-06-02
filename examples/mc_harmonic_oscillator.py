@@ -29,7 +29,6 @@ omega = 1.
 delta = 0.002
 eps = 0.0001
 
-
 # Initialize Seed
 torch.manual_seed(seed)
 
@@ -63,39 +62,19 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
         for j in range (nstep):
             with torch.no_grad(): 
                 log_wpsi_o = wavefunction(x_o)
-#                print("wf_o=", log_wpsi_o)
-                
-#                log_wpsiI_o = wavefunction.importance(x_o)
-
 # Gaussian transition probability 
                 x_n = x_o + torch.normal(0., dx, size=[nwalk, npart, ndim])
                 log_wpsi_n = wavefunction(x_n)
-#                print("wf_n=", log_wpsi_n)
-#                print()
-                
-#                log_wpsiI_n = wavefunction.importance(x_n)
-
 # Accepance probability |psi_n|**2 / |psi_o|**2
                 prob = 2 * ( log_wpsi_n - log_wpsi_o )
                 accept = torch.ge(prob, torch.log(torch.rand(size=[nwalk])) )
-#                print("wpsi_o=", wpsi_o)
-#                print("wpsi_n=", wpsi_n)
-#                print("prob=", prob)
-#                print("accept=", accept)
-#                print("x_o=", x_o)
-#                print("x_proposed=", x_n)
                 x_o = torch.where(accept.view([nwalk,1,1]), x_n, x_o)
-#                print("x_n=", x_o)
-                acceptance = torch.sum(torch.where(accept.view([nwalk,1]), torch.ones(size=[nwalk,1]), torch.zeros(size=[nwalk,1]))) / nwalk
-
+                acceptance = torch.mean(accept.float())
 # Compute energy and accumulate estimators within a given block
             if ( (j+1) % nvoid == 0 and i >= neq ):
-                x_o.requires_grad_(True)
                 energy, energy_jf = hamiltonian.energy(wavefunction, potential, x_o)
-#                x_o.grad.data.zero_()
                 energy = energy / nwalk
                 energy_jf = energy_jf / nwalk
-                x_o.requires_grad_(False)
                 energy.detach_()
                 energy_jf.detach_()
 
@@ -120,7 +99,7 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
 #                exit()
                 
                 
-                block_estimator.accumulate(torch.sum(energy),torch.sum(energy_jf),acceptance,1,dpsi_i,dpsi_i_EL,dpsi_ij,1.)
+                block_estimator.accumulate(torch.sum(energy),torch.sum(energy_jf),acceptance,1.,dpsi_i,dpsi_i_EL,dpsi_ij,1.)
 
 # Accumulate block averages
         if ( i >= neq ):
@@ -150,19 +129,14 @@ print("initial_jf_energy", energy_jf, error_jf)
 print("initial_acceptance", acceptance)
 print("elapsed time", t1 - t0)
 
-#print("initial_gradient", gradient)
 
 for i in range(400):
-#        optimizer.zero_grad()
 
         # Compute the energy:
         energy, error, energy_jf, error_jf, acceptance, delta_p = energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction)
-
         
-        lr = 1.
-        print("lr=", lr)
         for (p, dp) in zip (wavefunction.parameters(),delta_p):
-            p.data = p.data + dp * lr
+            p.data = p.data + dp 
             
         if i % 1 == 0:
             print(f"step = {i}, energy = {energy.data:.3f}, err = {error.data:.3f}")
