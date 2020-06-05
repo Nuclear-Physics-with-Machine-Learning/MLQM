@@ -1,6 +1,10 @@
 import torch
 import numpy
 
+import logging
+# Set up logging:
+logger = logging.getLogger()
+
 class Optimizer(object):
 
     def __init__(self,delta,eps,npt):
@@ -41,7 +45,7 @@ class Optimizer(object):
                positive_definite = True
             except RuntimeError:
                positive_definite = False
-               print("Warning, Cholesky did not find a positive definite matrix")
+               logger.error("Warning, Cholesky did not find a positive definite matrix")
             if (positive_definite):
                dp_i = torch.cholesky_solve(f_i, U_ij, upper=True, out=None)
 #            print("f_i", dp_i)
@@ -53,9 +57,9 @@ class Optimizer(object):
                dist_norm = self.par_dist(dp_i, dpsi_i * dpsi_i.T)
                torch.set_printoptions(precision=8)
                # Originally this accessed the [0] element but that's not necessary now
-               print("dist param", dist.data)
-               print("dist reg", dist_reg.data)
-               print("dist param norm", dist_norm.data)
+               logger.debug("dist param", dist.data)
+               logger.debug("dist reg", dist_reg.data)
+               logger.debug("dist param norm", dist_norm.data)
                dp_i = dp_i.float()
                if (dist < 0.001 and dist_reg < 0.001 and dist_norm < 0.2):
                   break

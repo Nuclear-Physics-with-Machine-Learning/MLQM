@@ -1,13 +1,16 @@
-import torch
+# Python built ins:
+import sys, os
 import time
-import numpy 
+import logging
 
-import sys
-#sys.path.insert(0, "/Users/rocconoe/Desktop/AI-for-QM/")
-sys.path.insert(0, "/Users/lovato/Dropbox/AI-for-QM/")
-sys.path.insert(0, "/home/lovato/AI-for-QM")
-sys.stdout = open('/home/lovato/AI-for-QM/examples/test_4he.out', 'w')
-sys.stdout.flush()
+# Frameworks:
+import numpy 
+import torch
+
+# Add the local folder to the import path:
+top_folder = os.path.dirname(os.path.abspath(__file__))
+top_folder = os.path.dirname(top_folder)
+sys.path.insert(0,top_folder)
 
 #from mlqm.samplers      import CartesianSampler
 from mlqm.hamiltonians  import HarmonicOscillator_mc
@@ -23,7 +26,7 @@ neq = 10
 nav = 10
 nprop = 10
 nvoid = 50
-nwalk = 1200
+nwalk = 1
 ndim = 3
 npart = 4
 seed = 17
@@ -31,25 +34,35 @@ mass = 1.
 omega = 1.
 delta = 0.002
 eps = 0.0002
-
-print("sig=", sig)
-print("dx=", dx)
-print("neq=", neq)
-print("nav=", nav)
-print("nprop=", nprop)
-print("nvoid=", nvoid)
-print("nwalk=", nwalk)
-print("ndim=", ndim)
-print("npart=", npart)
-print("seed=", seed)
-print("mass=", mass)
-print("omega=", omega)
-print("delta=", delta)
-print("eps=", eps)
-sys.stdout.flush()
+model_save_path = f"./helium{npart}.model"
 
 
+# Set up logging:
+logger = logging.getLogger()
+# Create a file handler:
+hdlr = logging.FileHandler(f'helium{npart}.log')
+# Add formatting to the log:
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+hdlr.setFormatter(formatter)
+logger.addHandler(hdlr) 
+# Set the default level. Levels here: https://docs.python.org/2/library/logging.html
+logger.setLevel(logging.INFO)
 
+
+logger.info(f"sig={sig}")
+logger.info(f"dx={dx}")
+logger.info(f"neq={neq}")
+logger.info(f"nav={nav}")
+logger.info(f"nprop={nprop}")
+logger.info(f"nvoid={nvoid}")
+logger.info(f"nwalk={nwalk}")
+logger.info(f"ndim={ndim}")
+logger.info(f"npart={npart}")
+logger.info(f"seed={seed}")
+logger.info(f"mass={mass}")
+logger.info(f"omega={omega}")
+logger.info(f"delta={delta}")
+logger.info(f"eps={eps}")
 
 
 # Initialize Seed
@@ -134,7 +147,7 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
     dpsi_i_EL = total_estimator.dpsi_i_EL
     dpsi_ij = total_estimator.dpsi_ij
 
-    print("psi norm", torch.mean(log_wpsi))
+    logger.info(f"psi norm{torch.mean(log_wpsi)}")
 
     with torch.no_grad(): 
         dp_i = opt.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
@@ -146,13 +159,12 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
 t0 = time.time()
 energy, error, energy_jf, error_jf, acceptance, delta_p = energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction)
 t1 = time.time()
-print("initial_energy", energy, error)
-print("initial_jf_energy", energy_jf, error_jf)
-print("initial_acceptance", acceptance)
-print("elapsed time", t1 - t0)
-sys.stdout.flush()
+logger.info(f"initial_energy {energy, error}")
+logger.info(f"initial_jf_energy {energy_jf, error_jf}")
+logger.info(f"initial_acceptance {acceptance}")
+logger.info(f"elapsed time {t1 - t0}")
 
-for i in range(800):
+for i in range(2):
 
         # Compute the energy:
         energy, error, energy_jf, error_jf, acceptance, delta_p = energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction)
@@ -161,9 +173,11 @@ for i in range(800):
             p.data = p.data + dp 
             
         if i % 1 == 0:
-            print(f"step = {i}, energy = {energy.data:.3f}, err = {error.data:.3f}")
-            print(f"step = {i}, energy_jf = {energy_jf.data:.3f}, err = {error_jf.data:.3f}")
-            print(f"acc = {acceptance.data:.3f}")
-        sys.stdout.flush()
+            logger.info(f"step = {i}, energy = {energy.data:.3f}, err = {error.data:.3f}")
+            logger.info(f"step = {i}, energy_jf = {energy_jf.data:.3f}, err = {error_jf.data:.3f}")
+            logger.info(f"acc = {acceptance.data:.3f}")
 
+# This saves the model:
+
+torch.save(wavefunction.state_dict(), model_save_path)
 
