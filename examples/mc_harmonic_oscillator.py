@@ -5,6 +5,9 @@ import numpy
 import sys
 #sys.path.insert(0, "/Users/rocconoe/Desktop/AI-for-QM/")
 sys.path.insert(0, "/Users/lovato/Dropbox/AI-for-QM/")
+sys.path.insert(0, "/home/lovato/AI-for-QM")
+sys.stdout = open('/home/lovato/AI-for-QM/examples/test_4he.out', 'w')
+sys.stdout.flush()
 
 #from mlqm.samplers      import CartesianSampler
 from mlqm.hamiltonians  import HarmonicOscillator_mc
@@ -20,14 +23,34 @@ neq = 10
 nav = 10
 nprop = 10
 nvoid = 50
-nwalk = 400
+nwalk = 1200
 ndim = 3
-npart = 3
+npart = 4
 seed = 17
 mass = 1.
 omega = 1.
 delta = 0.002
-eps = 0.0001
+eps = 0.0002
+
+print("sig=", sig)
+print("dx=", dx)
+print("neq=", neq)
+print("nav=", nav)
+print("nprop=", nprop)
+print("nvoid=", nvoid)
+print("nwalk=", nwalk)
+print("ndim=", ndim)
+print("npart=", npart)
+print("seed=", seed)
+print("mass=", mass)
+print("omega=", omega)
+print("delta=", delta)
+print("eps=", eps)
+sys.stdout.flush()
+
+
+
+
 
 # Initialize Seed
 torch.manual_seed(seed)
@@ -97,10 +120,7 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
 #                print("dpsi_i", dpsi_i)
 #                print("dpsi_ij", dpsi_ij)
 #                exit()
-                
-                
                 block_estimator.accumulate(torch.sum(energy),torch.sum(energy_jf),acceptance,1.,dpsi_i,dpsi_i_EL,dpsi_ij,1.)
-
 # Accumulate block averages
         if ( i >= neq ):
             total_estimator.accumulate(block_estimator.energy,block_estimator.energy_jf,block_estimator.acceptance,0,block_estimator.dpsi_i,
@@ -113,6 +133,8 @@ def energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction):
     dpsi_i = total_estimator.dpsi_i
     dpsi_i_EL = total_estimator.dpsi_i_EL
     dpsi_ij = total_estimator.dpsi_ij
+
+    print("psi norm", torch.mean(log_wpsi))
 
     with torch.no_grad(): 
         dp_i = opt.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
@@ -128,9 +150,9 @@ print("initial_energy", energy, error)
 print("initial_jf_energy", energy_jf, error_jf)
 print("initial_acceptance", acceptance)
 print("elapsed time", t1 - t0)
+sys.stdout.flush()
 
-
-for i in range(400):
+for i in range(800):
 
         # Compute the energy:
         energy, error, energy_jf, error_jf, acceptance, delta_p = energy_metropolis(neq, nav, nprop, nvoid, hamiltonian, wavefunction)
@@ -142,5 +164,6 @@ for i in range(400):
             print(f"step = {i}, energy = {energy.data:.3f}, err = {error.data:.3f}")
             print(f"step = {i}, energy_jf = {energy_jf.data:.3f}, err = {error_jf.data:.3f}")
             print(f"acc = {acceptance.data:.3f}")
+        sys.stdout.flush()
 
 

@@ -49,10 +49,14 @@ class Optimizer(object):
                dp_i = dp_i / dp_0
 #            print("dp_i", dp_i)
                dist = self.par_dist(dp_i, S_ij)
+               dist_reg = self.par_dist(dp_i, S_ij_d)
+               dist_norm = self.par_dist(dp_i, dpsi_i * dpsi_i.T)
                torch.set_printoptions(precision=8)
                # Originally this accessed the [0] element but that's not necessary now
                print("dist param", dist.data)
+               print("dist reg", dist_reg.data)
+               print("dist param norm", dist_norm.data)
                dp_i = dp_i.float()
-               if (dist < 0.0005):
+               if (dist < 0.001 and dist_reg < 0.001 and dist_norm < 0.2):
                   break
         return dp_i

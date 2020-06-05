@@ -25,7 +25,7 @@ class HarmonicOscillator_mc(object):
 
         if (self.npart == 2):
            self.alpha = 1.
-        elif (self.npart == 3):
+        elif (self.npart > 2):
            self.alpha = -1.
 
         # Several objects get stored for referencing, if needed, after energy computation:

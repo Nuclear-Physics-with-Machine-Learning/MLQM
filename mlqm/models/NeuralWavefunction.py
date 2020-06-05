@@ -26,9 +26,9 @@ class NeuralWavefunction(torch.nn.Module):
 #        else:
 #            self.bc = boundary_condition
 
-        self.layer1 = torch.nn.Linear(self.ndim * self.npart, 16)
-        self.layer2 = torch.nn.Linear(16, 16)
-        self.layer3 = torch.nn.Linear(16, 1, bias = False)
+        self.layer1 = torch.nn.Linear(self.ndim * self.npart, 64)
+        self.layer2 = torch.nn.Linear(64, 64)
+        self.layer3 = torch.nn.Linear(64, 1, bias = False)
 
 # Test solution psi = exp(-(a*x+b)**2/2)
 #        self.layer1 = torch.nn.Linear(self.ndim, 1)
@@ -42,14 +42,8 @@ class NeuralWavefunction(torch.nn.Module):
 
 
     def forward(self, inputs):
-#        xinputs = torch.zeros_like(inputs)
-#        print("inputs=", inputs)
-#        for i in range (self.npart):
-#            xinputs[:,i,:] = inputs[:,i,:] - torch.sum(inputs, dim = 1) / self.npart
-#        print("xinputs=", xinputs)
         mean = torch.mean(inputs, dim=1)
         xinputs = inputs - mean[:,None,:]
-#        exit()
         x = torch.flatten(xinputs, start_dim = 1)
         x = self.layer1(x)
         x = torch.nn.functional.softplus(x, beta=1.)
