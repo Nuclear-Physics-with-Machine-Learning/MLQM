@@ -1,4 +1,4 @@
-import torch
+import tensorflow as tf
 import numpy
 
 
@@ -7,7 +7,12 @@ class CartesianSampler(object):
     
     Sample from 3D coordinates, with some granularity delta
     """
-    def __init__(self, n : int, delta : float, mins : float, maxes : float):
+    def __init__(self, 
+        n           : int, 
+        # nparticles  : int,
+        delta       : float, 
+        mins        : float, 
+        maxes       : float):
 
         if n < 1: 
             raise Exception("Dimension must be at least 1 for ExponentialBoundaryCondition")
@@ -62,7 +67,7 @@ class CartesianSampler(object):
         mesh = numpy.stack(mesh, axis=-1)
 
 
-        mesh = torch.tensor(mesh, device=device, requires_grad = True)
+        mesh = tf.convert_to_tensor(mesh)
 
 
         return mesh

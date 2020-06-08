@@ -1,6 +1,6 @@
 import pytest
 
-import torch
+import tensorflow as tf
 import numpy
 
 from . import PolynomialWavefunction
@@ -37,11 +37,4 @@ def test_run_polynomial(dimension):
     wavefunction = poly_w(x)
 
 
-    assert torch.abs(torch.sum(wavefunction**2) * delta**dimension - 1.0) < 0.01
-
-
-
-if __name__ == "__main__":
-
-
-    test_create_polynomial(dimension = 1, degree=3)
+    assert tf.abs(tf.reduce_sum(wavefunction**2) * delta**dimension - 1.0) < 0.01

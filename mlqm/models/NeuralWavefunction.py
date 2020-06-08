@@ -1,18 +1,18 @@
 import numpy
-import torch
+import tensorflow as tf
 
 #from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
 
-class NeuralWavefunction(torch.nn.Module):
+class NeuralWavefunction(tf.keras.models.Model):
     """Create a neural network eave function in N dimensions
     
     Boundary condition, if not supplied, is gaussian in every dimension
     
     Extends:
-        torch.nn.Module
+        tf.keras.models.Model
     """
-    def __init__(self, ndim : int, npart: int, boundary_condition :torch.nn.Module = None):
-        torch.nn.Module.__init__(self)
+    def __init__(self, ndim : int, npart: int, boundary_condition :tf.keras.layers.Layer = None):
+        tf.keras.models.Model.__init__(self)
         
         self.ndim = ndim
 #        if self.ndim < 1 or self.ndim > 3: 
@@ -26,9 +26,9 @@ class NeuralWavefunction(torch.nn.Module):
 #        else:
 #            self.bc = boundary_condition
 
-        self.layer1 = torch.nn.Linear(self.ndim * self.npart, 64)
-        self.layer2 = torch.nn.Linear(64, 64)
-        self.layer3 = torch.nn.Linear(64, 1, bias = False)
+        self.layer1 = torch.nn.Linear(self.ndim * self.npart, 4)
+        self.layer2 = torch.nn.Linear(4, 4)
+        self.layer3 = torch.nn.Linear(4, 1, bias = False)
 
 # Test solution psi = exp(-(a*x+b)**2/2)
 #        self.layer1 = torch.nn.Linear(self.ndim, 1)

@@ -1,14 +1,14 @@
-import torch
+import tensorflow as tf
 import numpy
 
-class GaussianBoundaryCondition(torch.nn.Module):
+class GaussianBoundaryCondition(tf.keras.layers.Layer):
     """A simple module for applying an exponential boundary condition in N dimensions
     
     Note that the exponent is *inside* of the power of 2 in the exponent. 
     This is to prevent divergence when it is trainable and goes negative.
     
     Extends:
-        torch.nn.Module
+        tf.keras.layers.Layer
     """
 
     def __init__(self, n : int, exp : float=0.1, trainable : bool=True):
@@ -23,7 +23,7 @@ class GaussianBoundaryCondition(torch.nn.Module):
             exp {float} -- Starting value of exponents.  Must be broadcastable to the number of dimensions (default: {1.0})
             trainable {bool} -- Whether to allow the boundary condition to be trainable (default: {True})
         """
-        torch.nn.Module.__init__(self)
+        tf.keras.layers.Layer.__init__(self)
 
 
 
@@ -35,14 +35,15 @@ class GaussianBoundaryCondition(torch.nn.Module):
         exp = numpy.broadcast_to(exp, (n,))
 
         # This is the parameter controlling the shape of the exponent:
-        self.exponent = torch.nn.Parameter(torch.tensor(exp), requires_grad=trainable)
+        self.exponent = tf.Variable(exp, trainable=trainable)
 
 
 
-    def forward(self, inputs):
-        
-        exponent_term = torch.sum((self.exponent * inputs)**2, dim=1)
-        result = torch.exp(- (exponent_term) / 2.)
+    def call(self, inputs):
+        print(inputs.shape)
+        exponent_term = tf.reduce_sum((self.exponent * inputs)**2, dim=1)
+        print(exponent_term.shape)
+        result = tf.exp(- (exponent_term) / 2.)
         return result
         
 

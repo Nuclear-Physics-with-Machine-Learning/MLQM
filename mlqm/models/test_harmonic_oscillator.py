@@ -1,6 +1,6 @@
 import pytest
 
-import torch
+import tensorflow as tf
 import numpy
 
 from . import HarmonicOscillatorWavefunction
@@ -33,4 +33,4 @@ def test_run_harmonic_oscillator(dimension):
     wavefunction = ho_w(x)
 
 
-    assert torch.abs(torch.sum(wavefunction**2) * delta**dimension - 1.0) < 0.01
+    assert tf.abs(tf.reduce_sum(wavefunction**2) * delta**dimension - 1.0) < 0.01
