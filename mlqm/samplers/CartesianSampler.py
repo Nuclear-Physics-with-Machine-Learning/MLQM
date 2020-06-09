@@ -9,7 +9,7 @@ class CartesianSampler(object):
     """
     def __init__(self, 
         n           : int, 
-        # nparticles  : int,
+        nparticles  : int,
         delta       : float, 
         mins        : float, 
         maxes       : float):
@@ -22,6 +22,7 @@ class CartesianSampler(object):
         delta = numpy.broadcast_to(delta, (n,))
 
         self.n = n
+        self.nparticles = nparticles
         self.delta = delta
 
         # Use numpy to broadcast to the right dimension:
@@ -36,6 +37,8 @@ class CartesianSampler(object):
         self.maxes = maxes
 
 
+    def voxel_size(self):
+        return numpy.prod(self.delta)
 
     def sample(self, device : str=None):
         """Sample points in N-d Space
@@ -63,11 +66,17 @@ class CartesianSampler(object):
         # Flatten:
         mesh = [ m.flatten() for m in mesh]
 
+        n_points = len(mesh[0])
+
         # Stack:
         mesh = numpy.stack(mesh, axis=-1)
 
+        # Re-stack the mesh for the number of particles:
+        mesh = numpy.tile(mesh, reps=self.nparticles)
+
+        mesh = mesh.reshape((n_points, self.nparticles, self.n))
 
         mesh = tf.convert_to_tensor(mesh)
 
 
-        return mesh
+        return tf.Variable(mesh, trainable=True)

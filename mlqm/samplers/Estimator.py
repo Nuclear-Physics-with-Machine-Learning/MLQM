@@ -1,4 +1,4 @@
-import torch
+import tensorflow as tf
 import numpy
 
 class Estimator(object):
@@ -39,8 +39,8 @@ class Estimator(object):
         self.dpsi_i /= nav
         self.dpsi_i_EL /= nav
         self.dpsi_ij /= nav
-        error= torch.sqrt((self.energy2 - self.energy**2) / (nav-1))
-        error_jf = torch.sqrt((self.energy2_jf - self.energy_jf**2) / (nav-1))
+        error= tf.sqrt((self.energy2 - self.energy**2) / (nav-1))
+        error_jf = tf.sqrt((self.energy2_jf - self.energy_jf**2) / (nav-1))
         return error, error_jf
 
 

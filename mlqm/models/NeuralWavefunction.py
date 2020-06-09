@@ -11,14 +11,14 @@ class NeuralWavefunction(tf.keras.models.Model):
     Extends:
         tf.keras.models.Model
     """
-    def __init__(self, ndim : int, npart: int, boundary_condition :tf.keras.layers.Layer = None):
+    def __init__(self, ndim : int, nparticles: int, boundary_condition :tf.keras.layers.Layer = None):
         tf.keras.models.Model.__init__(self)
         
         self.ndim = ndim
-#        if self.ndim < 1 or self.ndim > 3: 
-#            raise Exception("Dimension must be 1, 2, or 3 for NeuralWavefunction")
+        if self.ndim < 1 or self.ndim > 3: 
+           raise Exception("Dimension must be 1, 2, or 3 for NeuralWavefunction")
 
-        self.npart = npart
+        self.nparticles = nparticles
         
         # Create a boundary condition if needed:
 #        if boundary_condition is None:
@@ -26,9 +26,9 @@ class NeuralWavefunction(tf.keras.models.Model):
 #        else:
 #            self.bc = boundary_condition
 
-        self.layer1 = torch.nn.Linear(self.ndim * self.npart, 4)
-        self.layer2 = torch.nn.Linear(4, 4)
-        self.layer3 = torch.nn.Linear(4, 1, bias = False)
+        self.layer1 = torch.nn.Linear(32)
+        self.layer2 = torch.nn.Linear(32)
+        self.layer3 = torch.nn.Linear(1, bias = False)
 
 # Test solution psi = exp(-(a*x+b)**2/2)
 #        self.layer1 = torch.nn.Linear(self.ndim, 1)

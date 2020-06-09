@@ -10,7 +10,7 @@ class MetropolisSampler(object):
     Relies on functional calls to sample on the fly with flexible distributions
     """
     def __init__(self, 
-        ndim        : int, 
+        n           : int, 
         nwalkers    : int, 
         nparticles  : int, 
         initializer : callable, 
@@ -20,14 +20,14 @@ class MetropolisSampler(object):
         Create a metropolis walker with `n` walkers.  Can use normal, uniform
         
         Arguments:
-            ndim {int} -- Dimension
+            n {int} -- Dimension
             nwalkers {int} -- Number of unique walkers
             initializer {callable} -- Function to call to initialize each walker
             init_params {iter} -- Parameters to pass to the initializer, unrolled automatically
         '''
 
         # Set the dimension:
-        self.ndim = ndim
+        self.n = n
 
         # Set the number of walkers:
         self.nwalkers = nwalkers
@@ -35,24 +35,22 @@ class MetropolisSampler(object):
         # Set the number of particles:
         self.nparticles = nparticles
 
-        self.size = (self.nwalkers, self.nparticles, self.ndim)
+        self.size = (self.nwalkers, self.nparticles, self.n)
 
         #  Run the initalize to get the first locations:
-        self.walkers = initializer(shape=self.size, **init_params)
+        self.walkers = tf.Variable(initializer(shape=self.size, **init_params), trainable=True)
 
     def sample(self):
         '''Just return the current locations
         
         '''
-
-        return self.walkers
-
+        # Make sure to wrap in tf.Variable for back prop calculations
+        return tf.Variable(lambda : self.walkers, trainable = True)
 
     def kick(self, 
         wavefunction : tf.keras.models.Model, 
         kicker : callable, 
-        kicker_params : iter, 
-        device : str=None):
+        kicker_params : iter):
         """Sample points in N-d Space
         
         By default, samples points uniformly across all dimensions.
@@ -67,24 +65,26 @@ class MetropolisSampler(object):
         # Once for the original coordiate, and again for the kicked coordinates
 
         # Create a kick:
-        kick = kicker(*kicker_params, self.size)
+        kick = kicker(shape=self.size, **kicker_params)
 
+
+        # Compute the values of the wave function, which should be of shape
+        # [nwalkers, 1]
         original = wavefunction(self.walkers)
         kicked   = wavefunction(self.walkers + kick)
 
+        # Probability is the ratio of kicked **2 to original
+        probability = tf.abs(kicked)**2 / tf.abs(original)**2
 
-        probability = torch.abs(kicked)**2 / torch.FloatTensor.abs(original)**2
-        accept      = torch.ge(probability, torch.rand(size=[self.nwalkers]) )
+        # Acceptance is whether the probability for that walker is greater than
+        # a random number between [0, 1).
+        # Pull the random numbers and create a boolean array
+        accept      = probability >  tf.random.uniform(shape=[self.nwalkers,1]) 
 
-        accept = accept.view([self.nwalkers, 1])
 
-        self.walkers = torch.where(accept, self.walkers + kick, self.walkers)
+        self.walkers = tf.where(accept, self.walkers + kick, self.walkers)
         
-        self.acceptance = torch.mean(accept.float())
-
-        # Make sure the walkers compute gradients:
-        self.walkers.requires_grad_()
-
+        self.acceptance = tf.reduce_mean(tf.cast(accept, tf.float32))
 
         return self.acceptance
 

@@ -3,7 +3,7 @@ import numpy
 
 from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
     
-class PolynomialWavefunction(tf.keras.layers.Layer):
+class PolynomialWavefunction(tf.keras.models.Model):
     """Implememtation of a Polynomial wave funtion in N dimensions
     
     Create a polynomial, up to `degree` in every dimension `n`, fittable
@@ -12,16 +12,17 @@ class PolynomialWavefunction(tf.keras.layers.Layer):
     Boundary condition, if not supplied, is gaussian like in every dimension.
     
     Extends:
-        tf.keras.layers.Layer
+        tf.keras.models.Model
     """
 
-    def __init__(self,  n : int, degree : int, boundary_condition :tf.keras.layers.Layer = None):
+    def __init__(self,  n : int, nparticles : int, degree : int, boundary_condition :tf.keras.layers.Layer = None):
         """Initializer
         
         Create a polynomial wave function with exponential boundary condition
         
         Arguments:
             n {int} -- Dimension of the oscillator (1 <= n <= 3)
+            nparticles {int} -- number of particles
             degree {int} -- Degree of the solution
             alpha {float} -- Alpha parameter (m * omega / hbar)
         
@@ -29,11 +30,14 @@ class PolynomialWavefunction(tf.keras.layers.Layer):
             Exception -- [description]
         """
 
-        tf.keras.layers.Layer.__init__(self)
+        tf.keras.models.Model.__init__(self)
         
         self.n = n
         if self.n < 1 or self.n > 3: 
             raise Exception("Dimension must be 1, 2, or 3 for PolynomialWavefunction")
+
+        if nparticles > 1:
+            raise Exception("Polynomial wavefunction is only supported for one particle")
 
         # Use numpy to broadcast to the right dimension:
         degree = numpy.asarray(degree, dtype=numpy.int32)
@@ -53,7 +57,9 @@ class PolynomialWavefunction(tf.keras.layers.Layer):
 
         # Add one to the degree since they start at "0"
         # Polynomial is of shape [degree, largest_dimension]
-        self.polynomial = tf.ones(shape=(max(self.degree) +1 , self.n))
+        self.polynomial = tf.Variable(
+            initial_value = tf.random.normal(shape=(max(self.degree) +1 , self.n), dtype=tf.float32),
+            trainable=True )
 
         # if boundary_condition is None:
         #     self.bc = ExponentialBoundaryCondition(self.n)
@@ -62,11 +68,12 @@ class PolynomialWavefunction(tf.keras.layers.Layer):
 
 
 
-    def call(self, inputs):
-        y = inputs
+    def call(self, inputs, training=None):
+        # Restrict to just one particle
+        y = inputs[:,0,:]
         
         # Create the output tensor with the right shape, plus the constant term:
-        polynomial_result = tf.zeros(inputs.shape)
+        polynomial_result = tf.zeros(y.shape)
 
         # This is a somewhat basic implementation:
         # Loop over degree:

@@ -11,7 +11,7 @@ class ExponentialBoundaryCondition(tf.keras.layers.Layer):
         tf.keras.layers.Layer
     """
 
-    def __init__(self, n : int, exp : float=0.1, trainable : bool=True):
+    def __init__(self, n : int, nparticles : int, exp : float=0.1, trainable : bool=True):
         """Initializer
         
         Create a new exponentional boundary condition
@@ -38,7 +38,8 @@ class ExponentialBoundaryCondition(tf.keras.layers.Layer):
 
     def forward(self, inputs):
         
-        r = tf.sqrt(tf.reduce_sum(inputs**2, dim=1) + 1e-8)
+        # Reduce over the spatial dimension:
+        r = tf.sqrt(tf.reduce_sum(inputs**2, dim=[2]) + 1e-8)
         # print(r.shape)
         exponent_term = tf.abs(self.exponent) * r / 2.
         # exponent_term = tf.abs(self.exponent) * r / 2.

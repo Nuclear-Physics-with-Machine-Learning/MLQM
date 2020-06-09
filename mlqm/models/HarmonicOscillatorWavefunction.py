@@ -14,13 +14,14 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
         tf.keras.layers.Layer
     """
 
-    def __init__(self,  n : int, degree : int, alpha : float):
+    def __init__(self,  n : int, nparticles : int, degree : int, alpha : float):
         """Initializer
         
         Create a harmonic oscillator wave function
         
         Arguments:
             n {int} -- Dimension of the oscillator (1 <= n <= 3)
+            nparticles {int} -- Number of particles
             degree {int} -- Degree of the solution (broadcastable to n)
             alpha {float} -- Alpha parameter (m * omega / hbar)
         
@@ -32,6 +33,9 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
         self.n = n
         if self.n < 1 or self.n > 3: 
             raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillatorWavefunction")
+
+        if nparticles > 1:
+            raise Exception("HarmonicOscillatorWavefunction is only for 1 particle for testing.")
 
         # Use numpy to broadcast to the right dimension:
         degree = numpy.asarray(degree, dtype=numpy.int32)
@@ -83,16 +87,18 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
             # For each dimension:
             self.polynomial_norm[_n] = 1.0 / numpy.sqrt(2**_d * numpy.math.factorial(_d))
 
+        self.polynomial_norm = tf.convert_to_tensor(self.polynomial_norm.astype(numpy.float32)) 
 
 
         self.exp = GaussianBoundaryCondition(n=self.n, exp=numpy.sqrt(self.alpha), trainable=False)
     
-    def forward(self, inputs):
+    def call(self, inputs):
     
-        y = inputs
+        # Slice the inputs to restrict to just one particle:
+        y = inputs[:,0,:]
         
         # Create the output tensor with the right shape, plus the constant term:
-        polynomial_result = tf.zeros(inputs.shape)
+        polynomial_result = tf.zeros(y.shape)
 
         # This is a somewhat basic implementation:
         # Loop over degree:
@@ -104,6 +110,7 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
             # Then they are reduced by multiplying over dimensions
             poly_term = y**d
             
+
             # Multiply every element (which is the dth power) by the appropriate 
             # coefficient in it's dimension
             res_vec = poly_term * self.polynomial[d]
@@ -111,12 +118,14 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
             # Add this to the result:
             polynomial_result += res_vec
 
-        # Multiply the results across dimensions at every point:
-        polynomial_result = tf.reduce_prod(polynomial_result, dim=1)
 
-        boundary_condition = self.exp(y)
+        # Multiply the results across dimensions at every point:
+        polynomial_result = tf.reduce_prod(polynomial_result, axis=1)
+
+        # Again restrict the BC to just one particle:
+        boundary_condition = self.exp(inputs)[:,0]
 
         total_normalization = self.norm * tf.reduce_prod(self.polynomial_norm)
-            
+
         return boundary_condition * polynomial_result * total_normalization
 

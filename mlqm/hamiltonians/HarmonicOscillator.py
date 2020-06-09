@@ -1,5 +1,8 @@
-import torch
+import tensorflow as tf
 import numpy
+
+import logging
+logger = logging.getLogger()
 
 from mlqm import H_BAR
 
@@ -9,7 +12,7 @@ class HarmonicOscillator(object):
     Implementation of the quantum harmonic oscillator hamiltonian
     """
 
-    def __init__(self,  n : int, M : float, omega : float):
+    def __init__(self,  n : int, nparticles : int, M : float, omega : float):
 
         object.__init__(self)
 
@@ -19,14 +22,16 @@ class HarmonicOscillator(object):
             raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillator")
 
         self.M = M
-
         self.omega = omega
+
+        self.nparticles = nparticles
 
         # Several objects get stored for referencing, if needed, after energy computation:
         self.pe = None
         self.ke = None
         self.ke_by_parts = None
 
+    @tf.function
     def potential_energy(self, *, wavefunction=None, inputs=None, w_of_x=None):
         """Return potential energy
         
@@ -39,12 +44,12 @@ class HarmonicOscillator(object):
         
         Arguments:
             wavefunction {Wavefunction model} -- Callable wavefunction object
-            inputs {torch.Tensor} -- Tensor of shape [N, dimension], must have graph enabled
-            delta {torch.Tensor} -- Integral Computation 'dx'
-            w_of_x {torch.Tensor} -- Optional, can use a cached forward pass of the wavefunction
+            inputs {tf.Tensor} -- Tensor of shape [N, dimension], must have graph enabled
+            delta {tf.Tensor} -- Integral Computation 'dx'
+            w_of_x {tf.Tensor} -- Optional, can use a cached forward pass of the wavefunction
         
         Returns:
-            torch.Tensor - potential energy of shape [1]
+            tf.Tensor - potential energy of shape [1]
         """
 
         if self.pe is not None:
@@ -58,12 +63,11 @@ class HarmonicOscillator(object):
             w_of_x = wavefunction(inputs)
 
         # x Squared needs to contract over spatial dimensions:
-        x_squared = torch.sum(inputs**2, dim=-1)
-
+        x_squared = tf.reduce_sum(inputs**2, axis=(2))
         self.pe = (0.5 * self.M * self.omega**2 ) * w_of_x**2 * x_squared 
-
         return self.pe
 
+    @tf.function
     def kinetic_energy_by_parts(self, *, dw_dx=None, ):
         """Return Kinetic energy
         
@@ -75,10 +79,10 @@ class HarmonicOscillator(object):
         Otherwise, exception
         
         Arguments:
-            w_of_x {torch.Tensor} -- Computed derivative of the wavefunction
+            w_of_x {tf.Tensor} -- Computed derivative of the wavefunction
         
         Returns:
-            torch.Tensor - potential energy of shape [1]
+            tf.Tensor - potential energy of shape [1]
         """
 
         if self.ke is not None:
@@ -86,10 +90,11 @@ class HarmonicOscillator(object):
                 return self.ke
 
         # Contract d2_w_dx over spatial dimensions:
-        self.ke_by_parts = (H_BAR**2 / (2 * self.M)) * torch.sum(dw_dx**2, dim=-1)
+        self.ke_by_parts = (H_BAR**2 / (2 * self.M)) * tf.reduce_sum(dw_dx**2, axis=(2))
         return self.ke_by_parts
 
 
+    @tf.function
     def kinetic_energy(self, *, w_of_x, d2w_dx2):
         """Return Kinetic energy
         
@@ -101,15 +106,15 @@ class HarmonicOscillator(object):
         Otherwise, exception
         
         Arguments:
-            w_of_x {torch.Tensor} -- Computed derivative of the wavefunction
+            w_of_x {tf.Tensor} -- Computed derivative of the wavefunction
         
         Returns:
-            torch.Tensor - potential energy of shape [1]
+            tf.Tensor - potential energy of shape [1]
         """
-        self.ke = -(H_BAR**2 / (2 * self.M)) * w_of_x * torch.sum(d2w_dx2, axis=-1)
+        self.ke = -(H_BAR**2 / (2 * self.M)) * w_of_x * tf.reduce_sum(d2w_dx2, axis=(2))
         return self.ke
 
-
+    @tf.function
     def energy(self, wavefunction, inputs):
         """Compute the expectation valye of energy of the supplied wavefunction.
         
@@ -117,39 +122,35 @@ class HarmonicOscillator(object):
         
         Arguments:
             wavefunction {Wavefunction model} -- Callable wavefunction object
-            inputs {torch.Tensor} -- Tensor of shape [N, dimension], must have graph enabled
-            delta {torch.Tensor} -- Integral Computation 'dx'
+            inputs {tf.Tensor} -- Tensor of shape [N, dimension], must have graph enabled
+            delta {tf.Tensor} -- Integral Computation 'dx'
         
         Returns:
-            torch.tensor - Energy of shape [1]
+            tf.tensor - Energy of shape [1]
         """
 
 
         # This function takes the inputs
         # And computes the expectation value of the energy at each input point
         
-        # This is the value of the wave function:
-        w_of_x = wavefunction(inputs)
 
-            
-        grad_accum = torch.ones(len(inputs))
+        # Turning off all tape watching except for the inputs:
+        # Using the outer-most tape to watch the computation of the first derivative:
+        with tf.GradientTape() as tape:
+            # Use the inner tape to watch the computation of the second derivative:
+            with tf.GradientTape() as second_tape:
+                # second_tape.watch(inputs)
+                w_of_x = wavefunction(inputs, training=True)
+            # Get the derivative of w_of_x with respect to inputs
+            dw_dx = second_tape.gradient(w_of_x, inputs)
+        # Get the derivative of dw_dx with respect to inputs (aka second derivative)
+        d2w_dx2 = tape.gradient(dw_dx, inputs)
 
-        dw_dx = torch.autograd.grad(
-            outputs=w_of_x, 
-            inputs=inputs, 
-            grad_outputs = grad_accum,
-            retain_graph=True, 
-            create_graph=True)[0]
+        print(f"inputs shape  : {inputs.shape}")
+        print(f"w_of_x shape  : {w_of_x.shape}")
+        print(f"dw_dx shape   : {dw_dx.shape}")
+        print(f"d2w_dx2 shape : {d2w_dx2.shape}")
 
-        grad_accum = torch.ones(inputs.shape)
-
-        # Compute the second derivative:
-        d2w_dx2 = torch.autograd.grad(
-            outputs=dw_dx, 
-            inputs=inputs, 
-            grad_outputs = grad_accum,
-            retain_graph=True, 
-            create_graph=True)[0]
 
         # Potential energy depends only on the wavefunction
         pe = self.potential_energy(wavefunction=wavefunction, inputs=inputs, w_of_x=w_of_x) 
@@ -163,6 +164,7 @@ class HarmonicOscillator(object):
         # Total energy computations:
         energy = pe + ke_direct
         energy_by_parts = pe + ke_by_parts
+
 
         return energy, energy_by_parts
 

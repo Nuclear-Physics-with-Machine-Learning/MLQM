@@ -40,9 +40,7 @@ class GaussianBoundaryCondition(tf.keras.layers.Layer):
 
 
     def call(self, inputs):
-        print(inputs.shape)
-        exponent_term = tf.reduce_sum((self.exponent * inputs)**2, dim=1)
-        print(exponent_term.shape)
+        exponent_term = tf.reduce_sum((self.exponent * inputs)**2, axis=2)
         result = tf.exp(- (exponent_term) / 2.)
         return result
         
