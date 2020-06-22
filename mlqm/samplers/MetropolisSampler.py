@@ -50,6 +50,31 @@ class MetropolisSampler(object):
     def kick(self, 
         wavefunction : tf.keras.models.Model, 
         kicker : callable, 
+        kicker_params : iter ):
+        '''Wrapper for a compiled kick function via tensorflow.
+        
+        This fills in the compiled function with the size and the walkers.
+        
+        Arguments:
+            wavefunction {tf.keras.models.Model} -- The wavefunction used for the metropolis walk
+            kicker {callable} -- A callable function for generating kicks
+            kicker_params {iter} -- Arguments to the kicker function.
+        '''
+
+        walkers, acceptance = self.internal_kicker(self.size, self.walkers, wavefunction, kicker, kicker_params)
+
+        # Update the walkers:
+        self.walkers = walkers
+
+        # Send back the acceptance:
+        return acceptance
+
+    @tf.function
+    def internal_kicker(self, 
+        shape,
+        walkers, 
+        wavefunction : tf.keras.models.Model, 
+        kicker : callable, 
         kicker_params : iter):
         """Sample points in N-d Space
         
@@ -65,13 +90,13 @@ class MetropolisSampler(object):
         # Once for the original coordiate, and again for the kicked coordinates
 
         # Create a kick:
-        kick = kicker(shape=self.size, **kicker_params)
+        kick = kicker(shape=shape, **kicker_params)
 
 
         # Compute the values of the wave function, which should be of shape
         # [nwalkers, 1]
-        original = wavefunction(self.walkers)
-        kicked   = wavefunction(self.walkers + kick)
+        original = wavefunction(walkers)
+        kicked   = wavefunction(walkers + kick)
 
         # Probability is the ratio of kicked **2 to original
         probability = tf.abs(kicked)**2 / tf.abs(original)**2
@@ -82,11 +107,11 @@ class MetropolisSampler(object):
         accept      = probability >  tf.random.uniform(shape=[self.nwalkers,1]) 
 
 
-        self.walkers = tf.where(accept, self.walkers + kick, self.walkers)
+        walkers = tf.where(accept, self.walkers + kick, self.walkers)
         
         self.acceptance = tf.reduce_mean(tf.cast(accept, tf.float32))
 
-        return self.acceptance
+        return walkers, self.acceptance
 
 
 

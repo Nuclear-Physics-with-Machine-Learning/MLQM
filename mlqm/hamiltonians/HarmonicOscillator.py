@@ -146,11 +146,6 @@ class HarmonicOscillator(object):
         # Get the derivative of dw_dx with respect to inputs (aka second derivative)
         d2w_dx2 = tape.gradient(dw_dx, inputs)
 
-        print(f"inputs shape  : {inputs.shape}")
-        print(f"w_of_x shape  : {w_of_x.shape}")
-        print(f"dw_dx shape   : {dw_dx.shape}")
-        print(f"d2w_dx2 shape : {d2w_dx2.shape}")
-
 
         # Potential energy depends only on the wavefunction
         pe = self.potential_energy(wavefunction=wavefunction, inputs=inputs, w_of_x=w_of_x) 
