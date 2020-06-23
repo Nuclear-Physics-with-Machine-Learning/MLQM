@@ -4,21 +4,21 @@ import numpy
 
 class MetropolisSampler(object):
     """Metropolis Sampler in N dimension
-    
+
     Sample from N-D coordinates, using some initial probability distribution
 
     Relies on functional calls to sample on the fly with flexible distributions
     """
-    def __init__(self, 
-        n           : int, 
-        nwalkers    : int, 
-        nparticles  : int, 
-        initializer : callable, 
+    def __init__(self,
+        n           : int,
+        nwalkers    : int,
+        nparticles  : int,
+        initializer : callable,
         init_params : iter ):
         '''Initialize a metropolis sampler
-        
+
         Create a metropolis walker with `n` walkers.  Can use normal, uniform
-        
+
         Arguments:
             n {int} -- Dimension
             nwalkers {int} -- Number of unique walkers
@@ -42,19 +42,19 @@ class MetropolisSampler(object):
 
     def sample(self):
         '''Just return the current locations
-        
+
         '''
         # Make sure to wrap in tf.Variable for back prop calculations
         return tf.Variable(lambda : self.walkers, trainable = True)
 
-    def kick(self, 
-        wavefunction : tf.keras.models.Model, 
-        kicker : callable, 
+    def kick(self,
+        wavefunction : tf.keras.models.Model,
+        kicker : callable,
         kicker_params : iter ):
         '''Wrapper for a compiled kick function via tensorflow.
-        
+
         This fills in the compiled function with the size and the walkers.
-        
+
         Arguments:
             wavefunction {tf.keras.models.Model} -- The wavefunction used for the metropolis walk
             kicker {callable} -- A callable function for generating kicks
@@ -70,17 +70,17 @@ class MetropolisSampler(object):
         return acceptance
 
     @tf.function
-    def internal_kicker(self, 
+    def internal_kicker(self,
         shape,
-        walkers, 
-        wavefunction : tf.keras.models.Model, 
-        kicker : callable, 
+        walkers,
+        wavefunction : tf.keras.models.Model,
+        kicker : callable,
         kicker_params : iter):
         """Sample points in N-d Space
-        
+
         By default, samples points uniformly across all dimensions.
         Returns a torch tensor on the chosen device with gradients enabled.
-        
+
         Keyword Arguments:
             kicker {callable} -- Function to call to create a kick for each walker
             kicker_params {iter} -- Parameters to pass to the kicker, unrolled automatically
@@ -92,7 +92,6 @@ class MetropolisSampler(object):
         # Create a kick:
         kick = kicker(shape=shape, **kicker_params)
 
-
         # Compute the values of the wave function, which should be of shape
         # [nwalkers, 1]
         original = wavefunction(walkers)
@@ -100,20 +99,17 @@ class MetropolisSampler(object):
 
         # Probability is the ratio of kicked **2 to original
         probability = tf.abs(kicked)**2 / tf.abs(original)**2
-
         # Acceptance is whether the probability for that walker is greater than
         # a random number between [0, 1).
         # Pull the random numbers and create a boolean array
-        accept      = probability >  tf.random.uniform(shape=[self.nwalkers,1]) 
+        accept      = probability >  tf.random.uniform(shape=[shape[0],1])
 
-
+        # We need to broadcast accept to match the right shape
+        # Needs to come out to the shape [nwalkers, nparticles, ndim]
+        accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:])])
+        accept = tf.reshape(accept, shape)
         walkers = tf.where(accept, self.walkers + kick, self.walkers)
-        
+
         self.acceptance = tf.reduce_mean(tf.cast(accept, tf.float32))
 
         return walkers, self.acceptance
-
-
-
-
-

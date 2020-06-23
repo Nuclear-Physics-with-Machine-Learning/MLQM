@@ -5,7 +5,8 @@ import time
 
 import argparse
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 import tensorflow as tf
 
 
@@ -32,6 +33,7 @@ mlqm_dir = os.path.dirname(os.path.abspath(__file__))
 mlqm_dir = os.path.dirname(mlqm_dir)
 sys.path.insert(0,mlqm_dir)
 from mlqm.samplers     import Estimator
+from mlqm.optimization import Optimizer
 
 
 class exec(object):
@@ -61,7 +63,6 @@ class exec(object):
         self.build_sampler()
         self.build_hamiltonian()
 
-
     def build_sampler(self):
 
         # First, check the sampler has all required config items:
@@ -72,7 +73,7 @@ class exec(object):
         for key in required_keys:
             if key not in sampler:
                 raise Exception(f"Configuration for Sampler missing key {key}")
-        
+
         self.nwalkers   = int(sampler['nwalkers'])
 
 
@@ -82,7 +83,7 @@ class exec(object):
             n           = self.dimension,
             nparticles  = self.nparticles,
             nwalkers    = self.nwalkers,
-            initializer = tf.random.normal, 
+            initializer = tf.random.normal,
             init_params = {"mean": 0.0, "stddev" : 0.2})
 
         return
@@ -98,6 +99,7 @@ class exec(object):
             omega       = float(self.config["Hamiltonian"]["omega"]),
         )
 
+    @profile
     def run(self):
         print("running")
         x = self.sampler.sample()
@@ -108,48 +110,50 @@ class exec(object):
         from mlqm.models import DeepSetsWavefunction
         self.wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles)
 
-
         from mlqm.optimization import Optimizer
         from mlqm.samplers     import Estimator
 
         optimization = self.config['Optimization']
-        sr_parameters = ["neq","nav","nprop","nvoid","nblock"]
+
+        sr_parameters = ["neq","nav","nprop","nvoid","nblock", "delta", "eps"]
         for key in sr_parameters:
             if key not in optimization:
                 raise Exception(f"Configuration for Optimization missing key {key}")
-        
+
+
         # Run the wave function once to initialize all it's weights
         _ = self.wavefunction(x)
 
-        # 
+        # Create an optimizer
+        self.optimizer = Optimizer(
+            delta   = float(optimization['delta']),
+            eps     = float(optimization['eps']),
+            npt     = self.wavefunction.n_parameters())
+
         energy, energy_by_parts = self.hamiltonian.energy(self.wavefunction, x)
-        print(energy)
 
-        self.sr_step(
-            int(optimization['neq']), 
-            int(optimization['nav']), 
-            int(optimization['nprop']), 
-            int(optimization['nvoid']))
+        for i in range(int(optimization['iterations'])):
+            start = time.time()
 
-        # optimizer = tf.keras.optimizers.Adam()
+            energy, error, energy_jf, error_jf, acceptance, delta_p = self.sr_step(
+                int(optimization['neq']),
+                int(optimization['nav']),
+                int(optimization['nprop']),
+                int(optimization['nvoid']))
 
-        # for i in range(int(self.config['Optimization']['iterations'])):
+            # Update the parameters:
+            for i_param in range(len(self.wavefunction.trainable_variables)):
+                self.wavefunction.trainable_variables[i_param].assign_add(delta_p[i_param])
 
-        #     tape = tf.GradientTape(watch_accessed_variables = False)
-        #     with tape:
-        #         tape.watch(ho_w.trainable_variables)
-        #         energy, energy_by_parts = self.hamiltonian.energy(ho_w, x)
-
-        #         energy = tf.reduce_sum(energy * self.sampler.voxel_size())
-        #         print("Energy: ", energy)
-
-        #     # Unroll the tape and go backwards:
-        #     gradients = tape.gradient(energy, ho_w.trainable_variables)
-
-        #     optimizer.apply_gradients(zip(gradients,ho_w.trainable_variables))
+            if i % 1 == 0:
+                logger.info(f"step = {i}, energy = {energy.numpy():.3f}, err = {error.numpy():.3f}")
+                logger.info(f"step = {i}, energy_jf = {energy_jf.numpy():.3f}, err = {error_jf.numpy():.3f}")
+                logger.info(f"acc  = {acceptance.numpy():.3f}")
+                logger.info(f"time = {time.time() - start:.3f}")
 
 
     # @tf.function
+    @profile
     def sr_step(self, neq, nav, nprop, nvoid):
         nblock = neq + nav
         nstep = nprop * nvoid
@@ -166,7 +170,13 @@ class exec(object):
         kicker_params = {"mean": 0.0, "stddev" : 0.2}
 
 
-        start = time.time()
+        # This function operates with the following loops:
+        #  - There are nblock "blocks" == neq + nav
+        #    - the first 'neq' are not used for gradient calculations
+        #    - the next 'nav' are used for accumulating wavefunction measurements
+        #  - In each block, there are nsteps = nprop * nvoid
+        #    - The walkers are kicked at every step.
+        #    - if the step is a multiple of nvoid, AND the block is bigger than neq, the calculations are done.
 
         for i_block in range (nblock):
             block_estimator.reset()
@@ -175,7 +185,7 @@ class exec(object):
             for j_step in range (nstep):
 
                 # Here, we update the position of each particle for SR:
-                acceptance = self.sampler.kick(shape, walkers, self.wavefunction, kicker, kicker_params)
+                acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params)
                 x_current = self.sampler.sample()
 
 
@@ -184,10 +194,8 @@ class exec(object):
                     energy, energy_jf = self.hamiltonian.energy(self.wavefunction, x_current)
                     energy = energy / self.nwalkers
                     energy_jf = energy_jf / self.nwalkers
-                    # energy.detach_()
-                    # energy_jf.detach_()
 
-                    # Compute < O^i_step >, < H O^i_step >,  and < O^i_step O^j_step > 
+                    # Compute < O^i_step >, < H O^i_step >,  and < O^i_step O^j_step >
                     tape = tf.GradientTape()
                     with tape:
                         log_wpsi = self.wavefunction(x_current)
@@ -196,33 +204,43 @@ class exec(object):
                     # flat_params = self.wavefunction.flattened_params()
 
                     jac = tape.jacobian(log_wpsi, self.wavefunction.trainable_variables)
-                    # jac = torch.zeros(size=[self.nwalkers,wavefunction.npt])
-                    # for n in range(self.nwalkers):
-                    #     log_wpsi_n = log_wpsi[n]
-                    #     wavefunction.zero_grad()
-                    #     params = wavefunction.parameters()
-                    #     dpsi_dp = torch.autograd.grad(log_wpsi_n, params, retain_graph=True)
-                    #     dpsi_i_n, indeces_flat = wavefunction.flatten_params(dpsi_dp)
-                    #     jac[n,:] = torch.t(dpsi_i_n)
 
                     end = time.time()
 
-                    print(f"Time to here: {end - start}")
 
-                    print(self.wavefunction.trainable_variables[0].shape)
-                    print(jac[0].shape)
-                    print(jac.shape)
+                    # Grab the original shapes ([1:] means everything except first dim):
+                    jac_shape = [j.shape[1:] for j in jac]
+                    # get the flattened shapes:
+                    flat_shape = [[-1, tf.reduce_prod(js)] for js in jac_shape]
+                    # Reshape the
+
+                    # We have the flat shapes and now we need to make the jacobian into a single matrix
+
+                    flattened_jacobian = [tf.reshape(j, f) for j, f in zip(jac, flat_shape)]
+
+                    flattened_jacobian = tf.concat(flattened_jacobian, axis=-1)
 
     #                log_wpsi_n.detach_()
-                    dpsi_i = torch.sum(jac, dim=0) / nwalk
-                    dpsi_i = dpsi_i.view(-1,1)
-                    dpsi_i_EL = torch.matmul(energy, jac).view(-1,1)
-                    dpsi_ij = torch.mm(torch.t(jac), jac) / nwalk
+                    dpsi_i = tf.reduce_mean(flattened_jacobian, axis=0)
+                    dpsi_i = tf.reshape(dpsi_i, [-1,1])
+################################################################################
+# This may be an issue
+                    # NOTE: I am not 100% sure this is right!
+                    dpsi_i_EL = tf.linalg.matmul(tf.reshape(energy, [1,-1]), flattened_jacobian)
+################################################################################
+                    dpsi_i_EL = tf.reshape(dpsi_i_EL, [-1,1])
+                    # Note: the transpose here was dropped since it's an option in the matmul package
+                    dpsi_ij = tf.linalg.matmul(flattened_jacobian, flattened_jacobian, transpose_a = True) / self.sampler.nwalkers
 
-    #                print("dpsi_i", dpsi_i)
-    #                print("dpsi_ij", dpsi_ij)
-    #                exit()
-                    block_estimator.accumulate(torch.sum(energy),torch.sum(energy_jf),acceptance,1.,dpsi_i,dpsi_i_EL,dpsi_ij,1.)
+                    block_estimator.accumulate(
+                        tf.reduce_sum(energy),
+                        tf.reduce_sum(energy_jf),
+                        acceptance,
+                        1.,
+                        dpsi_i,
+                        dpsi_i_EL,
+                        dpsi_ij,
+                        1.)
     # Accumulate block averages
             if ( i_block >= neq ):
                 total_estimator.accumulate(block_estimator.energy,block_estimator.energy_jf,block_estimator.acceptance,0,block_estimator.dpsi_i,
@@ -236,18 +254,29 @@ class exec(object):
         dpsi_i_EL = total_estimator.dpsi_i_EL
         dpsi_ij = total_estimator.dpsi_ij
 
-        logger.info(f"psi norm{torch.mean(log_wpsi)}")
+        logger.info(f"psi norm{tf.reduce_mean(log_wpsi)}")
 
-        with torch.no_grad(): 
-            dp_i = opt.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
-            gradient = wavefunction.recover_flattened(dp_i, indeces_flat, wavefunction)
-            delta_p = [ g for g in gradient]
+        dp_i = self.optimizer.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
+
+        # Here, we recover the shape of the parameters of the network:
+        running_index = 0
+        gradient = []
+        for length in flat_shape:
+            l = length[-1].numpy()
+            end_index = running_index + l
+            gradient.append(dp_i[running_index:end_index])
+            running_index += l
+        shapes = [ p.shape for p in self.wavefunction.trainable_variables ]
+        gradient = [ tf.reshape(g, s) for g, s in zip(gradient, shapes)]
+
+        delta_p = [ g for g in gradient]
+
 
         return energy, error, energy_jf, error_jf, acceptance, delta_p
+
+
 
 
 if __name__ == "__main__":
     e = exec()
     e.run()
-
-
