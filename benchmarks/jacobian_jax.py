@@ -72,9 +72,15 @@ def main(n_filters_list, n_jacobian_calculations):
 
     start = time.time()
 
+    cross_check_parameters['jacobian_times'] = []
     for i in range(n_jacobian_calculations):
+        this_start = time.time()
 
         jacobian = compute_jacobian(input_vector, layer_weights)
+        this_end = time.time()
+        cross_check_parameters['jacobian_times'].append((this_end - this_start))
+ 
+    end = time.time()
 
  
     end = time.time()
@@ -87,7 +93,7 @@ def main(n_filters_list, n_jacobian_calculations):
     return cross_check_parameters
 
 if __name__ == '__main__':
-    ccp = main([32, 32, 16], 5)
+    ccp = main([128, 128, 128], 5)
     print(ccp)
 
 

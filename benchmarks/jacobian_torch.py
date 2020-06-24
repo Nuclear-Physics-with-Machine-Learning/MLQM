@@ -25,6 +25,23 @@ class model(torch.nn.Module):
     def count_parameters(self):
         return numpy.sum([ numpy.prod(p.shape) for p in self.parameters() ] )
 
+def compute_jacobian(ninput, nparameters, M, input_vector ):
+    
+    output = M(input_vector)
+    
+    jacobian = torch.zeros(size=[ninput, nparameters])
+    
+    param_shapes = [p.shape for p in M.parameters() ]
+
+    for n in range(ninput):
+        output_n = output[n]
+        M.zero_grad()
+        params = M.parameters()
+        do_dn = torch.autograd.grad(output_n, params, retain_graph=True)
+        do_dn = torch.cat([g.flatten() for g in do_dn])
+        jacobian[n,:] = torch.t(do_dn)
+
+    return jacobian
 
 def main(n_filters_list, n_jacobian_calculations):
 
@@ -74,21 +91,17 @@ def main(n_filters_list, n_jacobian_calculations):
     cross_check_parameters['output_std'] = numpy.std(output.detach().numpy())
 
     start = time.time()
+    start = time.time()
+    cross_check_parameters['jacobian_times'] = []
     for i in range(n_jacobian_calculations):
-        # Forward pass:
-        output = M(input_vector)
-    
-        jacobian = torch.zeros(size=[ninput, nparameters])
-        
-        param_shapes = [p.shape for p in M.parameters() ]
+        this_start = time.time()
+        jacobian = compute_jacobian(ninput, nparameters, M, input_vector)
+        this_end = time.time()
+        cross_check_parameters['jacobian_times'].append((this_end - this_start))
 
-        for n in range(ninput):
-            output_n = output[n]
-            M.zero_grad()
-            params = M.parameters()
-            do_dn = torch.autograd.grad(output_n, params, retain_graph=True)
-            do_dn = torch.cat([g.flatten() for g in do_dn])
-            jacobian[n,:] = torch.t(do_dn)
+
+    end = time.time()
+
 
     end = time.time()
     cross_check_parameters['jacobian_sum']  = numpy.sum(jacobian.numpy())
@@ -100,7 +113,7 @@ def main(n_filters_list, n_jacobian_calculations):
     return cross_check_parameters
 
 if __name__ == '__main__':
-    ccp = main([32, 32, 16], 5)
+    ccp = main([128, 128, 128], 5)
     print(ccp)
 
 
