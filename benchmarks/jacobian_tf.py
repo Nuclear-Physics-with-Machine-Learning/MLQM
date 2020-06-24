@@ -19,7 +19,7 @@ class model(tf.keras.models.Model):
                     kernel_initializer=init, use_bias=False))
     
 
-
+    @tf.function
     def call(self, x):
 
         for i in range(len(self._layers)):

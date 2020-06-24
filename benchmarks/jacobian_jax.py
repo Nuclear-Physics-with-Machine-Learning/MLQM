@@ -5,7 +5,7 @@ import numpy
 import tensorflow as tf
 
 import jax.numpy as np
-from jax import grad, jit, vmap, jacfwd
+from jax import jit, jacfwd, jacrev
 
 import time
 
@@ -22,7 +22,7 @@ def model(x, layers):
 @jit
 def compute_jacobian(input_vector, layer_weights):
         l1 = lambda weights : model(input_vector, weights)
-        jacobian = jacfwd(l1)(layer_weights)
+        jacobian = jacrev(l1)(layer_weights)
      
         jacobian = flatten_jacobian(jacobian)
 
