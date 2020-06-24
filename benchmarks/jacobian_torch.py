@@ -101,7 +101,6 @@ def main(n_filters_list, n_jacobian_calculations):
         cross_check_parameters['output_std'] = numpy.std(output.detach().numpy())
 
     start = time.time()
-    start = time.time()
     cross_check_parameters['jacobian_times'] = []
     for i in range(n_jacobian_calculations):
         this_start = time.time()
