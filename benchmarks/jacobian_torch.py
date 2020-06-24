@@ -13,7 +13,7 @@ class model(torch.nn.Module):
         self._layers = []
         for i in range(len(layer_weights)):
             self._layers.append(
-                torch.nn.Linear(layer_weights[i].shape[-1], layer_weights[i].shape[0], 
+                torch.nn.Linear(layer_weights[i].shape[-1], layer_weights[i].shape[0],
                     bias=False))
             torch.nn.Module.add_module(self, f"layer{i}", self._layers[-1])
     def forward(self, x):
@@ -26,11 +26,11 @@ class model(torch.nn.Module):
         return numpy.sum([ numpy.prod(p.shape) for p in self.parameters() ] )
 
 def compute_jacobian(ninput, nparameters, M, input_vector ):
-    
+
     output = M(input_vector)
-    
+
     jacobian = torch.zeros(size=[ninput, nparameters])
-    
+
     param_shapes = [p.shape for p in M.parameters() ]
 
     for n in range(ninput):
@@ -79,7 +79,7 @@ def main(n_filters_list, n_jacobian_calculations):
     # Switch out the layer weights for the controlled ones:
     new_dict = M.state_dict()
     for i, key in enumerate(new_dict.keys()):
-        new_dict[key] = torch.tensor(layer_weights[i]) 
+        new_dict[key] = torch.tensor(layer_weights[i])
     M.load_state_dict(new_dict)
 
     if torch.cuda.is_available():
@@ -113,6 +113,7 @@ def main(n_filters_list, n_jacobian_calculations):
 
 
     end = time.time()
+    cross_check_parameters['n_filters_list'] = n_filters_list
     cross_check_parameters['jacobian_sum']  = numpy.sum(jacobian.numpy())
     cross_check_parameters['jacobian_std']  = numpy.std(jacobian.numpy())
     cross_check_parameters['jacobian_prod'] = numpy.prod(jacobian.numpy())
@@ -122,5 +123,13 @@ def main(n_filters_list, n_jacobian_calculations):
     return cross_check_parameters
 
 if __name__ == '__main__':
-    ccp = main([128, 128, 128], 5)
-    print(ccp)
+    network_list = [
+        [32, 32, 16],
+        [128, 128],
+        [512, 512, 512],
+        [16, 16, 16, 16, 16, 16],
+        [2048],
+    ]
+    for network in network_list:
+        ccp = main(network, 5)
+        print(ccp)

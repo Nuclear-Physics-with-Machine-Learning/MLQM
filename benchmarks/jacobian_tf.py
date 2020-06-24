@@ -15,9 +15,9 @@ class model(tf.keras.models.Model):
         for i in range(len(layer_weights)):
             init = tf.constant_initializer(layer_weights[i])
             self._layers.append(
-                tf.keras.layers.Dense(layer_weights[i].shape[-1], 
+                tf.keras.layers.Dense(layer_weights[i].shape[-1],
                     kernel_initializer=init, use_bias=False))
-    
+
 
     @tf.function
     def call(self, x):
@@ -77,25 +77,30 @@ def main(n_filters_list, n_jacobian_calculations):
     cross_check_parameters['output_std'] = numpy.std(output.numpy())
 
     start = time.time()
-    cross_check_parameters['jacobian_times'] = []
     for i in range(n_jacobian_calculations):
-        this_start = time.time()
         jacobian = compute_jacobians(input_vector, M)
-        this_end = time.time()
-        cross_check_parameters['jacobian_times'].append((this_end - this_start))
 
 
     end = time.time()
 
     # Store some jacobian information:
+    cross_check_parameters['n_filters_list'] = n_filters_list
     cross_check_parameters['jacobian_sum']  = numpy.sum(jacobian.numpy())
     cross_check_parameters['jacobian_std']  = numpy.std(jacobian.numpy())
     cross_check_parameters['jacobian_prod'] = numpy.prod(jacobian.numpy())
+    cross_check_parameters['jacobian_time'] = (end - start) / n_jacobian_calculations
     cross_check_parameters['jacobian_n_calls'] = n_jacobian_calculations
-    cross_check_parameters['jacobian_time'] = (end - start)
 
     return cross_check_parameters
 
 if __name__ == '__main__':
-    ccp = main([128, 128, 128], 5)
-    print(ccp)
+    network_list = [
+        [32, 32, 16],
+        [128, 128],
+        [512, 512, 512],
+        [16, 16, 16, 16, 16, 16],
+        [2048],
+    ]
+    for network in network_list:
+        ccp = main(network, 5)
+        print(ccp)
