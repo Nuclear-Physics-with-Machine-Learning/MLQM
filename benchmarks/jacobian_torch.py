@@ -49,7 +49,7 @@ def main(n_filters_list, n_jacobian_calculations):
     ninput = n_filters_list[0]
 
     cross_check_parameters = {}
-    
+
     # Create an input vector:
     input_vector = numpy.random.random([ninput,1])
 
@@ -70,6 +70,9 @@ def main(n_filters_list, n_jacobian_calculations):
     # Cast the input to torch:
     input_vector = torch.tensor(input_vector).float()
 
+    if torch.cuda.is_available():
+        input_vector = input_vector.cuda()
+
     # Create the model:
     M = model(layer_weights)
 
@@ -79,16 +82,23 @@ def main(n_filters_list, n_jacobian_calculations):
         new_dict[key] = torch.tensor(layer_weights[i]) 
     M.load_state_dict(new_dict)
 
+    if torch.cuda.is_available():
+        M.cuda()
+
     # Forward pass:
     output = M(input_vector)
-    
+
     # Capture the number of parameters:
     cross_check_parameters['n_params'] = M.count_parameters()
     nparameters = M.count_parameters()
 
     # Capture the network output:
-    cross_check_parameters['output_sum'] = numpy.sum(output.detach().numpy())
-    cross_check_parameters['output_std'] = numpy.std(output.detach().numpy())
+    if torch.cuda.is_available():
+        cross_check_parameters['output_sum'] = numpy.sum(output.cpu().detach().numpy())
+        cross_check_parameters['output_std'] = numpy.std(output.cpu().detach().numpy())
+    else:
+        cross_check_parameters['output_sum'] = numpy.sum(output.detach().numpy())
+        cross_check_parameters['output_std'] = numpy.std(output.detach().numpy())
 
     start = time.time()
     start = time.time()
@@ -115,5 +125,3 @@ def main(n_filters_list, n_jacobian_calculations):
 if __name__ == '__main__':
     ccp = main([128, 128, 128], 5)
     print(ccp)
-
-
