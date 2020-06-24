@@ -8,27 +8,44 @@ numpy.random.seed(0)
 
 class model(tf.keras.models.Model):
 
-    def __init__(self, n_hidden_params, layer_1_weights, layer_2_weights):
+    def __init__(self, layer_weights):
         tf.keras.models.Model.__init__(self)
 
-
-        init1 = tf.constant_initializer(layer_1_weights)
-        self.layer1 = tf.keras.layers.Dense(n_hidden_params, kernel_initializer=init1, use_bias=False)
-        init2 = tf.constant_initializer(layer_2_weights)
-        self.layer2 = tf.keras.layers.Dense(1, kernel_initializer=init2, use_bias=False)
+        self._layers = []
+        for i in range(len(layer_weights)):
+            init = tf.constant_initializer(layer_weights[i])
+            self._layers.append(
+                tf.keras.layers.Dense(layer_weights[i].shape[-1], 
+                    kernel_initializer=init, use_bias=False))
     
 
 
     def call(self, x):
 
-        x = self.layer1(x)
-        return self.layer2(x)
+        for i in range(len(self._layers)):
+            x = self._layers[i](x)
+        return x
 
     def count_parameters(self):
         return numpy.sum([ numpy.prod(p.shape) for p in self.trainable_variables ] )
 
+@tf.function
+def compute_jacobians(input_vector, M):
+    with tf.GradientTape() as tape:
+        output = M(input_vector)
 
-def main(ninput, n_hidden_params, n_jacobian_calculations):
+    jacobian = tape.jacobian(output, M.trainable_variables, parallel_iterations=None)
+
+    param_shapes = [ j.shape[1:] for j in jacobian ]
+    flat_shape = [[-1, tf.reduce_prod(js)] for js in param_shapes]
+
+    flattened_jacobian = [tf.reshape(j, f) for j, f in zip(jacobian, flat_shape)]
+    jacobian = tf.concat(flattened_jacobian, axis=-1)
+    return jacobian
+
+def main(n_filters_list, n_jacobian_calculations):
+
+    ninput = n_filters_list[0]
 
     cross_check_parameters = {}
 
@@ -37,15 +54,17 @@ def main(ninput, n_hidden_params, n_jacobian_calculations):
     cross_check_parameters['input_sum'] = numpy.sum(input_vector)
     cross_check_parameters['input_std'] = numpy.std(input_vector)
 
+    # Make sure to start with 1 input and finish with 1 output
+    n_filters_list.insert(0,1)
+    n_filters_list.append(1)
 
     # Use these as the layer weights:
-    layer_1_weights = numpy.random.random([1,n_hidden_params])
-    layer_2_weights = numpy.random.random([n_hidden_params,1])
+    layer_weights = [ numpy.random.random([n_filters_list[i],n_filters_list[i+1]]) for i in range(len(n_filters_list)-1)]
 
 
     # Create the model, and input Tensor:
     input_vector = tf.convert_to_tensor(input_vector, dtype=tf.float32)
-    M = model(n_hidden_params, layer_1_weights, layer_2_weights)
+    M = model(layer_weights)
 
     # Forward pass of the model
     output = M(input_vector)
@@ -59,16 +78,8 @@ def main(ninput, n_hidden_params, n_jacobian_calculations):
 
     start = time.time()
     for i in range(n_jacobian_calculations):
-        with tf.GradientTape() as tape:
-            output = M(input_vector)
+        jacobian = compute_jacobians(input_vector, M)
 
-        jacobian = tape.jacobian(output, M.trainable_variables, parallel_iterations=None)
-
-        param_shapes = [ j.shape[1:] for j in jacobian ]
-        flat_shape = [[-1, tf.reduce_prod(js)] for js in param_shapes]
-
-        flattened_jacobian = [tf.reshape(j, f) for j, f in zip(jacobian, flat_shape)]
-        jacobian = tf.concat(flattened_jacobian, axis=-1)
 
     end = time.time()
 
@@ -82,5 +93,5 @@ def main(ninput, n_hidden_params, n_jacobian_calculations):
     return cross_check_parameters
 
 if __name__ == '__main__':
-    ccp = main(512, 128, 5)
+    ccp = main([32, 32, 16], 5)
     print(ccp)

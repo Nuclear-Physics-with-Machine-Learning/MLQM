@@ -7,51 +7,59 @@ numpy.random.seed(0)
 
 class model(torch.nn.Module):
 
-    def __init__(self,n_hidden_params):
+    def __init__(self,layer_weights):
         torch.nn.Module.__init__(self)
 
-        self.layer1 = torch.nn.Linear(1, n_hidden_params, bias=False)
-        self.layer2 = torch.nn.Linear(n_hidden_params, 1, bias=False)
-
+        self._layers = []
+        for i in range(len(layer_weights)):
+            self._layers.append(
+                torch.nn.Linear(layer_weights[i].shape[-1], layer_weights[i].shape[0], 
+                    bias=False))
+            torch.nn.Module.add_module(self, f"layer{i}", self._layers[-1])
     def forward(self, x):
 
-        x = self.layer1(x)
-        return self.layer2(x)
-
+        for i in range(len(self._layers)):
+            x = self._layers[i](x)
+        return x
 
     def count_parameters(self):
         return numpy.sum([ numpy.prod(p.shape) for p in self.parameters() ] )
 
 
-def main(ninput, n_hidden_params, n_jacobian_calculations):
+def main(n_filters_list, n_jacobian_calculations):
 
 
+    ninput = n_filters_list[0]
 
     cross_check_parameters = {}
     
     # Create an input vector:
     input_vector = numpy.random.random([ninput,1])
 
-
     cross_check_parameters['input_sum'] = numpy.sum(input_vector)
     cross_check_parameters['input_std'] = numpy.std(input_vector)
 
-    # This transpose is to match the tensorflow output!!
-    layer_1_weights = numpy.random.random([1,n_hidden_params]).T
-    # This reshape is because it is a different layout from tensorflow!
-    layer_2_weights = numpy.random.random([n_hidden_params,1]).reshape([1,n_hidden_params])
+    n_filters_list.insert(0,1)
+    n_filters_list.append(1)
 
+    # This transpose is to match the tensorflow output!!
+    # layer_1_weights = numpy.random.random([1,n_hidden_params]).T
+    # # This reshape is because it is a different layout from tensorflow!
+    # layer_2_weights = numpy.random.random([n_hidden_params,1]).reshape([1,n_hidden_params])
+
+    layer_weights = [ numpy.random.random([n_filters_list[i],n_filters_list[i+1]]) for i in range(len(n_filters_list)-1)]
+    layer_weights = [l.T for l in layer_weights]
 
     # Cast the input to torch:
     input_vector = torch.tensor(input_vector).float()
 
     # Create the model:
-    M = model(n_hidden_params)
+    M = model(layer_weights)
 
     # Switch out the layer weights for the controlled ones:
     new_dict = M.state_dict()
-    new_dict['layer1.weight'] = torch.tensor(layer_1_weights)
-    new_dict['layer2.weight'] = torch.tensor(layer_2_weights)
+    for i, key in enumerate(new_dict.keys()):
+        new_dict[key] = torch.tensor(layer_weights[i]) 
     M.load_state_dict(new_dict)
 
     # Forward pass:
@@ -92,7 +100,7 @@ def main(ninput, n_hidden_params, n_jacobian_calculations):
     return cross_check_parameters
 
 if __name__ == '__main__':
-    ccp = main(512, 128, 5)
+    ccp = main([32, 32, 16], 5)
     print(ccp)
 
 
