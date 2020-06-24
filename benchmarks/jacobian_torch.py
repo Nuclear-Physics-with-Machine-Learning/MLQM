@@ -43,10 +43,7 @@ def compute_jacobian(ninput, nparameters, M, input_vector ):
 
     return jacobian
 
-def main(n_filters_list, n_jacobian_calculations):
-
-
-    ninput = n_filters_list[0]
+def main(ninput, n_filters_list, n_jacobian_calculations):
 
     cross_check_parameters = {}
 
@@ -123,6 +120,7 @@ def main(n_filters_list, n_jacobian_calculations):
     return cross_check_parameters
 
 if __name__ == '__main__':
+    ninput = 24
     network_list = [
         [32, 32, 16],
         [128, 128],
@@ -131,5 +129,5 @@ if __name__ == '__main__':
         [2048],
     ]
     for network in network_list:
-        ccp = main(network, 5)
+        ccp = main(ninput, network, 5)
         print(ccp)
