@@ -20,6 +20,7 @@ class Optimizer(object):
         self.delta  = tf.convert_to_tensor(delta, dtype=tf.float64)
         self.npt    = npt
 
+    @tf.function
     def par_dist(self, dp_i, S_ij):
         # dist = 0
         # for i in range (self.npt):
@@ -52,7 +53,7 @@ class Optimizer(object):
             # torch.set_printoptions(precision=8)
             try:
 ################################################################################
-                # Note: TF doesn't support upper cholesky and cholesky_solve... 
+                # Note: TF doesn't support upper cholesky and cholesky_solve...
                 U_ij = tf.linalg.cholesky(S_ij_d)
 ################################################################################
                 positive_definite = True

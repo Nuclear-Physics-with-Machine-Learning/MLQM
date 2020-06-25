@@ -38,14 +38,14 @@ class MetropolisSampler(object):
         self.size = (self.nwalkers, self.nparticles, self.n)
 
         #  Run the initalize to get the first locations:
-        self.walkers = tf.Variable(initializer(shape=self.size, **init_params), trainable=True)
+        self.walkers = initializer(shape=self.size, **init_params)
 
     def sample(self):
         '''Just return the current locations
 
         '''
         # Make sure to wrap in tf.Variable for back prop calculations
-        return tf.Variable(lambda : self.walkers, trainable = True)
+        return  self.walkers
 
     def kick(self,
         wavefunction : tf.keras.models.Model,

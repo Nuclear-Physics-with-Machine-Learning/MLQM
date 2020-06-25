@@ -45,7 +45,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         self.aggregate_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
         self.aggregate_net.add(tf.keras.layers.Dense(1, use_bias = False))
 
-    # @tf.function
+    @tf.function
     def call(self, inputs, trainable=None):
         # Mean subtract for all particles:
         if self.nparticles > 1:

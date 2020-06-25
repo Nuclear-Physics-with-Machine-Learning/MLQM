@@ -32,70 +32,47 @@ class HarmonicOscillator(object):
         self.ke_by_parts = None
 
     @tf.function
-    def potential_energy(self, *, wavefunction=None, inputs=None, w_of_x=None):
+    def potential_energy(self, *, inputs=None):
         """Return potential energy
 
-        If the potential energy is already computed, and no arguments are supplied,
-        return the cached value
-
-        If all arguments are supplied, calculate and return the PE.
-
-        Otherwise, exception
+        Calculate and return the PE.
 
         Arguments:
-            wavefunction {Wavefunction model} -- Callable wavefunction object
             inputs {tf.Tensor} -- Tensor of shape [N, dimension], must have graph enabled
-            delta {tf.Tensor} -- Integral Computation 'dx'
-            w_of_x {tf.Tensor} -- Optional, can use a cached forward pass of the wavefunction
-
         Returns:
             tf.Tensor - potential energy of shape [1]
         """
 
-        if self.pe is not None:
-            if wavefunction is None and inputs is None:
-                return self.pe
-
-        if wavefunction is None or inputs is None:
-            raise Exception("Must provide all or none of wavefunction, inputs, AND delta to potential_energy computation")
-
-        if w_of_x is None:
-            w_of_x = wavefunction(inputs)
-
+        # Potential calculation
+        # < x | H | psi > / < x | psi > = < x | 1/2 w * x**2  | psi > / < x | psi >  = 1/2 w * x**2
         # x Squared needs to contract over spatial dimensions:
         x_squared = tf.reduce_sum(inputs**2, axis=(2))
-        self.pe = (0.5 * self.M * self.omega**2 ) * w_of_x**2 * x_squared
+        self.pe = (0.5 * self.M * self.omega**2 ) * x_squared
         return self.pe
 
     @tf.function
-    def kinetic_energy_by_parts(self, *, dw_dx=None, ):
+    def kinetic_energy_jf(self, *, dlogw_dx, M):
         """Return Kinetic energy
 
-        If the potential energy is already computed, and no arguments are supplied,
-        return the cached value
-
-        If all arguments are supplied, calculate and return the KE.
+        Calculate and return the KE directly
 
         Otherwise, exception
 
         Arguments:
-            w_of_x {tf.Tensor} -- Computed derivative of the wavefunction
+            logw_of_x {tf.Tensor} -- Computed derivative of the wavefunction
 
         Returns:
             tf.Tensor - potential energy of shape [1]
         """
-
-        if self.ke is not None:
-            if dw_dx is None:
-                return self.ke
+        # < x | KE | psi > / < x | psi > =  1 / 2m [ < x | p | psi > / < x | psi >  = 1/2 w * x**2
 
         # Contract d2_w_dx over spatial dimensions:
-        self.ke_by_parts = (H_BAR**2 / (2 * self.M)) * tf.reduce_sum(dw_dx**2, axis=(2))
-        return self.ke_by_parts
+        ke_jf = (H_BAR**2 / (2 * M)) * tf.reduce_sum(dlogw_dx**2, axis=(2))
+        return ke_jf
 
 
     @tf.function
-    def kinetic_energy(self, *, w_of_x, d2w_dx2):
+    def kinetic_energy(self, *, KE_JF, d2logw_dx2, M):
         """Return Kinetic energy
 
         If the potential energy is already computed, and no arguments are supplied,
@@ -106,13 +83,13 @@ class HarmonicOscillator(object):
         Otherwise, exception
 
         Arguments:
-            w_of_x {tf.Tensor} -- Computed derivative of the wavefunction
+            logw_of_x {tf.Tensor} -- Computed derivative of the wavefunction
 
         Returns:
             tf.Tensor - potential energy of shape [1]
         """
-        self.ke = -(H_BAR**2 / (2 * self.M)) * w_of_x * tf.reduce_sum(d2w_dx2, axis=(2))
-        return self.ke
+        ke = -(H_BAR**2 / (2 * M)) * tf.reduce_sum(d2logw_dx2, axis=(2)) - KE_JF
+        return ke
 
     @tf.function
     def energy(self, wavefunction, inputs):
@@ -138,31 +115,27 @@ class HarmonicOscillator(object):
         # Using the outer-most tape to watch the computation of the first derivative:
         with tf.GradientTape() as tape:
             # Use the inner tape to watch the computation of the second derivative:
+            tape.watch(inputs)
             with tf.GradientTape() as second_tape:
-                # second_tape.watch(inputs)
-                w_of_x = wavefunction(inputs, training=True)
-            # Get the derivative of w_of_x with respect to inputs
-            dw_dx = second_tape.gradient(w_of_x, inputs)
-        # Get the derivative of dw_dx with respect to inputs (aka second derivative)
-        d2w_dx2 = tape.gradient(dw_dx, inputs)
+                second_tape.watch(inputs)
+                logw_of_x = wavefunction(inputs, training=True)
+            # Get the derivative of logw_of_x with respect to inputs
+            dlogw_dx = second_tape.gradient(logw_of_x, inputs)
+        # Get the derivative of dlogw_dx with respect to inputs (aka second derivative)
+        d2logw_dx2 = tape.gradient(dlogw_dx, inputs)
 
 
         # Potential energy depends only on the wavefunction
-        pe = self.potential_energy(wavefunction=wavefunction, inputs=inputs, w_of_x=w_of_x)
+        pe = self.potential_energy(inputs=inputs)
 
         # KE by parts needs only one derivative
-        ke_by_parts = self.kinetic_energy_by_parts(dw_dx=dw_dx)
+        ke_jf = self.kinetic_energy_jf(dlogw_dx=dlogw_dx, M=self.M)
 
         # True, directly, uses the second derivative
-        ke_direct = self.kinetic_energy(w_of_x=w_of_x, d2w_dx2 = d2w_dx2)
-
-        # print("pe.shape: ", pe.shape)
-        # print("ke_by_parts.shape: ", ke_by_parts.shape)
-        # print("ke_direct.shape: ", ke_direct.shape)
+        ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M=self.M)
 
         # Total energy computations:
         energy = tf.squeeze(pe + ke_direct)
-        energy_by_parts = tf.squeeze(pe + ke_by_parts)
+        energy_jf = tf.squeeze(pe + ke_jf)
 
-
-        return energy, energy_by_parts
+        return energy, energy_jf

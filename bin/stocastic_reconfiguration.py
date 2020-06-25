@@ -99,7 +99,6 @@ class exec(object):
             omega       = float(self.config["Hamiltonian"]["omega"]),
         )
 
-    @profile
     def run(self):
         print("running")
         x = self.sampler.sample()
@@ -152,8 +151,31 @@ class exec(object):
                 logger.info(f"time = {time.time() - start:.3f}")
 
 
+    @tf.function
+    def jacobian(self, x_current, wavefunction):
+        tape = tf.GradientTape()
+
+        with tape:
+            log_wpsi = wavefunction(x_current)
+
+        jac = tape.jacobian(log_wpsi, wavefunction.trainable_variables)
+
+        # Grab the original shapes ([1:] means everything except first dim):
+        jac_shape = [j.shape[1:] for j in jac]
+        # get the flattened shapes:
+        flat_shape = [[-1, tf.reduce_prod(js)] for js in jac_shape]
+        # Reshape the
+
+        # We have the flat shapes and now we need to make the jacobian into a single matrix
+
+        flattened_jacobian = [tf.reshape(j, f) for j, f in zip(jac, flat_shape)]
+
+        flattened_jacobian = tf.concat(flattened_jacobian, axis=-1)
+
+        return flattened_jacobian, flat_shape
+
     # @tf.function
-    @profile
+    # @profile
     def sr_step(self, neq, nav, nprop, nvoid):
         nblock = neq + nav
         nstep = nprop * nvoid
@@ -195,30 +217,10 @@ class exec(object):
                     energy = energy / self.nwalkers
                     energy_jf = energy_jf / self.nwalkers
 
-                    # Compute < O^i_step >, < H O^i_step >,  and < O^i_step O^j_step >
-                    tape = tf.GradientTape()
-                    with tape:
-                        log_wpsi = self.wavefunction(x_current)
 
+        # Compute < O^i_step >, < H O^i_step >,  and < O^i_step O^j_step >
 
-                    # flat_params = self.wavefunction.flattened_params()
-
-                    jac = tape.jacobian(log_wpsi, self.wavefunction.trainable_variables)
-
-                    end = time.time()
-
-
-                    # Grab the original shapes ([1:] means everything except first dim):
-                    jac_shape = [j.shape[1:] for j in jac]
-                    # get the flattened shapes:
-                    flat_shape = [[-1, tf.reduce_prod(js)] for js in jac_shape]
-                    # Reshape the
-
-                    # We have the flat shapes and now we need to make the jacobian into a single matrix
-
-                    flattened_jacobian = [tf.reshape(j, f) for j, f in zip(jac, flat_shape)]
-
-                    flattened_jacobian = tf.concat(flattened_jacobian, axis=-1)
+                    flattened_jacobian, flat_shape = self.jacobian(x_current, self.wavefunction)
 
     #                log_wpsi_n.detach_()
                     dpsi_i = tf.reduce_mean(flattened_jacobian, axis=0)
@@ -254,7 +256,7 @@ class exec(object):
         dpsi_i_EL = total_estimator.dpsi_i_EL
         dpsi_ij = total_estimator.dpsi_ij
 
-        logger.info(f"psi norm{tf.reduce_mean(log_wpsi)}")
+        # logger.info(f"psi norm{tf.reduce_mean(log_wpsi)}")
 
         dp_i = self.optimizer.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
 
