@@ -32,7 +32,7 @@ class HarmonicOscillator(object):
         self.ke_by_parts = None
 
     @tf.function
-    def potential_energy(self, *, inputs=None):
+    def potential_energy(self, *, inputs, M, omega):
         """Return potential energy
 
         Calculate and return the PE.
@@ -47,8 +47,8 @@ class HarmonicOscillator(object):
         # < x | H | psi > / < x | psi > = < x | 1/2 w * x**2  | psi > / < x | psi >  = 1/2 w * x**2
         # x Squared needs to contract over spatial dimensions:
         x_squared = tf.reduce_sum(inputs**2, axis=(2))
-        self.pe = (0.5 * self.M * self.omega**2 ) * x_squared
-        return self.pe
+        pe = (0.5 * M * omega**2 ) * x_squared
+        return pe
 
     @tf.function
     def kinetic_energy_jf(self, *, dlogw_dx, M):
@@ -91,6 +91,8 @@ class HarmonicOscillator(object):
         ke = -(H_BAR**2 / (2 * M)) * tf.reduce_sum(d2logw_dx2, axis=(2)) - KE_JF
         return ke
 
+    # def energy_internal(self, wavefunction, inputs)
+
     @tf.function
     def energy(self, wavefunction, inputs):
         """Compute the expectation valye of energy of the supplied wavefunction.
@@ -126,13 +128,16 @@ class HarmonicOscillator(object):
 
 
         # Potential energy depends only on the wavefunction
-        pe = self.potential_energy(inputs=inputs)
+        pe = self.potential_energy(inputs=inputs, M = self.M, omega=self.omega)
 
         # KE by parts needs only one derivative
         ke_jf = self.kinetic_energy_jf(dlogw_dx=dlogw_dx, M=self.M)
 
         # True, directly, uses the second derivative
         ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M=self.M)
+
+        # print(ke_jf)
+        # print(ke_direct)
 
         # Total energy computations:
         energy = tf.squeeze(pe + ke_direct)

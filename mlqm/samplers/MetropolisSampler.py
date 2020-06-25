@@ -50,7 +50,8 @@ class MetropolisSampler(object):
     def kick(self,
         wavefunction : tf.keras.models.Model,
         kicker : callable,
-        kicker_params : iter ):
+        kicker_params : iter,
+        nkicks : int ):
         '''Wrapper for a compiled kick function via tensorflow.
 
         This fills in the compiled function with the size and the walkers.
@@ -61,7 +62,7 @@ class MetropolisSampler(object):
             kicker_params {iter} -- Arguments to the kicker function.
         '''
 
-        walkers, acceptance = self.internal_kicker(self.size, self.walkers, wavefunction, kicker, kicker_params)
+        walkers, acceptance = self.internal_kicker(self.size, self.walkers, wavefunction, kicker, kicker_params, nkicks)
 
         # Update the walkers:
         self.walkers = walkers
@@ -75,7 +76,8 @@ class MetropolisSampler(object):
         walkers,
         wavefunction : tf.keras.models.Model,
         kicker : callable,
-        kicker_params : iter):
+        kicker_params : iter,
+        nkicks ):
         """Sample points in N-d Space
 
         By default, samples points uniformly across all dimensions.
@@ -88,28 +90,29 @@ class MetropolisSampler(object):
 
         # We need to compute the wave function twice:
         # Once for the original coordiate, and again for the kicked coordinates
+        for i_kick in range(nkicks):
+            # Create a kick:
+            kick = kicker(shape=shape, **kicker_params)
 
-        # Create a kick:
-        kick = kicker(shape=shape, **kicker_params)
+            # Compute the values of the wave function, which should be of shape
+            # [nwalkers, 1]
+            original = wavefunction(walkers)
+            kicked   = wavefunction(walkers + kick)
 
-        # Compute the values of the wave function, which should be of shape
-        # [nwalkers, 1]
-        original = wavefunction(walkers)
-        kicked   = wavefunction(walkers + kick)
 
-        # Probability is the ratio of kicked **2 to original
-        probability = tf.abs(kicked)**2 / tf.abs(original)**2
-        # Acceptance is whether the probability for that walker is greater than
-        # a random number between [0, 1).
-        # Pull the random numbers and create a boolean array
-        accept      = probability >  tf.random.uniform(shape=[shape[0],1])
+            # Probability is the ratio of kicked **2 to original
+            probability = 2 * (kicked - original)
+            # Acceptance is whether the probability for that walker is greater than
+            # a random number between [0, 1).
+            # Pull the random numbers and create a boolean array
+            accept      = probability >  tf.math.log(tf.random.uniform(shape=[shape[0],1]))
 
-        # We need to broadcast accept to match the right shape
-        # Needs to come out to the shape [nwalkers, nparticles, ndim]
-        accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:])])
-        accept = tf.reshape(accept, shape)
-        walkers = tf.where(accept, self.walkers + kick, self.walkers)
+            # We need to broadcast accept to match the right shape
+            # Needs to come out to the shape [nwalkers, nparticles, ndim]
+            accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:])])
+            accept = tf.reshape(accept, shape)
+            walkers = tf.where(accept, walkers + kick, walkers)
 
-        self.acceptance = tf.reduce_mean(tf.cast(accept, tf.float32))
+            acceptance = tf.reduce_mean(tf.cast(accept, tf.float32))
 
-        return walkers, self.acceptance
+        return walkers, acceptance

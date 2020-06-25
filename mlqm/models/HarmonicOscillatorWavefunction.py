@@ -6,7 +6,7 @@ from .GaussianBoundaryCondition import GaussianBoundaryCondition
 
 class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
     """Implememtation of the harmonic oscillator wave funtions
-    
+
     Create a polynomial, up to `degree` in every dimension `n`, that is the
     exact solution to the harmonic oscillator wave function.
 
@@ -16,22 +16,22 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
 
     def __init__(self,  n : int, nparticles : int, degree : int, alpha : float):
         """Initializer
-        
+
         Create a harmonic oscillator wave function
-        
+
         Arguments:
             n {int} -- Dimension of the oscillator (1 <= n <= 3)
             nparticles {int} -- Number of particles
             degree {int} -- Degree of the solution (broadcastable to n)
             alpha {float} -- Alpha parameter (m * omega / hbar)
-        
+
         Raises:
             Exception -- [description]
         """
         tf.keras.layers.Layer.__init__(self)
-        
+
         self.n = n
-        if self.n < 1 or self.n > 3: 
+        if self.n < 1 or self.n > 3:
             raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillatorWavefunction")
 
         if nparticles > 1:
@@ -43,18 +43,18 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
 
         # Degree of the polynomial:
         self.degree = degree
-        
+
         if numpy.min(self.degree) < 0 or numpy.max(self.degree) > 4:
             raise Exception("Only the first 5 hermite polynomials are supported")
 
         alpha = numpy.asarray(alpha, dtype=numpy.int32)
         alpha = numpy.broadcast_to(alpha, (self.n,))
         self.alpha = alpha
-        
+
         # Normalization:
         self.norm = numpy.power(self.alpha / numpy.pi, 0.25)
         self.norm = numpy.prod(self.norm)
-        
+
 
         # Craft the polynomial coefficients:
 
@@ -87,16 +87,17 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
             # For each dimension:
             self.polynomial_norm[_n] = 1.0 / numpy.sqrt(2**_d * numpy.math.factorial(_d))
 
-        self.polynomial_norm = tf.convert_to_tensor(self.polynomial_norm.astype(numpy.float32)) 
+        self.polynomial_norm = tf.convert_to_tensor(self.polynomial_norm.astype(numpy.float32))
 
 
         self.exp = GaussianBoundaryCondition(n=self.n, exp=numpy.sqrt(self.alpha), trainable=False)
-    
+
+    @tf.function
     def call(self, inputs):
-    
+
         # Slice the inputs to restrict to just one particle:
         y = inputs[:,0,:]
-        
+
         # Create the output tensor with the right shape, plus the constant term:
         polynomial_result = tf.zeros(y.shape)
 
@@ -109,9 +110,9 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
             # This gets reduced by summing over all degrees for a fixed dimenions
             # Then they are reduced by multiplying over dimensions
             poly_term = y**d
-            
 
-            # Multiply every element (which is the dth power) by the appropriate 
+
+            # Multiply every element (which is the dth power) by the appropriate
             # coefficient in it's dimension
             res_vec = poly_term * self.polynomial[d]
 
@@ -126,6 +127,8 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
         boundary_condition = self.exp(inputs)[:,0]
 
         total_normalization = self.norm * tf.reduce_prod(self.polynomial_norm)
+        epsilon = 1e-16
+        # Add epsilon here to prevent underflow
+        wavefunction = tf.math.log(boundary_condition * polynomial_result * total_normalization + epsilon)
 
-        return boundary_condition * polynomial_result * total_normalization
-
+        return tf.reshape(wavefunction, [-1, 1])

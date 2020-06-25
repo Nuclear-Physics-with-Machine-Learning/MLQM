@@ -35,21 +35,29 @@ class Optimizer(object):
         return dist
 
     def sr(self,energy,dpsi_i,dpsi_i_EL,dpsi_ij):
-        f_i= tf.cast(tf.cast(self.delta, tf.float32) * ( dpsi_i * energy - dpsi_i_EL ), tf.float64)
+        '''
+        Wrap the cholesky solving function by passing some member variables
+        '''
+        return self._sr_internal(energy,dpsi_i,dpsi_i_EL,dpsi_ij, self.npt, self.delta, self.eps)
+
+    @tf.function
+    # @profile
+    def _sr_internal(self, energy, dpsi_i, dpsi_i_EL, dpsi_ij, npt, delta, eps):
+
+        f_i= tf.cast(tf.cast(delta, tf.float32) * ( dpsi_i * energy - dpsi_i_EL ), tf.float64)
         # This also replaces the double for loop ... don't do that :)
         S_ij = dpsi_ij - dpsi_i * tf.transpose(dpsi_i)
 
-#        print("dpsi_i", dpsi_i)
-#        print("dpsi_ij", dpsi_ij)
-#        print("S_ij=", S_ij)
-#        print("dpsi_i_EL", dpsi_i_EL)
-#        print("energy", energy)
+        dist = 999
+        dist_reg = 999
+        dist_norm = 999
+
         i = 0
-        while True:
+        while dist >= 0.001 and dist_reg >= 0.001 and dist_norm >= 0.2:
             S_ij_d = tf.cast(tf.identity(S_ij), tf.float64)
-            S_ij_d += 2**i * self.eps * tf.eye(self.npt, dtype=tf.float64)
+            S_ij_d += 2**i * eps * tf.eye(npt, dtype=tf.float64)
             i += 1
-            det_test = tf.linalg.det(S_ij_d)
+            # det_test = tf.linalg.det(S_ij_d)
             # torch.set_printoptions(precision=8)
             try:
 ################################################################################
@@ -65,18 +73,17 @@ class Optimizer(object):
 ################################################################################
                 dp_i = tf.linalg.cholesky_solve(U_ij, f_i)
 ################################################################################
-                dp_0 = self.delta * tf.cast(energy, tf.float64)
+                dp_0 = delta * tf.cast(energy, tf.float64)
                 dp_0 = 1. - dp_0 - tf.reduce_sum(tf.cast(dpsi_i, tf.float64)*dp_i)
-                # dp_0 = 1. - self.delta * energy - tf.reduce_sum(dpsi_i*dp_i)
+                # dp_0 = 1. - delta * energy - tf.reduce_sum(dpsi_i*dp_i)
                 dp_i = dp_i / dp_0
                 dist = self.par_dist(tf.cast(dp_i, tf.float32), S_ij)
                 dist_reg = self.par_dist(dp_i, S_ij_d)
                 dist_norm = self.par_dist(dp_i, dpsi_i * tf.transpose(dpsi_i))
-                # Originally this accessed the [0] element but that's not necessary now
                 # logger.debug("dist param", dist.numpy())
                 # logger.debug("dist reg", dist_reg.numpy())
                 # logger.debug("dist param norm", dist_norm.numpy())
                 dp_i = tf.cast(dp_i, tf.float32)
-                if (dist < 0.001 and dist_reg < 0.001 and dist_norm < 0.2):
-                    break
+                # if (dist < 0.001 and dist_reg < 0.001 and dist_norm < 0.2):
+                #     break
         return dp_i
