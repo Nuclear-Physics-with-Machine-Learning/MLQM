@@ -1,4 +1,3 @@
-import torch
 import numpy
 
 from mlqm import H_BAR
@@ -6,7 +5,7 @@ from mlqm import H_BAR
 
 class HarmonicOscillator_mc(object):
     """Harmonic Oscillator Potential
-    
+
     Implementation of the quantum harmonic oscillator hamiltonian
     """
 
@@ -15,7 +14,7 @@ class HarmonicOscillator_mc(object):
         object.__init__(self)
 
         self.ndim = ndim
-        if self.ndim < 1 or self.ndim > 3: 
+        if self.ndim < 1 or self.ndim > 3:
             raise Exception("Dimension must be 1, 2, or 3")
 
         self.M = M
@@ -59,12 +58,12 @@ class HarmonicOscillator_mc(object):
         wavefunction.zero_grad()
         log_psi = wavefunction(inputs)
         vt = torch.ones(size=[self.nwalk])
-        
+
         d_log_psi = torch.autograd.grad(log_psi, inputs, vt, create_graph=True, retain_graph=True)[0]
         d_psi = d_log_psi
-        self.ke_jf = torch.sum(d_psi**2, (1,2)) / 2. 
+        self.ke_jf = torch.sum(d_psi**2, (1,2)) / 2.
         self.ke_jf = self.ke_jf * 197.327**2 / 938.95
-        
+
         self.ke = 0
         for i in range (self.ndim):
             for j in range (self.npart):
@@ -79,27 +78,23 @@ class HarmonicOscillator_mc(object):
 
     def energy(self, wavefunction, potential, inputs):
         """Compute the expectation valye of energy of the supplied wavefunction.
-        
+
         Computes the integral of the wavefunction in this potential
-        
+
         Arguments:
             wavefunction {Wavefunction model} -- Callable wavefunction object
             inputs {torch.Tensor} -- Tensor of shape [N, dimension], must have graph enabled
-        
+
         Returns:
             torch.tensor - Energy of shape [1]
         """
-      
+
         ke, ke_jf = self.kinetic_energy(wavefunction,inputs)
         pe= self.potential_energy(potential, inputs)
-        
+
         energy_jf = ke_jf + pe
 
         energy = ke + pe
 
- 
+
         return energy, energy_jf
-
-
-
-

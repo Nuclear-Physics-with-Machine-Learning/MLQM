@@ -61,8 +61,8 @@ class MetropolisSampler(object):
             kicker {callable} -- A callable function for generating kicks
             kicker_params {iter} -- Arguments to the kicker function.
         '''
-
-        walkers, acceptance = self.internal_kicker(self.size, self.walkers, wavefunction, kicker, kicker_params, nkicks)
+        # for i in range(nkicks):
+        walkers, acceptance = self.internal_kicker(self.size, self.walkers, wavefunction, kicker, kicker_params, tf.constant(nkicks))
 
         # Update the walkers:
         self.walkers = walkers
@@ -77,7 +77,7 @@ class MetropolisSampler(object):
         wavefunction : tf.keras.models.Model,
         kicker : callable,
         kicker_params : iter,
-        nkicks ):
+        nkicks : tf.constant):
         """Sample points in N-d Space
 
         By default, samples points uniformly across all dimensions.
@@ -90,7 +90,8 @@ class MetropolisSampler(object):
 
         # We need to compute the wave function twice:
         # Once for the original coordiate, and again for the kicked coordinates
-        for i_kick in range(nkicks):
+        acceptance = tf.convert_to_tensor(0.0)
+        for i_kick in tf.range(nkicks):
             # Create a kick:
             kick = kicker(shape=shape, **kicker_params)
 

@@ -37,7 +37,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         self.individual_net = tf.keras.models.Sequential()
         self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
         self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
-        self.individual_net.add(tf.keras.layers.Dense(100, use_bias = False))
+        self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False))
 
 
         self.aggregate_net = tf.keras.models.Sequential()
@@ -64,26 +64,3 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
     def n_parameters(self):
         return tf.reduce_sum( [ tf.reduce_prod(p.shape) for p in self.trainable_variables ])
-
-    def flattened_params(self, params = None):
-        '''Flatten the parameters of this model
-
-        Additionally, store the raveling pattern to unflatten parameters.
-        '''
-
-        if params is None:
-            params_to_flatten = self.trainable_variables
-        indexs = []
-        shapes = []
-        params = []
-        print(params_to_flatten)
-        for p in params_to_flatten:
-            shapes.append(p.shape)
-            # Passing shape=[-1] to reshape flattens
-            params.append(tf.reshape(p, shape=[-1]))
-            indexs.append(tf.reduce_prod(p.shape))
-
-            print(p.shape)
-
-        print(params)
-        return tf.concat(params, axis=0)

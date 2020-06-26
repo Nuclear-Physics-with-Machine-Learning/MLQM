@@ -114,7 +114,7 @@ class exec(object):
 
         optimization = self.config['Optimization']
 
-        sr_parameters = ["neq","nav","nprop","nvoid","nblock", "delta", "eps"]
+        sr_parameters = ["neq","nav","nprop","nvoid", "delta", "eps"]
         for key in sr_parameters:
             if key not in optimization:
                 raise Exception(f"Configuration for Optimization missing key {key}")
@@ -174,14 +174,31 @@ class exec(object):
 
         return flattened_jacobian, flat_shape
 
+    @tf.function
+    def compute_O_observables(self, flattened_jacobian, energy):
+
+        # dspi_i is the reduction of the jacobian over all walkers.
+        # In other words, it's the mean gradient of the parameters with respect to inputs.
+        # This is effectively the measurement of O^i in the paper.
+        dpsi_i = tf.reduce_mean(flattened_jacobian, axis=0)
+        dpsi_i = tf.reshape(dpsi_i, [-1,1])
+
+        # To compute <O^m O^n>
+        dpsi_ij = tf.linalg.matmul(flattened_jacobian, flattened_jacobian, transpose_a = True) / self.nwalkers
+
+        # Computing <O^m H>:
+        dpsi_i_EL = tf.linalg.matmul(tf.reshape(energy, [1,self.nwalkers]), flattened_jacobian)
+        # This makes this the same shape as the other tensors
+        dpsi_i_EL = tf.reshape(dpsi_i_EL, [-1, 1])
+
+        return dpsi_i, dpsi_ij, dpsi_i_EL
+
     # @tf.function
-    @profile
+    # @profile
     def sr_step(self, neq, nav, nprop, nvoid):
         nblock = neq + nav
         block_estimator = Estimator(info=None)
-        block_estimator.reset()
         total_estimator = Estimator(info=None)
-        total_estimator.reset()
 
         # Metropolis sampler will sample configurations uniformly:
         # Sample initial configurations uniformy between -sig and sig
@@ -199,53 +216,54 @@ class exec(object):
         #    - The walkers are kicked at every step.
         #    - if the step is a multiple of nvoid, AND the block is bigger than neq, the calculations are done.
 
-        for i_block in range (nblock):
-            block_estimator.reset()
-            if (i_block == neq) :
-               total_estimator.reset()
-            for j_step in range (nprop):
 
-                # Here, we update the position of each particle for SR:
+        # First do a void walk to equilabrate / thermalize after a new configuration:
+        print(f"Walking for 1 step to trace")
+        acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=1)
+        print(f"Walking for {nvoid*nprop*neq} steps")
+        acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid*nprop*neq)
+        print("Done!")
+        # Now, we loop over the number of blocks.
+        # For each block, accumulate nprop times, with nvoid steps in between.
+        total_estimator.reset()
+        for i_av in range(nav):
+            block_estimator.reset()
+            for i_prop in range(nprop):
+                # Kick the walkers nvoid times:
                 acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid)
                 x_current = self.sampler.sample()
 
+                # Energy here is computed per walker.
+                energy, energy_jf = self.hamiltonian.energy(self.wavefunction, x_current)
+                # Dividing by the number of walkers to normalize the energy
+                energy = energy / self.nwalkers
+                energy_jf = energy_jf / self.nwalkers
 
-                # Compute energy and accumulate estimators within a given block
-                if i_block >= neq :
-                    energy, energy_jf = self.hamiltonian.energy(self.wavefunction, x_current)
-                    energy = energy / self.nwalkers
-                    energy_jf = energy_jf / self.nwalkers
+                flattened_jacobian, flat_shape = self.jacobian(x_current, self.wavefunction)
+
+                #                log_wpsi_n.detach_()
+                dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(flattened_jacobian, energy)
 
 
-        # Compute < O^i_step >, < H O^i_step >,  and < O^i_step O^j_step >
-
-                    flattened_jacobian, flat_shape = self.jacobian(x_current, self.wavefunction)
-
-    #                log_wpsi_n.detach_()
-                    dpsi_i = tf.reduce_mean(flattened_jacobian, axis=0)
-                    dpsi_i = tf.reshape(dpsi_i, [-1,1])
-################################################################################
-# This may be an issue
-                    # NOTE: I am not 100% sure this is right!
-                    dpsi_i_EL = tf.linalg.matmul(tf.reshape(energy, [1,-1]), flattened_jacobian)
-################################################################################
-                    dpsi_i_EL = tf.reshape(dpsi_i_EL, [-1,1])
-                    # Note: the transpose here was dropped since it's an option in the matmul package
-                    dpsi_ij = tf.linalg.matmul(flattened_jacobian, flattened_jacobian, transpose_a = True) / self.sampler.nwalkers
-
-                    block_estimator.accumulate(
-                        tf.reduce_sum(energy),
-                        tf.reduce_sum(energy_jf),
-                        acceptance,
-                        1.,
-                        dpsi_i,
-                        dpsi_i_EL,
-                        dpsi_ij,
-                        1.)
-    # Accumulate block averages
-            if ( i_block >= neq ):
-                total_estimator.accumulate(block_estimator.energy,block_estimator.energy_jf,block_estimator.acceptance,0,block_estimator.dpsi_i,
-                    block_estimator.dpsi_i_EL,block_estimator.dpsi_ij,block_estimator.weight)
+                block_estimator.accumulate(
+                    tf.reduce_sum(energy),
+                    tf.reduce_sum(energy_jf),
+                    acceptance,
+                    1.,
+                    dpsi_i,
+                    dpsi_i_EL,
+                    dpsi_ij,
+                    1.)
+            # Outside of the i_prop loop, we accumulate into the total_estimator:
+            total_estimator.accumulate(
+                block_estimator.energy,
+                block_estimator.energy_jf,
+                block_estimator.acceptance,
+                0,
+                block_estimator.dpsi_i,
+                block_estimator.dpsi_i_EL,
+                block_estimator.dpsi_ij,
+                block_estimator.weight)
 
         error, error_jf = total_estimator.finalize(nav)
         energy = total_estimator.energy
@@ -256,7 +274,6 @@ class exec(object):
         dpsi_ij = total_estimator.dpsi_ij
 
         # logger.info(f"psi norm{tf.reduce_mean(log_wpsi)}")
-
         dp_i = self.optimizer.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
 
         # Here, we recover the shape of the parameters of the network:

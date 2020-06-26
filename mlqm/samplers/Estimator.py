@@ -5,7 +5,7 @@ class Estimator(object):
     """ Accumulate block and totalk averages and errors
     """
     def __init__(self,*,info=None):
-        if info is not None: 
+        if info is not None:
             print(f"Set the following estimators: E, E2,E_jf,E2_jf,acc,weight,Psi_i,H*Psi_i,Psi_ij ")
 
     def reset(self):
@@ -42,6 +42,3 @@ class Estimator(object):
         error= tf.sqrt((self.energy2 - self.energy**2) / (nav-1))
         error_jf = tf.sqrt((self.energy2_jf - self.energy_jf**2) / (nav-1))
         return error, error_jf
-
-
-
