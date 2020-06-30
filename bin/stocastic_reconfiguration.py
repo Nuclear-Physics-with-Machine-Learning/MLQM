@@ -211,11 +211,8 @@ class exec(object):
 
 
         # First do a void walk to equilabrate / thermalize after a new configuration:
-        print(f"Walking for 1 step to trace")
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=1)
-        print(f"Walking for {nvoid*nprop*neq} steps")
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid*nprop*neq)
-        print("Done!")
         # Now, we loop over the number of blocks.
         # For each block, accumulate nprop times, with nvoid steps in between.
         total_estimator.reset()
@@ -236,7 +233,6 @@ class exec(object):
 
                 #                log_wpsi_n.detach_()
                 dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(flattened_jacobian, energy)
-
 
                 block_estimator.accumulate(
                     tf.reduce_sum(energy),
@@ -278,10 +274,7 @@ class exec(object):
             gradient.append(dp_i[running_index:end_index])
             running_index += l
         shapes = [ p.shape for p in self.wavefunction.trainable_variables ]
-        gradient = [ tf.reshape(g, s) for g, s in zip(gradient, shapes)]
-
-        delta_p = [ g for g in gradient]
-
+        delta_p = [ tf.reshape(g, s) for g, s in zip(gradient, shapes)]
 
         return energy, error, energy_jf, error_jf, acceptance, delta_p
 
