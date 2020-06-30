@@ -36,13 +36,13 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.individual_net = tf.keras.models.Sequential()
         self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
-        self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
-        self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False))
+        # self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
+        # self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False))
 
 
         self.aggregate_net = tf.keras.models.Sequential()
         self.aggregate_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
-        self.aggregate_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
+        # self.aggregate_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
         self.aggregate_net.add(tf.keras.layers.Dense(1, use_bias = False))
 
     @tf.function
@@ -59,8 +59,14 @@ class DeepSetsWavefunction(tf.keras.models.Model):
             x.append(self.individual_net(xinputs[:,p,:]))
 
         x = tf.add_n(x)
+        x = self.aggregate_net(x)
 
-        return self.aggregate_net(x)
+        # Compute the initial boundary condition, which the network will slowly overcome
+        boundary_condition = -0.1 * tf.reduce_sum(xinputs**2, axis=(1,2))
+        boundary_condition = tf.reshape(boundary_condition, [-1,1])
+
+
+        return x + boundary_condition
 
     def n_parameters(self):
         return tf.reduce_sum( [ tf.reduce_prod(p.shape) for p in self.trainable_variables ])
