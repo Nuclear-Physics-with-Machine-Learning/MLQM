@@ -20,13 +20,6 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
 
-'''
-This script runs the nieve, lattice-based optimization.
-
-'''
-
-
-################
 
 # Add the local folder to the import path:
 mlqm_dir = os.path.dirname(os.path.abspath(__file__))
