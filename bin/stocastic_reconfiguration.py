@@ -9,6 +9,10 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 import tensorflow as tf
 
+# Use mixed precision for inference (metropolis walk)
+# from tensorflow.keras.mixed_precision import experimental as mixed_precision
+# policy = mixed_precision.Policy('mixed_float16')
+# mixed_precision.set_policy(policy)
 
 import logging
 logger = logging.getLogger()
@@ -186,8 +190,6 @@ class exec(object):
 
         return dpsi_i, dpsi_ij, dpsi_i_EL
 
-    # @tf.function
-    # @profile
     def sr_step(self, neq, nav, nprop, nvoid):
         nblock = neq + nav
         block_estimator = Estimator(info=None)
@@ -231,7 +233,6 @@ class exec(object):
 
                 flattened_jacobian, flat_shape = self.jacobian(x_current, self.wavefunction)
 
-                #                log_wpsi_n.detach_()
                 dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(flattened_jacobian, energy)
 
                 block_estimator.accumulate(

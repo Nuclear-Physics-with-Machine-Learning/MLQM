@@ -66,7 +66,7 @@ logger = logging.getLogger()
 #                 logger.warning(f"Warning, Cholesky did not find a positive definite matrix on attempt {i}")
 #             i.assign_add(1.0)
 #
-#     @tf.function
+#     # @tf.function
 #     def sr(self,energy,dpsi_i,dpsi_i_EL,dpsi_ij):
 #         '''
 #         Perform the computation of weight updates.
@@ -151,6 +151,7 @@ class Optimizer(object):
         self.delta  = tf.convert_to_tensor(delta, dtype=tf.float64)
         self.npt    = npt
 #
+    @tf.function
     def par_dist(self, dp_i, S_ij):
         D_ij = S_ij * (dp_i * tf.transpose(dp_i))
         dist = tf.reduce_sum(D_ij)

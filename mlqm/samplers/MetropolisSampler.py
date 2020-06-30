@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy
 
 
+
 class MetropolisSampler(object):
     """Metropolis Sampler in N dimension
 
@@ -71,6 +72,7 @@ class MetropolisSampler(object):
         return acceptance
 
     @tf.function
+    # @profile
     def internal_kicker(self,
         shape,
         walkers,
@@ -91,28 +93,37 @@ class MetropolisSampler(object):
         # We need to compute the wave function twice:
         # Once for the original coordiate, and again for the kicked coordinates
         acceptance = tf.convert_to_tensor(0.0)
+        # Calculate the current wavefunction value:
+        current_wavefunction = wavefunction(walkers)
+
         for i_kick in tf.range(nkicks):
             # Create a kick:
             kick = kicker(shape=shape, **kicker_params)
 
+            kicked = walkers + kick
+
             # Compute the values of the wave function, which should be of shape
             # [nwalkers, 1]
-            original = wavefunction(walkers)
-            kicked   = wavefunction(walkers + kick)
+            # original_w = wavefunction(walkers)
+            kicked_wavefunction   = wavefunction(kicked)
 
 
             # Probability is the ratio of kicked **2 to original
-            probability = 2 * (kicked - original)
+            probability = 2 * (kicked_wavefunction - current_wavefunction)
             # Acceptance is whether the probability for that walker is greater than
             # a random number between [0, 1).
             # Pull the random numbers and create a boolean array
+            # accept      = probability >  tf.random.uniform(shape=[shape[0],1])
             accept      = probability >  tf.math.log(tf.random.uniform(shape=[shape[0],1]))
+
+            # Grab the kicked wavefunction in the places it is new, to speed up metropolis:
+            current_wavefunction = tf.where(accept, kicked_wavefunction, current_wavefunction)
 
             # We need to broadcast accept to match the right shape
             # Needs to come out to the shape [nwalkers, nparticles, ndim]
             accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:])])
             accept = tf.reshape(accept, shape)
-            walkers = tf.where(accept, walkers + kick, walkers)
+            walkers = tf.where(accept, kicked, walkers)
 
             acceptance = tf.reduce_mean(tf.cast(accept, tf.float32))
 
