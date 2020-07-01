@@ -1,1 +1,2 @@
 H_BAR = 1.0
+ELECTRON_CHARGE = 1.0

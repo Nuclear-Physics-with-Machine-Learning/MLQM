@@ -85,17 +85,51 @@ class exec(object):
 
         return
 
+    def check_potential_parameters(self, potential, parameters, config):
+
+        for key in parameters:
+            if key not in config:
+                raise Exception(f"Configuration for {potential} missing key {key}")
+
     def build_hamiltonian(self):
 
-        from mlqm.hamiltonians import HarmonicOscillator
+        # First, ask for the type of hamiltonian
+        kind = self.config["Hamiltonian"]["form"]
+        if kind == "HarmonicOscillator":
 
-        self.hamiltonian = HarmonicOscillator(
-            n           = self.dimension,
-            nparticles  = self.nparticles,
-            M           = float(self.config["Hamiltonian"]["mass"]),
-            omega       = float(self.config["Hamiltonian"]["omega"]),
-        )
+            from mlqm.hamiltonians import HarmonicOscillator
 
+            required_keys = ["mass", "omega"]
+            self.check_potential_parameters(kind, required_keys, self.config["Hamiltonian"])
+
+
+            self.hamiltonian = HarmonicOscillator(
+                M           = float(self.config["Hamiltonian"]["mass"]),
+                omega       = float(self.config["Hamiltonian"]["omega"]),
+            )
+        elif kind == "AtomicPotential":
+            from mlqm.hamiltonians import AtomicPotential
+
+            required_keys = ["mass", "Z"]
+            self.check_potential_parameters(kind, required_keys, self.config["Hamiltonian"])
+
+            self.hamiltonian = AtomicPotential(
+                mu          = float(self.config["Hamiltonian"]["mass"]),
+                Z           = int(self.config["Hamiltonian"]["Z"]),
+            )
+        elif kind == "NuclearPotential":
+            from mlqm.hamiltonians import NuclearPotential
+
+            required_keys = ["mass", "Z"]
+            self.check_potential_parameters(kind, required_keys, self.config["Hamiltonian"])
+
+
+            self.hamiltonian = NuclearPotential(
+                M           = float(self.config["Hamiltonian"]["mass"]),
+                omega       = float(self.config["Hamiltonian"]["omega"]),
+            )
+        else:
+            raise Exception(f"Unknown potential requested: {kind}")
     def run(self):
         print("running")
         x = self.sampler.sample()
