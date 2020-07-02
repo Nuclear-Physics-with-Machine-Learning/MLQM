@@ -1,5 +1,6 @@
 import numpy
 import tensorflow as tf
+from mlqm import DEFAULT_TENSOR_TYPE
 
 #from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
 
@@ -45,6 +46,9 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         # self.aggregate_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
         self.aggregate_net.add(tf.keras.layers.Dense(1, use_bias = False))
 
+        # self.normalization_exponent = tf.Variable(2.0, dtype=DEFAULT_TENSOR_TYPE)
+        # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
+
     @tf.function
     def call(self, inputs, trainable=None):
         # Mean subtract for all particles:
@@ -62,6 +66,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         x = self.aggregate_net(x)
 
         # Compute the initial boundary condition, which the network will slowly overcome
+        # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
         boundary_condition = -0.1 * tf.reduce_sum(xinputs**2, axis=(1,2))
         boundary_condition = tf.reshape(boundary_condition, [-1,1])
 
