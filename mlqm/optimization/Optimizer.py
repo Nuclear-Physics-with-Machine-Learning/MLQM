@@ -158,7 +158,8 @@ class Optimizer(object):
         return dist
 
     def sr(self,energy,dpsi_i,dpsi_i_EL,dpsi_ij):
-        f_i= tf.cast(tf.cast(self.delta, tf.float32) * ( dpsi_i * energy - dpsi_i_EL ), tf.float64)
+        # f_i= tf.cast(tf.cast(self.delta, tf.float32) * ( dpsi_i * energy - dpsi_i_EL ), tf.float64)
+        f_i= tf.cast(self.delta * ( dpsi_i * energy - dpsi_i_EL ), tf.float64)
         S_ij = dpsi_ij - dpsi_i * tf.transpose(dpsi_i)
         i = 0
         while True:
@@ -183,7 +184,7 @@ class Optimizer(object):
                logger.debug(f"dist param = {dist}")
                logger.debug(f"dist reg = {dist_reg}")
                logger.debug(f"dist norm = {dist_norm}")
-               dp_i = tf.cast(dp_i, tf.float32)
+               # dp_i = tf.cast(dp_i, tf.float32)
                if (dist < 0.001 and dist_norm < 0.2):
                   break
         return dp_i

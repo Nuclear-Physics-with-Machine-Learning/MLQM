@@ -8,6 +8,17 @@ import argparse
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 import tensorflow as tf
+#
+# try:
+#     import horovod.tensorflow as hvd
+#     hvd.init()
+#     from mpi4py import MPI
+#
+#     # This is to force each rank onto it's own GPU:
+#     os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank() + 1)
+#     MPI_AVAILABLE=True
+# except:
+#     MPI_AVAILABLE=False
 
 # Use mixed precision for inference (metropolis walk)
 # from tensorflow.keras.mixed_precision import experimental as mixed_precision
@@ -17,7 +28,8 @@ import tensorflow as tf
 import logging
 logger = logging.getLogger()
 
-# Create a handler for STDOUT:
+# Create a handler for STDOUT, but only on the root rank:
+# if not MPI_AVAILABLE or hvd.rank() == 0:
 handler = logging.StreamHandler(sys.stdout)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
@@ -48,7 +60,11 @@ class exec(object):
             help        = "Python configuration file to describe this run.")
 
         self.args = parser.parse_args()
-
+        #
+        # if MPI_AVAILABLE:
+        #     self.rank = hvd.rank()
+        #     self.size = hvd.size()
+        #     self.local_rank = hvd.local_rank()
 
         # Open the config file:
         self.config = configparser.ConfigParser()
@@ -56,6 +72,8 @@ class exec(object):
 
         self.dimension  = int(self.config['General']['dimension'])
         self.nparticles = int(self.config['General']['nparticles'])
+        self.save_path  = self.config["General"]["model_save_path"]
+
 
         self.build_sampler()
         self.build_hamiltonian()
@@ -72,6 +90,13 @@ class exec(object):
                 raise Exception(f"Configuration for Sampler missing key {key}")
 
         self.nwalkers   = int(sampler['nwalkers'])
+        # if MPI_AVAILABLE and self.size != 1:
+        #     # Scale down the number of walkers:
+        #     nwalkers = int(self.nwalkers / self.size)
+        #     if self.nwalkers / self.size != nwalkers:
+        #         logger.error("ERROR: number of walkers is not evenly divided by MPI COMM size")
+        #
+        #     self.nwalkers = nwalkers
 
 
         from mlqm.samplers import MetropolisSampler
@@ -81,7 +106,8 @@ class exec(object):
             nparticles  = self.nparticles,
             nwalkers    = self.nwalkers,
             initializer = tf.random.normal,
-            init_params = {"mean": 0.0, "stddev" : 0.2})
+            init_params = {"mean": 0.0, "stddev" : 0.2},
+            dtype       = tf.float64)
 
         return
 
@@ -130,8 +156,9 @@ class exec(object):
             )
         else:
             raise Exception(f"Unknown potential requested: {kind}")
+
     def run(self):
-        print("running")
+        tf.keras.backend.set_floatx('float64')
         x = self.sampler.sample()
 
         # For each dimension, randomly pick a degree
@@ -140,19 +167,36 @@ class exec(object):
         from mlqm.models import DeepSetsWavefunction
         self.wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles)
 
+        # Run the wave function once to initialize all it's weights
+        _ = self.wavefunction(x)
+
+        # We attempt to restore the weights:
+        try:
+            self.wavefunction.load_weights(self.save_path)
+            print("Loaded weights!")
+        except:
+            pass
+
+
+
+        # if MPI_AVAILABLE:
+        #     # We have to broadcast the wavefunction parameter here:
+        #     hvd.broadcast_variables(self.wavefunction.variables, 0)
+        #
+
         from mlqm.optimization import Optimizer
         from mlqm.samplers     import Estimator
 
         optimization = self.config['Optimization']
 
-        sr_parameters = ["neq","nav","nprop","nvoid", "delta", "eps"]
+
+        sr_parameters = ["nequilibrations","naverages","nobservations","nvoid", "delta", "eps"]
         for key in sr_parameters:
             if key not in optimization:
                 raise Exception(f"Configuration for Optimization missing key {key}")
 
 
-        # Run the wave function once to initialize all it's weights
-        _ = self.wavefunction(x)
+
 
         # Create an optimizer
         self.optimizer = Optimizer(
@@ -166,9 +210,9 @@ class exec(object):
             start = time.time()
 
             energy, error, energy_jf, error_jf, acceptance, delta_p = self.sr_step(
-                int(optimization['neq']),
-                int(optimization['nav']),
-                int(optimization['nprop']),
+                int(optimization['nequilibrations']),
+                int(optimization['naverages']),
+                int(optimization['nobservations']),
                 int(optimization['nvoid']))
 
             # Update the parameters:
@@ -224,8 +268,8 @@ class exec(object):
 
         return dpsi_i, dpsi_ij, dpsi_i_EL
 
-    def sr_step(self, neq, nav, nprop, nvoid):
-        nblock = neq + nav
+    def sr_step(self, nequilibrations, naverages, nobservations, nvoid):
+        nblock = nequilibrations + naverages
         block_estimator = Estimator(info=None)
         total_estimator = Estimator(info=None)
 
@@ -233,28 +277,74 @@ class exec(object):
         # Sample initial configurations uniformy between -sig and sig
         x_original = self.sampler.sample()
 
-        kicker = tf.random.normal
-        kicker_params = {"mean": 0.0, "stddev" : 0.2}
 
 
         # This function operates with the following loops:
-        #  - There are nblock "blocks" == neq + nav
-        #    - the first 'neq' are not used for gradient calculations
-        #    - the next 'nav' are used for accumulating wavefunction measurements
-        #  - In each block, there are nsteps = nprop * nvoid
+        #  - There are nblock "blocks" == nequilibrations + naverages
+        #    - the first 'nequilibrations' are not used for gradient calculations
+        #    - the next 'naverages' are used for accumulating wavefunction measurements
+        #  - In each block, there are nsteps = nobservations * nvoid
         #    - The walkers are kicked at every step.
-        #    - if the step is a multiple of nvoid, AND the block is bigger than neq, the calculations are done.
-
+        #    - if the step is a multiple of nvoid, AND the block is bigger than nequilibrations, the calculations are done.
+        kicker = tf.random.normal
+        kicker_params = {"mean": 0.0, "stddev" : 0.2}
 
         # First do a void walk to equilabrate / thermalize after a new configuration:
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=1)
-        acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid*nprop*neq)
+        acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid*nobservations*nequilibrations)
+        total_estimator, flat_shape = self.sr_walk_and_compute(
+            naverages = tf.constant(naverages),
+            nobservations = tf.constant(nobservations),
+            nvoid = nvoid,
+            block_estimator = block_estimator,
+            total_estimator = total_estimator,
+            wavefunction = self.wavefunction,
+            sampler = self.sampler)
+
+        error, error_jf = total_estimator.finalize(naverages)
+        energy = total_estimator.energy
+        energy_jf = total_estimator.energy_jf
+        acceptance = total_estimator.acceptance
+        dpsi_i = total_estimator.dpsi_i
+        dpsi_i_EL = total_estimator.dpsi_i_EL
+        dpsi_ij = total_estimator.dpsi_ij
+        # if MPI_AVAILABLE:
+        #     # Here, we have to do a reduction over all params used to calculate gradients
+        #     energy    = hvd.allreduce(energy)
+        #     dpsi_i    = hvd.allreduce(dpsi_i)
+        #     dpsi_i_EL = hvd.allreduce(dpsi_i_EL)
+        #     dpsi_ij   = hvd.allreduce(dpsi_ij)
+###########################################################################################
+# NOTE: THE ABOVE REDUCTION WILL MESS UP THE ERROR CALCULATIONS
+###########################################################################################
+        # logger.info(f"psi norm{tf.reduce_mean(log_wpsi)}")
+        dp_i = self.optimizer.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
+
+        # Here, we recover the shape of the parameters of the network:
+        running_index = 0
+        gradient = []
+        for length in flat_shape:
+            l = length[-1].numpy()
+            end_index = running_index + l
+            gradient.append(dp_i[running_index:end_index])
+            running_index += l
+        shapes = [ p.shape for p in self.wavefunction.trainable_variables ]
+        delta_p = [ tf.reshape(g, s) for g, s in zip(gradient, shapes)]
+
+        return energy, error, energy_jf, error_jf, acceptance, delta_p
+
+    # @tf.function
+    def sr_walk_and_compute(self,naverages,nobservations,nvoid,block_estimator,total_estimator, wavefunction, sampler):
+        kicker = tf.random.normal
+        kicker_params = {"mean": 0.0, "stddev" : 0.2}
+
         # Now, we loop over the number of blocks.
-        # For each block, accumulate nprop times, with nvoid steps in between.
+        # For each block, accumulate nobservations times, with nvoid steps in between.
         total_estimator.reset()
-        for i_av in range(nav):
+
+        for i_av in tf.range(naverages):
             block_estimator.reset()
-            for i_prop in range(nprop):
+            for i_prop in tf.range(nobservations):
                 # Kick the walkers nvoid times:
                 acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid)
                 x_current = self.sampler.sample()
@@ -289,33 +379,16 @@ class exec(object):
                 block_estimator.dpsi_ij,
                 block_estimator.weight)
 
-        error, error_jf = total_estimator.finalize(nav)
-        energy = total_estimator.energy
-        energy_jf = total_estimator.energy_jf
-        acceptance = total_estimator.acceptance
-        dpsi_i = total_estimator.dpsi_i
-        dpsi_i_EL = total_estimator.dpsi_i_EL
-        dpsi_ij = total_estimator.dpsi_ij
-
-        # logger.info(f"psi norm{tf.reduce_mean(log_wpsi)}")
-        dp_i = self.optimizer.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
-
-        # Here, we recover the shape of the parameters of the network:
-        running_index = 0
-        gradient = []
-        for length in flat_shape:
-            l = length[-1].numpy()
-            end_index = running_index + l
-            gradient.append(dp_i[running_index:end_index])
-            running_index += l
-        shapes = [ p.shape for p in self.wavefunction.trainable_variables ]
-        delta_p = [ tf.reshape(g, s) for g, s in zip(gradient, shapes)]
-
-        return energy, error, energy_jf, error_jf, acceptance, delta_p
 
 
+        return total_estimator, flat_shape
 
+    def finalize(self):
+        # Take the network and snapshot it to file:
+        self.wavefunction.save_weights(self.save_path)
 
 if __name__ == "__main__":
     e = exec()
-    e.run()
+    with tf.profiler.experimental.Profile('logdir'):
+        e.run()
+    e.finalize()

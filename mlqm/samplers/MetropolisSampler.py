@@ -15,7 +15,8 @@ class MetropolisSampler(object):
         nwalkers    : int,
         nparticles  : int,
         initializer : callable,
-        init_params : iter ):
+        init_params : iter ,
+        dtype       = tf.float64):
         '''Initialize a metropolis sampler
 
         Create a metropolis walker with `n` walkers.  Can use normal, uniform
@@ -38,8 +39,10 @@ class MetropolisSampler(object):
 
         self.size = (self.nwalkers, self.nparticles, self.n)
 
+        self.dtype = dtype
+
         #  Run the initalize to get the first locations:
-        self.walkers = initializer(shape=self.size, **init_params)
+        self.walkers = initializer(shape=self.size, **init_params, dtype=dtype)
 
     def sample(self):
         '''Just return the current locations
@@ -63,7 +66,8 @@ class MetropolisSampler(object):
             kicker_params {iter} -- Arguments to the kicker function.
         '''
         # for i in range(nkicks):
-        walkers, acceptance = self.internal_kicker(self.size, self.walkers, wavefunction, kicker, kicker_params, tf.constant(nkicks))
+        walkers, acceptance = self.internal_kicker(
+            self.size, self.walkers, wavefunction, kicker, kicker_params, tf.constant(nkicks), dtype=self.dtype)
 
         # Update the walkers:
         self.walkers = walkers
@@ -79,7 +83,8 @@ class MetropolisSampler(object):
         wavefunction : tf.keras.models.Model,
         kicker : callable,
         kicker_params : iter,
-        nkicks : tf.constant):
+        nkicks : tf.constant,
+        dtype):
         """Sample points in N-d Space
 
         By default, samples points uniformly across all dimensions.
@@ -96,9 +101,12 @@ class MetropolisSampler(object):
         # Calculate the current wavefunction value:
         current_wavefunction = wavefunction(walkers)
 
+        # Generate a long set of random number from which we will pull:
+        random_numbers = tf.math.log(tf.random.uniform(shape = [nkicks,shape[0],1], dtype=dtype))
+
         for i_kick in tf.range(nkicks):
             # Create a kick:
-            kick = kicker(shape=shape, **kicker_params)
+            kick = kicker(shape=shape, **kicker_params, dtype=dtype)
 
             kicked = walkers + kick
 
@@ -114,7 +122,8 @@ class MetropolisSampler(object):
             # a random number between [0, 1).
             # Pull the random numbers and create a boolean array
             # accept      = probability >  tf.random.uniform(shape=[shape[0],1])
-            accept      = probability >  tf.math.log(tf.random.uniform(shape=[shape[0],1]))
+            accept      = probability >  random_numbers[i_kick]
+            # accept      = probability >  tf.math.log(tf.random.uniform(shape=[shape[0],1]))
 
             # Grab the kicked wavefunction in the places it is new, to speed up metropolis:
             current_wavefunction = tf.where(accept, kicked_wavefunction, current_wavefunction)

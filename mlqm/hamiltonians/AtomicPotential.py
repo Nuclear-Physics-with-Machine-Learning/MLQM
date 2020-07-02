@@ -67,26 +67,6 @@ class AtomicPotential(object):
         pe_2 = 0.
         return tf.reshape((pe_1 + pe_2), [-1, 1])
 
-
-    # @tf.function
-    # def potential_energy(self, *, inputs, M, omega):
-    #     """Return potential energy
-    #
-    #     Calculate and return the PE.
-    #
-    #     Arguments:
-    #         inputs {tf.Tensor} -- Tensor of shape [N, dimension], must have graph enabled
-    #     Returns:
-    #         tf.Tensor - potential energy of shape [1]
-    #     """
-    #
-    #     # Potential calculation
-    #     # < x | H | psi > / < x | psi > = < x | 1/2 w * x**2  | psi > / < x | psi >  = 1/2 w * x**2
-    #     # x Squared needs to contract over spatial dimensions:
-    #     x_squared = tf.reduce_sum(inputs**2, axis=(2))
-    #     pe = (0.5 * M * omega**2 ) * x_squared
-    #     return pe
-
     @tf.function
     def kinetic_energy_jf(self, *, dlogw_dx, M):
         """Return Kinetic energy
