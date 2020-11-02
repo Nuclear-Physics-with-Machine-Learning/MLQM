@@ -126,8 +126,9 @@ class HarmonicOscillator(object):
         # True, directly, uses the second derivative
         ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M=self.M)
 
+
         # Total energy computations:
         energy = tf.squeeze(pe + ke_direct)
         energy_jf = tf.squeeze(pe + ke_jf)
 
-        return energy, energy_jf
+        return energy, energy_jf, ke_jf, ke_direct, pe

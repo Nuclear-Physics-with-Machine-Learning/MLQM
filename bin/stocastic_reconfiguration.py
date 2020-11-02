@@ -86,6 +86,8 @@ class exec(object):
         self.nvoid           = int(optimization['nvoid'])
         self.delta           = float(optimization['delta'])
         self.eps             = float(optimization['eps'])
+        self.gamma           = float(optimization['gamma'])
+        self.eta             = float(optimization['eta'])
 
 
         self.dimension  = int(self.config['General']['dimension'])
@@ -108,9 +110,6 @@ class exec(object):
                 raise Exception(f"Configuration for Sampler missing key {key}")
 
         self.nwalkers   = int(sampler['nwalkers'])
-        # As an optimization, we increase the number of walkers by
-        # naverage * nobservations
-        self.nwalkers *= self.naverages * self.nobservations
 
         # if MPI_AVAILABLE and self.size != 1:
         #     # Scale down the number of walkers:
@@ -123,10 +122,11 @@ class exec(object):
 
         from mlqm.samplers import MetropolisSampler
 
+        # As an optimization, we increase the number of walkers by nobservations
         self.sampler = MetropolisSampler(
             n           = self.dimension,
             nparticles  = self.nparticles,
-            nwalkers    = self.nwalkers,
+            nwalkers    = self.nwalkers*self.nobservations,
             initializer = tf.random.normal,
             init_params = {"mean": 0.0, "stddev" : 0.2},
             dtype       = DEFAULT_TENSOR_TYPE)
@@ -216,9 +216,13 @@ class exec(object):
         self.optimizer = Optimizer(
             delta   = self.delta,
             eps     = self.eps,
-            npt     = self.wavefunction.n_parameters())
+            npt     = self.wavefunction.n_parameters(),
+            gamma   = self.gamma,
+            eta     = self.eta,
+            dtype   = DEFAULT_TENSOR_TYPE)
 
-        energy, energy_by_parts = self.hamiltonian.energy(self.wavefunction, x)
+        # energy, energy_by_parts = self.hamiltonian.energy(self.wavefunction, x)
+        energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x)
 
         for i in range(self.iterations):
             start = time.time()
@@ -304,11 +308,13 @@ class exec(object):
         kicker_params = {"mean": 0.0, "stddev" : 0.2}
 
         # First do a void walk to equilabrate / thermalize after a new configuration:
+        #   This first call is compiling the kicker
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=1)
+        #   This one does all the kicks.
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid*nequilibrations*naverages)
-        total_estimator, flat_shape = self.sr_walk_and_compute(
-            naverages = tf.constant(naverages),
-            nobservations = tf.constant(nobservations),
+        total_estimator, flat_shape = self.sr_walk_and_compute_optimized(
+            naverages = naverages,
+            nobservations = nobservations,
             nvoid = nvoid,
             block_estimator = block_estimator,
             total_estimator = total_estimator,
@@ -347,104 +353,95 @@ class exec(object):
 
         return energy, error, energy_jf, error_jf, acceptance, delta_p
 
-    def sr_step_optimized(self, nequilibrations, naverages, nobservations, nvoid):
+    # def average_over_iterations(self, x_current_list, hamiltonian, block_estimator)
 
-        nblock = nequilibrations + naverages
-        block_estimator = Estimator(info=None)
-        total_estimator = Estimator(info=None)
+    @tf.function
+    def batched_jacobian(self, nobs, x_current_arr, wavefunction, jac_fnc):
+        ret_jac = []
+        ret_shape = []
+        for i in range(nobs):
+            flattened_jacobian, flat_shape = jac_fnc(x_current_arr[i], wavefunction)
+            ret_jac.append(flattened_jacobian)
+            ret_shape.append(flat_shape)
 
-        # Metropolis sampler will sample configurations uniformly:
-        # Sample initial configurations uniformy between -sig and sig
-        x_original = self.sampler.sample()
+        return ret_jac, ret_shape
 
-
-
-        # This function operates with the following loops:
-        #  - There are nblock "blocks" == nequilibrations + naverages
-        #    - the first 'nequilibrations' are not used for gradient calculations
-        #    - the next 'naverages' are used for accumulating wavefunction measurements
-        #  - In each block, there are nsteps = nobservations * nvoid
-        #    - The walkers are kicked at every step.
-        #    - if the step is a multiple of nvoid, AND the block is bigger than nequilibrations, the calculations are done.
+    # @profile
+    def sr_walk_and_compute_optimized(self,naverages,nobservations,nvoid,block_estimator,total_estimator, wavefunction, sampler):
         kicker = tf.random.normal
         kicker_params = {"mean": 0.0, "stddev" : 0.2}
 
-        # First do a void walk to equilabrate / thermalize after a new configuration:
-        acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=1)
-        acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid)
+        # Now, we loop over the number of blocks.
+        # For each block, accumulate nobservations times, with nvoid steps in between.
+        total_estimator.reset()
 
-        block_estimator.reset()
-        # Kick the walkers nvoid times:
-        acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid)
-        x_current = self.sampler.sample()
+        for i_av in tf.range(naverages):
+            block_estimator.reset()
 
-        # Energy here is computed per walker.
-        energy, energy_jf = self.hamiltonian.energy(self.wavefunction, x_current)
-        flattened_jacobian, flat_shape = self.jacobian(x_current, self.wavefunction)
+            # Here, the loop over observations is optimized by running all
+            # observations in parallel at the same time.
+            acceptance = sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid)
+            x_current  = sampler.sample()
 
-        # Now, reshape
-        
-        # Dividing by the number of walkers to normalize the energy
-        energy = energy / self.nwalkers
-        energy_jf = energy_jf / self.nwalkers
+            energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
+            # print(energy.shape)
+
+            # We break x_current into n_observations:
+            x_current  = tf.split(x_current, nobservations, axis=0)
+            energy     = tf.split(energy,    nobservations, axis=0)
+            energy_jf  = tf.split(energy_jf, nobservations, axis=0)
+            ke_jf      = tf.split(ke_jf, nobservations, axis=0)
+            ke_direct  = tf.split(ke_direct, nobservations, axis=0)
+            pe         = tf.split(pe, nobservations, axis=0)
+
+            ke_jf     = [ tf.reduce_sum(_ke_jf).numpy() / self.nwalkers for _ke_jf in ke_jf]
+            ke_direct = [ tf.reduce_sum(_ke_direct).numpy() / self.nwalkers for _ke_direct in ke_direct]
+            pe        = [ tf.reduce_sum(_pe).numpy() / self.nwalkers for _pe in pe]
+
+            logger.debug(f"Kinetic Energy JF: {tf.reduce_mean(ke_jf)} +- {tf.math.reduce_std(ke_jf)}")
+            logger.debug(f"Kinetic Energy direct: {tf.reduce_mean(ke_direct)} +- {tf.math.reduce_std(ke_direct)}")
+            logger.debug(f"PE: {tf.reduce_mean(pe)} +- {tf.math.reduce_std(pe)}")
+
+            # logger.debug(f"Kinetic Energy JF: {tf.reduce_sum(ke_jf, axis=-1).numpy()}")
+            # logger.debug(f"Kinetic Energy direct: {tf.reduce_sum(ke_direct, axis=-1).numpy()}")
+            #
+
+            # flattened_jacobian is a list, flat_shape is tossed
+            flattened_jacobian, flat_shape = self.batched_jacobian(nobservations, x_current, self.wavefunction, self.jacobian)
+
+            for i_obs in range(nobservations):
+
+                # Energy here is computed per walker.
+                # Dividing by the number of walkers to normalize the energy
+                obs_energy      = energy[i_obs]     / self.nwalkers
+                obs_energy_jf   = energy_jf[i_obs]  / self.nwalkers
 
 
-        dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(flattened_jacobian, energy)
+                dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(flattened_jacobian[i_obs], obs_energy)
 
-        block_estimator.accumulate(
-            tf.reduce_sum(energy),
-            tf.reduce_sum(energy_jf),
-            acceptance,
-            1.,
-            dpsi_i,
-            dpsi_i_EL,
-            dpsi_ij,
-            1.)
+                block_estimator.accumulate(
+                    tf.reduce_sum(obs_energy),
+                    tf.reduce_sum(obs_energy_jf),
+                    acceptance,
+                    1.,
+                    dpsi_i,
+                    dpsi_i_EL,
+                    dpsi_ij,
+                    1.)
+            # Outside of the i_prop loop, we accumulate into the total_estimator:
+            total_estimator.accumulate(
+                block_estimator.energy,
+                block_estimator.energy_jf,
+                block_estimator.acceptance,
+                0,
+                block_estimator.dpsi_i,
+                block_estimator.dpsi_i_EL,
+                block_estimator.dpsi_ij,
+                block_estimator.weight)
 
-        # Outside of the i_prop loop, we accumulate into the total_estimator:
-        total_estimator.accumulate(
-            block_estimator.energy,
-            block_estimator.energy_jf,
-            block_estimator.acceptance,
-            0,
-            block_estimator.dpsi_i,
-            block_estimator.dpsi_i_EL,
-            block_estimator.dpsi_ij,
-            block_estimator.weight)
 
 
-        error, error_jf = total_estimator.finalize(naverages)
-        energy = total_estimator.energy
-        energy_jf = total_estimator.energy_jf
-        acceptance = total_estimator.acceptance
-        dpsi_i = total_estimator.dpsi_i
-        dpsi_i_EL = total_estimator.dpsi_i_EL
-        dpsi_ij = total_estimator.dpsi_ij
-        # if MPI_AVAILABLE:
-        #     # Here, we have to do a reduction over all params used to calculate gradients
-        #     energy    = hvd.allreduce(energy)
-        #     dpsi_i    = hvd.allreduce(dpsi_i)
-        #     dpsi_i_EL = hvd.allreduce(dpsi_i_EL)
-        #     dpsi_ij   = hvd.allreduce(dpsi_ij)
-###########################################################################################
-# NOTE: THE ABOVE REDUCTION WILL MESS UP THE ERROR CALCULATIONS
-###########################################################################################
-        # logger.info(f"psi norm{tf.reduce_mean(log_wpsi)}")
-        dp_i = self.optimizer.sr(energy,dpsi_i,dpsi_i_EL,dpsi_ij)
-
-        # Here, we recover the shape of the parameters of the network:
-        running_index = 0
-        gradient = []
-        for length in flat_shape:
-            l = length[-1].numpy()
-            end_index = running_index + l
-            gradient.append(dp_i[running_index:end_index])
-            running_index += l
-        shapes = [ p.shape for p in self.wavefunction.trainable_variables ]
-        delta_p = [ tf.reshape(g, s) for g, s in zip(gradient, shapes)]
-
-        return energy, error, energy_jf, error_jf, acceptance, delta_p
-
+        return total_estimator, flat_shape[0]
 
     # @tf.function
     def sr_walk_and_compute(self,naverages,nobservations,nvoid,block_estimator,total_estimator, wavefunction, sampler):

@@ -33,6 +33,8 @@ mlqm_dir = os.path.dirname(os.path.abspath(__file__))
 mlqm_dir = os.path.dirname(mlqm_dir)
 sys.path.insert(0,mlqm_dir)
 from mlqm.samplers     import Estimator
+from mlqm import DEFAULT_TENSOR_TYPE
+tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
 
 
 class exec(object):
@@ -93,8 +95,6 @@ class exec(object):
         from mlqm.hamiltonians import HarmonicOscillator
 
         self.hamiltonian = HarmonicOscillator(
-            n           = self.dimension,
-            nparticles  = self.nparticles,
             M           = float(self.config["Hamiltonian"]["mass"]),
             omega       = float(self.config["Hamiltonian"]["omega"]),
         )
@@ -128,7 +128,7 @@ class exec(object):
         _ = self.wavefunction(x)
 
 
-        energy, energy_by_parts = self.hamiltonian.energy(self.wavefunction, x)
+        energy, energy_by_parts, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x)
 
         for i in range(int(optimization['iterations'])):
             start = time.time()
@@ -180,6 +180,10 @@ class exec(object):
             if (i_block == neq) :
                total_estimator.reset()
 
+
+            ke_jf_list = []
+            ke_direct_list = []
+            pe_list = []
             for i_prop_step in range(nprop):
                 # Here, we update the position of each particle for SR:
                 acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid)
@@ -188,9 +192,18 @@ class exec(object):
 
                 # Compute energy and accumulate estimators within a given block
                 if i_block >= neq :
-                    energy, energy_jf = self.hamiltonian.energy(self.wavefunction, x_current)
+                    energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
                     energy = energy / self.nwalkers
                     energy_jf = energy_jf / self.nwalkers
+                    ke_jf = ke_jf / self.nwalkers
+                    ke_direct = ke_direct / self.nwalkers
+                    pe = pe / self.nwalkers
+
+
+
+                    ke_jf_list.append(tf.reduce_sum(ke_jf))
+                    ke_direct_list.append(tf.reduce_sum(ke_direct))
+                    pe_list.append(tf.reduce_sum(pe))
 
 
                     block_estimator.accumulate(
@@ -202,6 +215,12 @@ class exec(object):
                         0., # dpsi_i_EL,
                         0., # dpsi_ij,
                         1.)
+
+
+
+            print(f"ke_jf: {tf.reduce_mean(ke_jf_list)} +/- {tf.math.reduce_std(ke_jf_list)}")
+            print(f"ke_direct: {tf.reduce_mean(ke_direct_list)} +/- {tf.math.reduce_std(ke_direct_list)}")
+            print(f"pe: {tf.reduce_mean(pe_list)} +/- {tf.math.reduce_std(pe_list)}")
     # Accumulate block averages
             if ( i_block >= neq ):
                 total_estimator.accumulate(
