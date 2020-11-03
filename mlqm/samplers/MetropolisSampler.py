@@ -107,7 +107,6 @@ class MetropolisSampler(object):
         for i_kick in tf.range(nkicks):
             # Create a kick:
             kick = kicker(shape=shape, **kicker_params, dtype=dtype)
-
             kicked = walkers + kick
 
             # Compute the values of the wave function, which should be of shape

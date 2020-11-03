@@ -12,7 +12,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
     Extends:
         tf.keras.models.Model
     """
-    def __init__(self, ndim : int, nparticles: int, boundary_condition :tf.keras.layers.Layer = None):
+    def __init__(self, ndim : int, nparticles: int, mean_subtract : bool, boundary_condition :tf.keras.layers.Layer = None):
         '''Deep Sets wavefunction for symmetric particle wavefunctions
 
         Implements a deep set network for multiple particles in the same system
@@ -35,15 +35,19 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.nparticles = nparticles
 
+        self.mean_subtract = mean_subtract
+
+        self.activation = tf.keras.activations.softplus
+
         self.individual_net = tf.keras.models.Sequential()
-        self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
-        # self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
+        self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = self.activation))
+        # self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = self.activation))
         # self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False))
 
 
         self.aggregate_net = tf.keras.models.Sequential()
-        self.aggregate_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
-        # self.aggregate_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = tf.keras.activations.softplus))
+        self.aggregate_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = self.activation))
+        # self.aggregate_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = self.activation))
         self.aggregate_net.add(tf.keras.layers.Dense(1, use_bias = False))
 
         # self.normalization_exponent = tf.Variable(2.0, dtype=DEFAULT_TENSOR_TYPE)
@@ -52,7 +56,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
     @tf.function
     def call(self, inputs, trainable=None):
         # Mean subtract for all particles:
-        if self.nparticles > 1:
+        if self.nparticles > 1 and self.mean_subtract:
             mean = tf.reduce_mean(inputs, axis=1)
             xinputs = inputs - mean[:,None,:]
         else:
@@ -67,7 +71,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         # Compute the initial boundary condition, which the network will slowly overcome
         # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
-        boundary_condition = -0.1 * tf.reduce_sum(xinputs**2, axis=(1,2))
+        boundary_condition = -.1 * tf.reduce_sum(xinputs**2, axis=(1,2))
         boundary_condition = tf.reshape(boundary_condition, [-1,1])
 
 

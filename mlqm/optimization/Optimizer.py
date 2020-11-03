@@ -197,9 +197,9 @@ class Optimizer(object):
 
 
 
-                logger.debug(f"dist param = {dist}")
-                logger.debug(f"dist reg = {dist_reg}")
-                logger.debug(f"dist norm = {dist_norm}")
+                logger.debug(f"dist param = {dist:.4f}")
+                logger.debug(f"dist reg = {dist_reg:.4f}")
+                logger.debug(f"dist norm = {dist_norm:.4f}")
                 # dp_i = tf.cast(dp_i, tf.float32)
 
 

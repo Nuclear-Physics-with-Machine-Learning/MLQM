@@ -4,6 +4,8 @@ import configparser
 import time
 
 import argparse
+import signal
+import pickle
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -72,6 +74,10 @@ class exec(object):
         self.config = configparser.ConfigParser()
         self.config.read(self.args.config_file)
 
+        # Use this flag to catch interrupts, stop the next step and write output.
+        self.active = True
+
+
 
         optimization = self.config['Optimization']
         sr_parameters = ["iterations","nequilibrations","naverages","nobservations","nvoid", "delta", "eps"]
@@ -89,14 +95,53 @@ class exec(object):
         self.gamma           = float(optimization['gamma'])
         self.eta             = float(optimization['eta'])
 
+        self.global_step     = 0
 
         self.dimension  = int(self.config['General']['dimension'])
         self.nparticles = int(self.config['General']['nparticles'])
-        self.save_path  = self.config["General"]["model_save_path"]
+        self.save_path  = self.config["General"]["save_path"]
+        self.model_name = self.config["General"]["model_name"]
+
 
 
         self.build_sampler()
         self.build_hamiltonian()
+
+        # We append some extra information to the save path, if it's not there:
+        # Hamiltonian:
+
+
+
+        append_token = ""
+
+        if self.hamiltonian_form not in self.save_path:
+            append_token += f"/{self.hamiltonian_form}/"
+
+        dimension = f"{self.dimension}D"
+        if dimension not in self.save_path:
+            append_token += f"/{dimension}/"
+
+        n_part = f"{self.nparticles}particles"
+        if n_part not in self.save_path:
+            append_token += f"/{n_part}/"
+
+        # If there is an ellipsis in the save path, we replace that.
+        # Otherwise it just appends
+
+        if "..." in self.save_path:
+            self.save_path = self.save_path.replace("...", append_token)
+        else:
+            self.save_path += append_token
+
+
+        self.writer = tf.summary.create_file_writer(self.save_path)
+
+        self.model_path = self.save_path + self.model_name
+
+        # We also snapshot the configuration into the log dir:
+        with open(self.save_path + 'config.snapshot.ini', 'w') as cfg:
+            self.config.write(cfg)
+
 
     def build_sampler(self):
 
@@ -142,34 +187,34 @@ class exec(object):
     def build_hamiltonian(self):
 
         # First, ask for the type of hamiltonian
-        kind = self.config["Hamiltonian"]["form"]
-        if kind == "HarmonicOscillator":
+        self.hamiltonian_form = self.config["Hamiltonian"]["form"]
+        if self.hamiltonian_form == "HarmonicOscillator":
 
             from mlqm.hamiltonians import HarmonicOscillator
 
             required_keys = ["mass", "omega"]
-            self.check_potential_parameters(kind, required_keys, self.config["Hamiltonian"])
+            self.check_potential_parameters(self.hamiltonian_form, required_keys, self.config["Hamiltonian"])
 
 
             self.hamiltonian = HarmonicOscillator(
                 M           = float(self.config["Hamiltonian"]["mass"]),
                 omega       = float(self.config["Hamiltonian"]["omega"]),
             )
-        elif kind == "AtomicPotential":
+        elif self.hamiltonian_form == "AtomicPotential":
             from mlqm.hamiltonians import AtomicPotential
 
             required_keys = ["mass", "Z"]
-            self.check_potential_parameters(kind, required_keys, self.config["Hamiltonian"])
+            self.check_potential_parameters(self.hamiltonian_form, required_keys, self.config["Hamiltonian"])
 
             self.hamiltonian = AtomicPotential(
                 mu          = float(self.config["Hamiltonian"]["mass"]),
                 Z           = int(self.config["Hamiltonian"]["Z"]),
             )
-        elif kind == "NuclearPotential":
+        elif self.hamiltonian_form == "NuclearPotential":
             from mlqm.hamiltonians import NuclearPotential
 
             required_keys = ["mass", "Z"]
-            self.check_potential_parameters(kind, required_keys, self.config["Hamiltonian"])
+            self.check_potential_parameters(self.hamiltonian_form, required_keys, self.config["Hamiltonian"])
 
 
             self.hamiltonian = NuclearPotential(
@@ -177,7 +222,16 @@ class exec(object):
                 omega       = float(self.config["Hamiltonian"]["omega"]),
             )
         else:
-            raise Exception(f"Unknown potential requested: {kind}")
+            raise Exception(f"Unknown potential requested: {self.hamiltonian_form}")
+
+    def restore(self):
+        self.wavefunction.load_weights(self.model_path)
+
+        with open(self.save_path + "/global_step.pkl", 'rb') as _f:
+            self.global_step = pickle.load(file=_f)
+        with open(self.save_path + "/optimizer.pkl", 'rb') as _f:
+            self.optimizer   = pickle.load(file=_f)
+
 
     def run(self):
         tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
@@ -187,16 +241,19 @@ class exec(object):
         degree = [ 1 for d in range(self.dimension)]
 
         from mlqm.models import DeepSetsWavefunction
-        self.wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles)
+        self.wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles, mean_subtract=False)
 
-        # Run the wave function once to initialize all it's weights
+        # Run the wave function once to initialize all its weights
+        tf.summary.trace_on(graph=True)
         _ = self.wavefunction(x)
-
+        tf.summary.trace_off()
         # We attempt to restore the weights:
         try:
-            self.wavefunction.load_weights(self.save_path)
-            print("Loaded weights!")
-        except:
+            self.restore()
+            print("Loaded weights, optimizer and global step!")
+        except Exception as excep:
+            print("Failed to load weights!")
+            print(excep)
             pass
 
 
@@ -224,25 +281,37 @@ class exec(object):
         # energy, energy_by_parts = self.hamiltonian.energy(self.wavefunction, x)
         energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x)
 
-        for i in range(self.iterations):
+        while self.global_step < self.iterations:
+            if not self.active: break
+
             start = time.time()
 
-            energy, error, energy_jf, error_jf, acceptance, delta_p = self.sr_step(
+            delta_p, metrics,  = self.sr_step(
                 self.nequilibrations,
                 self.naverages,
                 self.nobservations,
                 self.nvoid)
 
+            self.summary(metrics, self.global_step)
+
             # Update the parameters:
             for i_param in range(len(self.wavefunction.trainable_variables)):
                 self.wavefunction.trainable_variables[i_param].assign_add(delta_p[i_param])
 
-            if i % 1 == 0:
-                logger.info(f"step = {i}, energy = {energy.numpy():.3f}, err = {error.numpy():.3f}")
-                logger.info(f"step = {i}, energy_jf = {energy_jf.numpy():.3f}, err = {error_jf.numpy():.3f}")
-                logger.info(f"acc  = {acceptance.numpy():.3f}")
+            if self.global_step % 1 == 0:
+                logger.info(f"step = {self.global_step}, energy = {metrics['energy/energy'].numpy():.3f}, err = {metrics['energy/error'].numpy():.3f}")
+                logger.info(f"step = {self.global_step}, energy_jf = {metrics['energy/energy_jf'].numpy():.3f}, err = {metrics['energy/error_jf'].numpy():.3f}")
+                logger.info(f"acc  = {metrics['metropolis/acceptance'].numpy():.3f}")
                 logger.info(f"time = {time.time() - start:.3f}")
 
+            # Iterate:
+            self.global_step += 1
+
+    # @tf.function
+    def summary(self, metrics, step):
+        with self.writer.as_default():
+            for key in metrics:
+                tf.summary.scalar(key, metrics[key], step=step)
 
     @tf.function
     def jacobian(self, x_current, wavefunction):
@@ -287,6 +356,9 @@ class exec(object):
         return dpsi_i, dpsi_ij, dpsi_i_EL
 
     def sr_step(self, nequilibrations, naverages, nobservations, nvoid):
+
+        metrics = {}
+
         nblock = nequilibrations + naverages
         block_estimator = Estimator(info=None)
         total_estimator = Estimator(info=None)
@@ -312,7 +384,7 @@ class exec(object):
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=1)
         #   This one does all the kicks.
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid*nequilibrations*naverages)
-        total_estimator, flat_shape = self.sr_walk_and_compute_optimized(
+        total_estimator, flat_shape, sub_metrics = self.sr_walk_and_compute_optimized(
             naverages = naverages,
             nobservations = nobservations,
             nvoid = nvoid,
@@ -320,6 +392,9 @@ class exec(object):
             total_estimator = total_estimator,
             wavefunction = self.wavefunction,
             sampler = self.sampler)
+
+        for key in sub_metrics:
+            metrics[key] = sub_metrics[key]
 
         error, error_jf = total_estimator.finalize(naverages)
         energy = total_estimator.energy
@@ -351,7 +426,13 @@ class exec(object):
         shapes = [ p.shape for p in self.wavefunction.trainable_variables ]
         delta_p = [ tf.reshape(g, s) for g, s in zip(gradient, shapes)]
 
-        return energy, error, energy_jf, error_jf, acceptance, delta_p
+        metrics['energy/energy']     = energy
+        metrics['energy/error']      = error
+        metrics['energy/energy_jf']  = energy_jf
+        metrics['energy/error_jf']   = error_jf
+        metrics['metropolis/acceptance'] = acceptance
+
+        return delta_p, metrics
 
     # def average_over_iterations(self, x_current_list, hamiltonian, block_estimator)
 
@@ -375,6 +456,10 @@ class exec(object):
         # For each block, accumulate nobservations times, with nvoid steps in between.
         total_estimator.reset()
 
+        ke_jf_list      = []
+        ke_direct_list  = []
+        pe_list         = []
+
         for i_av in tf.range(naverages):
             block_estimator.reset()
 
@@ -384,7 +469,11 @@ class exec(object):
             x_current  = sampler.sample()
 
             energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
-            # print(energy.shape)
+            # print("energy.shape: ", energy.shape)
+            # print("energy_jf.shape: ", energy_jf.shape)
+            # print("ke_jf.shape: ", ke_jf.shape)
+            # print("ke_direct.shape: ", ke_direct.shape)
+            # print("pe.shape: ", pe.shape)
 
             # We break x_current into n_observations:
             x_current  = tf.split(x_current, nobservations, axis=0)
@@ -397,10 +486,10 @@ class exec(object):
             ke_jf     = [ tf.reduce_sum(_ke_jf).numpy() / self.nwalkers for _ke_jf in ke_jf]
             ke_direct = [ tf.reduce_sum(_ke_direct).numpy() / self.nwalkers for _ke_direct in ke_direct]
             pe        = [ tf.reduce_sum(_pe).numpy() / self.nwalkers for _pe in pe]
+            ke_jf_list.append(tf.reduce_mean(ke_jf))
+            ke_direct_list.append(tf.reduce_mean(ke_direct))
+            pe_list.append(tf.reduce_mean(pe))
 
-            logger.debug(f"Kinetic Energy JF: {tf.reduce_mean(ke_jf)} +- {tf.math.reduce_std(ke_jf)}")
-            logger.debug(f"Kinetic Energy direct: {tf.reduce_mean(ke_direct)} +- {tf.math.reduce_std(ke_direct)}")
-            logger.debug(f"PE: {tf.reduce_mean(pe)} +- {tf.math.reduce_std(pe)}")
 
             # logger.debug(f"Kinetic Energy JF: {tf.reduce_sum(ke_jf, axis=-1).numpy()}")
             # logger.debug(f"Kinetic Energy direct: {tf.reduce_sum(ke_direct, axis=-1).numpy()}")
@@ -415,7 +504,6 @@ class exec(object):
                 # Dividing by the number of walkers to normalize the energy
                 obs_energy      = energy[i_obs]     / self.nwalkers
                 obs_energy_jf   = energy_jf[i_obs]  / self.nwalkers
-
 
                 dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(flattened_jacobian[i_obs], obs_energy)
 
@@ -439,9 +527,20 @@ class exec(object):
                 block_estimator.dpsi_ij,
                 block_estimator.weight)
 
+        # logger.debug(f"Kinetic Energy JF: {tf.reduce_mean(ke_jf_list):.2f} +- {tf.math.reduce_std(ke_jf_list):.2f}")
+        # logger.debug(f"Kinetic Energy direct: {tf.reduce_mean(ke_direct_list):.2f} +- {tf.math.reduce_std(ke_direct_list):.2f}")
+        # logger.debug(f"PE: {tf.reduce_mean(pe_list):.2f} +- {tf.math.reduce_std(pe_list):.2f}")
+
+        metrics = {}
+        metrics["energy/ke_jf"] = tf.reduce_mean(ke_jf_list)
+        metrics["energy/ke"] = tf.reduce_mean(ke_direct_list)
+        metrics["energy/pe"] = tf.reduce_mean(pe_list)
+        metrics["energy/ke_jf_std"] = tf.math.reduce_std(ke_jf_list)
+        metrics["energy/ke_std"] = tf.math.reduce_std(ke_direct_list)
+        metrics["energy/pe_std"] = tf.math.reduce_std(pe_list)
 
 
-        return total_estimator, flat_shape[0]
+        return total_estimator, flat_shape[0], metrics
 
     # @tf.function
     def sr_walk_and_compute(self,naverages,nobservations,nvoid,block_estimator,total_estimator, wavefunction, sampler):
@@ -495,10 +594,22 @@ class exec(object):
 
     def finalize(self):
         # Take the network and snapshot it to file:
-        self.wavefunction.save_weights(self.save_path)
+        self.wavefunction.save_weights(self.model_path)
+        print (self.model_path)
+        # Save the global step:
+        with open(self.save_path + "/global_step.pkl", 'wb') as _f:
+            pickle.dump(self.global_step, file=_f)
+        with open(self.save_path + "/optimizer.pkl", 'wb') as _f:
+            pickle.dump(self.optimizer, file=_f)
+
+    def interupt_handler(self, sig, frame):
+        logger.info("Snapshoting weights...")
+        self.active = False
 
 if __name__ == "__main__":
     e = exec()
+    signal.signal(signal.SIGINT, e.interupt_handler)
+
     # with tf.profiler.experimental.Profile('logdir'):
     e.run()
     e.finalize()

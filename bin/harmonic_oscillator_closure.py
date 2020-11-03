@@ -174,6 +174,9 @@ class exec(object):
         #  - In each block, there are nsteps = nprop * nvoid
         #    - The walkers are kicked at every step.
         #    - if the step is a multiple of nvoid, AND the block is bigger than neq, the calculations are done.
+        ke_jf_list = []
+        ke_direct_list = []
+        pe_list = []
 
         for i_block in range(nblock):
             block_estimator.reset()
@@ -181,9 +184,6 @@ class exec(object):
                total_estimator.reset()
 
 
-            ke_jf_list = []
-            ke_direct_list = []
-            pe_list = []
             for i_prop_step in range(nprop):
                 # Here, we update the position of each particle for SR:
                 acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid)
@@ -201,9 +201,9 @@ class exec(object):
 
 
 
-                    ke_jf_list.append(tf.reduce_sum(ke_jf))
-                    ke_direct_list.append(tf.reduce_sum(ke_direct))
-                    pe_list.append(tf.reduce_sum(pe))
+                    ke_jf_list.append(tf.reduce_sum(ke_jf).numpy())
+                    ke_direct_list.append(tf.reduce_sum(ke_direct).numpy())
+                    pe_list.append(tf.reduce_sum(pe).numpy())
 
 
                     block_estimator.accumulate(
@@ -218,9 +218,6 @@ class exec(object):
 
 
 
-            print(f"ke_jf: {tf.reduce_mean(ke_jf_list)} +/- {tf.math.reduce_std(ke_jf_list)}")
-            print(f"ke_direct: {tf.reduce_mean(ke_direct_list)} +/- {tf.math.reduce_std(ke_direct_list)}")
-            print(f"pe: {tf.reduce_mean(pe_list)} +/- {tf.math.reduce_std(pe_list)}")
     # Accumulate block averages
             if ( i_block >= neq ):
                 total_estimator.accumulate(
@@ -232,6 +229,10 @@ class exec(object):
                     0., # block_estimator.dpsi_i_EL,
                     0., # block_estimator.dpsi_ij,
                     block_estimator.weight)
+
+        print(f"ke_jf: {tf.reduce_mean(ke_jf_list)} +/- {tf.math.reduce_std(ke_jf_list)}")
+        print(f"ke_direct: {tf.reduce_mean(ke_direct_list)} +/- {tf.math.reduce_std(ke_direct_list)}")
+        print(f"pe: {tf.reduce_mean(pe_list)} +/- {tf.math.reduce_std(pe_list)}")
 
         error, error_jf = total_estimator.finalize(nav)
         energy = total_estimator.energy
