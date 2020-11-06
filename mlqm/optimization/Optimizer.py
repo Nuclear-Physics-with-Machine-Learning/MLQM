@@ -146,11 +146,17 @@ logger = logging.getLogger()
 
 class Optimizer(object):
 
-    def __init__(self,delta,eps,npt):
-        self.eps    = tf.convert_to_tensor(eps, dtype=tf.float64)
-        self.delta  = tf.convert_to_tensor(delta, dtype=tf.float64)
+    def __init__(self,delta,eps,npt,gamma, eta, dtype=tf.float64):
+        self.dtype  = dtype
+        self.eps    = tf.convert_to_tensor(eps, dtype=self.dtype)
+        self.delta  = tf.convert_to_tensor(delta, dtype=self.dtype)
+        self.gamma  = tf.convert_to_tensor(gamma, dtype=self.dtype)
+        self.eta    = tf.convert_to_tensor(eta  , dtype=self.dtype)
         self.npt    = npt
 #
+        #momentum:
+        self.vtm1   = 0.0
+
     @tf.function
     def par_dist(self, dp_i, S_ij):
         D_ij = S_ij * (dp_i * tf.transpose(dp_i))
@@ -158,33 +164,46 @@ class Optimizer(object):
         return dist
 
     def sr(self,energy,dpsi_i,dpsi_i_EL,dpsi_ij):
+
         # f_i= tf.cast(tf.cast(self.delta, tf.float32) * ( dpsi_i * energy - dpsi_i_EL ), tf.float64)
-        f_i= tf.cast(self.delta * ( dpsi_i * energy - dpsi_i_EL ), tf.float64)
+        f_i= tf.cast(self.delta * ( dpsi_i * energy - dpsi_i_EL ), self.dtype)
         S_ij = dpsi_ij - dpsi_i * tf.transpose(dpsi_i)
         i = 0
         while True:
-            S_ij_d = tf.cast(S_ij, tf.float64)
-            S_ij_d += 2**i * self.eps * tf.eye(self.npt, dtype=tf.float64)
+            S_ij_d = tf.cast(S_ij, self.dtype)
+            S_ij_d += 2**i * self.eps * tf.eye(self.npt, dtype=self.dtype)
             i += 1
             try:
-               U_ij = tf.linalg.cholesky(S_ij_d)
+                U_ij = tf.linalg.cholesky(S_ij_d)
 
-               positive_definite = True
+                positive_definite = True
             except:
-               positive_definite = False
-               logger.error(f"Warning, Cholesky did not find a positive definite matrix on attempt {i}")
+                positive_definite = False
+                logger.error(f"Warning, Cholesky did not find a positive definite matrix on attempt {i}")
             if (positive_definite):
-               dp_i = tf.linalg.cholesky_solve(U_ij, f_i)
-               dp_0 = 1. - self.delta * tf.cast(energy, tf.float64) - tf.reduce_sum(tf.cast(dpsi_i, tf.float64)*dp_i)
-               dp_i = dp_i / dp_0
-               dist = self.par_dist(dp_i, tf.cast(S_ij, tf.float64))
-               dist_reg = self.par_dist(dp_i, S_ij_d)
-               dist_norm = self.par_dist(dp_i, tf.cast(dpsi_i * tf.transpose(dpsi_i), tf.float64) )
+                dp_i = tf.linalg.cholesky_solve(U_ij, f_i)
+                dp_0 = 1. - self.delta * tf.cast(energy, self.dtype) - tf.reduce_sum(tf.cast(dpsi_i, self.dtype)*dp_i)
 
-               logger.debug(f"dist param = {dist}")
-               logger.debug(f"dist reg = {dist_reg}")
-               logger.debug(f"dist norm = {dist_norm}")
-               # dp_i = tf.cast(dp_i, tf.float32)
-               if (dist < 0.001 and dist_norm < 0.2):
-                  break
+                dp_i = self.gamma * self.vtm1 + self.eta * ( dp_i / dp_0 )
+
+                self.vmt1   = dp_i
+
+
+
+                dist = self.par_dist(dp_i, tf.cast(S_ij, self.dtype))
+                dist_reg = self.par_dist(dp_i, S_ij_d)
+                dist_norm = self.par_dist(dp_i, tf.cast(dpsi_i * tf.transpose(dpsi_i), self.dtype) )
+
+
+
+
+                logger.debug(f"dist param = {dist:.4f}")
+                logger.debug(f"dist reg = {dist_reg:.4f}")
+                logger.debug(f"dist norm = {dist_norm:.4f}")
+                # dp_i = tf.cast(dp_i, tf.float32)
+
+
+
+                if (dist < 0.001 and dist_norm < 0.2):
+                    break
         return dp_i

@@ -31,11 +31,11 @@ class GaussianBoundaryCondition(tf.keras.layers.Layer):
             raise Exception("Dimension must be at least 1 for GaussianBoundaryCondition")
 
         # Use numpy to broadcast to the right dimension:
-        exp = numpy.asarray(exp, dtype=numpy.float32)
+        exp = numpy.asarray(exp, dtype=numpy.float64)
         exp = numpy.broadcast_to(exp, (n,))
 
         # This is the parameter controlling the shape of the exponent:
-        self.exponent = tf.Variable(exp, trainable=trainable)
+        self.exponent = tf.Variable(exp, trainable=trainable, dtype=tf.float64)
 
 
     @tf.function
