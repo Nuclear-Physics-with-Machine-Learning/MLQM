@@ -122,24 +122,43 @@ class HarmonicOscillator(object):
 
         # Turning off all tape watching except for the inputs:
         # Using the outer-most tape to watch the computation of the first derivative:
-        with tf.GradientTape() as tape:
-            # Use the inner tape to watch the computation of the second derivative:
+        with tf.GradientTape(persistent=True) as tape:
+            # Use the inner tape to watch the computation of the wavefunction:
             tape.watch(inputs)
             with tf.GradientTape() as second_tape:
                 second_tape.watch(inputs)
                 logw_of_x = wavefunction(inputs, training=True)
             # Get the derivative of logw_of_x with respect to inputs
             dlogw_dx = second_tape.gradient(logw_of_x, inputs)
+
         # Get the derivative of dlogw_dx with respect to inputs (aka second derivative)
-        d2logw_dx2 = tape.gradient(dlogw_dx, inputs)
+
+        # We have to extract the diagonal of the jacobian, which comes out with shape
+        # [nwalkers, nparticles, dimension, nwalkers, nparticles, dimension]
+
+        # This is the full hessian computation:
+        d2logw_dx2 = tape.jacobian(dlogw_dx, inputs)
+
+        # And this contracts:
+        d2logw_dx2 = tf.einsum("wpdwpd->wpd",d2logw_dx2)
+
+        # # We need it in the shape [n_walkers, nparticles, dimension]
+        #
 
         # hessians = tf.hessians(logw_of_x, inputs)
         # d2_hessian = tf.reduce_sum(hessians[0], axis=(1,2,4,5))
         # d2logw_dx2 = tf.linalg.diag_part(d2_hessian)
-
+        #
         # print("logw_of_x.shape: ", logw_of_x.shape)
         # print("dlogw_dx.shape: ", dlogw_dx.shape)
         # print("d2logw_dx2.shape: ", d2logw_dx2.shape)
+
+        #
+        # print("inputs: ", inputs)
+        # print("logw_of_x: ", logw_of_x)
+        # print("dlogw_dx: ", dlogw_dx)
+        # print("d2logw_dx2: ", d2logw_dx2)
+
 
         # print("tf.reduce_mean(logw_of_x): ", tf.reduce_mean(logw_of_x))
         # print("tf.reduce_mean(dlogw_dx): ", tf.reduce_mean(dlogw_dx))

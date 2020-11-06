@@ -243,10 +243,16 @@ class exec(object):
         from mlqm.models import DeepSetsWavefunction
         self.wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles, mean_subtract=False)
 
+        #
+        # from mlqm.models import NeuralWavefunction
+        # self.wavefunction = NeuralWavefunction(self.dimension, self.nparticles)
+
+        print(self.wavefunction)
+
         # Run the wave function once to initialize all its weights
-        tf.summary.trace_on(graph=True)
+
         _ = self.wavefunction(x)
-        tf.summary.trace_off()
+
         # We attempt to restore the weights:
         try:
             self.restore()
@@ -450,7 +456,7 @@ class exec(object):
     # @profile
     def sr_walk_and_compute_optimized(self,naverages,nobservations,nvoid,block_estimator,total_estimator, wavefunction, sampler):
         kicker = tf.random.normal
-        kicker_params = {"mean": 0.0, "stddev" : 0.2}
+        kicker_params = {"mean": 0.0, "stddev" : 0.4}
 
         # Now, we loop over the number of blocks.
         # For each block, accumulate nobservations times, with nvoid steps in between.
