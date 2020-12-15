@@ -62,13 +62,8 @@ class HarmonicOscillator(object):
         # < x | KE | psi > / < x | psi > =  1 / 2m [ < x | p | psi > / < x | psi >  = 1/2 w * x**2
 
         # Contract d2_w_dx over spatial dimensions and particles:
-        # print("Enter ke_jf call")
-        # print("  dlogw_dx.shape: ", dlogw_dx.shape)
         ke_jf = (H_BAR**2 / (2 * M)) * tf.reduce_sum(dlogw_dx**2, axis=(1,2))
-        # print("  ke_jf.shape: ", ke_jf.shape)
-        # ke_jf = tf.reshape(ke_jf, [-1, 1])
-        # print("  ke_jf.shape: ", ke_jf.shape)
-        # print("Exit ke_jf call")
+
         return ke_jf
 
     @tf.function
@@ -141,28 +136,6 @@ class HarmonicOscillator(object):
 
         # And this contracts:
         d2logw_dx2 = tf.einsum("wpdwpd->wpd",d2logw_dx2)
-
-        # # We need it in the shape [n_walkers, nparticles, dimension]
-        #
-
-        # hessians = tf.hessians(logw_of_x, inputs)
-        # d2_hessian = tf.reduce_sum(hessians[0], axis=(1,2,4,5))
-        # d2logw_dx2 = tf.linalg.diag_part(d2_hessian)
-        #
-        # print("logw_of_x.shape: ", logw_of_x.shape)
-        # print("dlogw_dx.shape: ", dlogw_dx.shape)
-        # print("d2logw_dx2.shape: ", d2logw_dx2.shape)
-
-        #
-        # print("inputs: ", inputs)
-        # print("logw_of_x: ", logw_of_x)
-        # print("dlogw_dx: ", dlogw_dx)
-        # print("d2logw_dx2: ", d2logw_dx2)
-
-
-        # print("tf.reduce_mean(logw_of_x): ", tf.reduce_mean(logw_of_x))
-        # print("tf.reduce_mean(dlogw_dx): ", tf.reduce_mean(dlogw_dx))
-        # print("tf.reduce_mean(d2logw_dx2): ", tf.reduce_mean(d2logw_dx2))
 
 
         # Potential energy depends only on the wavefunction

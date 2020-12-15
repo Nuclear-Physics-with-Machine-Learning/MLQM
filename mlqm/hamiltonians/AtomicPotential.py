@@ -60,10 +60,10 @@ class AtomicPotential(object):
         # Compute r
         # Square the coordinates and
         r = tf.math.sqrt(tf.reduce_sum(inputs**2, axis=2))
-        print(r.shape)
+        # print(r.shape)
         # This is the sum of 1/r for all particles with the nucleus:
-        pe_1 = - (Z * ELECTRON_CHARGE**2 ) * tf.reduce_sum( 1. / (r + 1e-8), axis=1 )
-        print(pe_1.shape)
+        pe_1 = - (Z * ELECTRON_CHARGE**2 ) * tf.reduce_sum( 1. / (r + 1e-16), axis=1 )
+        # print(pe_1.shape)
         pe_2 = 0.
         return tf.reshape((pe_1 + pe_2), [-1, 1])
 
@@ -133,22 +133,27 @@ class AtomicPotential(object):
         """
 
 
-        # This function takes the inputs
-        # And computes the expectation value of the energy at each input point
-
-
         # Turning off all tape watching except for the inputs:
         # Using the outer-most tape to watch the computation of the first derivative:
-        with tf.GradientTape() as tape:
-            # Use the inner tape to watch the computation of the second derivative:
+        with tf.GradientTape(persistent=True) as tape:
+            # Use the inner tape to watch the computation of the wavefunction:
             tape.watch(inputs)
             with tf.GradientTape() as second_tape:
                 second_tape.watch(inputs)
                 logw_of_x = wavefunction(inputs, training=True)
             # Get the derivative of logw_of_x with respect to inputs
             dlogw_dx = second_tape.gradient(logw_of_x, inputs)
+
         # Get the derivative of dlogw_dx with respect to inputs (aka second derivative)
-        d2logw_dx2 = tape.gradient(dlogw_dx, inputs)
+
+        # We have to extract the diagonal of the jacobian, which comes out with shape
+        # [nwalkers, nparticles, dimension, nwalkers, nparticles, dimension]
+
+        # This is the full hessian computation:
+        d2logw_dx2 = tape.jacobian(dlogw_dx, inputs)
+
+        # And this contracts:
+        d2logw_dx2 = tf.einsum("wpdwpd->wpd",d2logw_dx2)
 
 
         # Potential energy depends only on the wavefunction
@@ -160,11 +165,10 @@ class AtomicPotential(object):
         # True, directly, uses the second derivative
         ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M=self.mu)
 
-        # print(ke_jf)
-        # print(ke_direct)
-
         # Total energy computations:
-        energy = tf.squeeze(pe + ke_direct)
-        energy_jf = tf.squeeze(pe + ke_jf)
+        energy = tf.squeeze(pe+ke_direct)
+        energy_jf = tf.squeeze(pe+ke_jf)
 
-        return energy, energy_jf
+
+        return energy, energy_jf, ke_jf, ke_direct, pe
+
