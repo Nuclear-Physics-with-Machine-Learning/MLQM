@@ -58,14 +58,21 @@ class AtomicPotential(object):
         # where r_ij = sqrt( [xi - xj]^2 + [yi - yj] ^2 + [zi - zj]^2)
 
         # Compute r
-        # Square the coordinates and
+        # Square the coordinates and sum for each walker
         r = tf.math.sqrt(tf.reduce_sum(inputs**2, axis=2))
-        # print(r.shape)
         # This is the sum of 1/r for all particles with the nucleus:
-        pe_1 = - (Z * ELECTRON_CHARGE**2 ) * tf.reduce_sum( 1. / (r + 1e-16), axis=1 )
-        # print(pe_1.shape)
+        pe_1 = - (Z * ELECTRON_CHARGE**2 ) * tf.reduce_sum( 1. / (r + 1e-8), axis=1 )
+
+        # This is the sum of 1/r for all particles with other particles.
+        n_particles = inputs.shape[1]
+        for i_particle in range(n_particles):
+            centroid = inputs[:,i_particle,:]
+
+            r = tf.math.sqrt(tf.reduce_sum((inputs -centroid)**2, axis=2))
+            pe_2 = -0.5* (ELECTRON_CHARGE**2 ) * tf.reduce_sum( 1. / (r + 1e-8), axis=1 )
+            # Because this force is symmetric, I'm multiplying by 0.5 to prevent overflow
         pe_2 = 0.
-        return tf.reshape((pe_1 + pe_2), [-1, 1])
+        return pe_1 + pe_2
 
     @tf.function
     def kinetic_energy_jf(self, *, dlogw_dx, M):
@@ -83,14 +90,10 @@ class AtomicPotential(object):
         """
         # < x | KE | psi > / < x | psi > =  1 / 2m [ < x | p | psi > / < x | psi >  = 1/2 w * x**2
 
-        # print("d2logw_dx2.shape: ",( dlogw_dx**2).shape)
-        # print("tf.reduce_sum(d2logw_dx2, axis=(2)).shape: ", tf.reduce_sum(dlogw_dx**2, axis=(2)).shape)
-        # print("tf.reduce_sum(d2logw_dx2, axis=(1,2)).shape: ", tf.reduce_sum(dlogw_dx**2, axis=(1,2)).shape)
-
-        # Contract d2_w_dx over spatial dimensions:
+        # Contract d2_w_dx over spatial dimensions and particles:
         ke_jf = (H_BAR**2 / (2 * M)) * tf.reduce_sum(dlogw_dx**2, axis=(1,2))
-        return tf.reshape(ke_jf, [-1, 1])
 
+        return ke_jf
 
     @tf.function
     def kinetic_energy(self, *, KE_JF, d2logw_dx2, M):
@@ -109,13 +112,10 @@ class AtomicPotential(object):
         Returns:
             tf.Tensor - potential energy of shape [1]
         """
-        # print("d2logw_dx2.shape: ", d2logw_dx2.shape)
-        # print("tf.reduce_sum(d2logw_dx2, axis=(2)).shape: ", tf.reduce_sum(d2logw_dx2, axis=(2)).shape)
-        # print("tf.reduce_sum(d2logw_dx2, axis=(1,2)).shape: ", tf.reduce_sum(d2logw_dx2, axis=(1,2)).shape)
         ke = -(H_BAR**2 / (2 * M)) * tf.reduce_sum(d2logw_dx2, axis=(1,2))
-        return tf.reshape(ke, [-1, 1])  - KE_JF
+        ke = ke  - KE_JF
 
-    # def energy_internal(self, wavefunction, inputs)
+        return ke
 
     @tf.function
     def energy(self, wavefunction, inputs):
@@ -129,7 +129,7 @@ class AtomicPotential(object):
             delta {tf.Tensor} -- Integral Computation 'dx'
 
         Returns:
-            tf.tensor - Energy of shape [1]
+            tf.tensor - Energy of shape [n_walkers]
         """
 
 
@@ -158,13 +158,12 @@ class AtomicPotential(object):
 
         # Potential energy depends only on the wavefunction
         pe = self.potential_energy(inputs=inputs, Z=self.Z)
-
         # KE by parts needs only one derivative
         ke_jf = self.kinetic_energy_jf(dlogw_dx=dlogw_dx, M=self.mu)
-
         # True, directly, uses the second derivative
         ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M=self.mu)
 
+<<<<<<< Updated upstream
         # Total energy computations:
         energy = tf.squeeze(pe+ke_direct)
         energy_jf = tf.squeeze(pe+ke_jf)
@@ -172,3 +171,12 @@ class AtomicPotential(object):
 
         return energy, energy_jf, ke_jf, ke_direct, pe
 
+=======
+
+
+        # Total energy computations:
+        energy = tf.squeeze(pe+ke_direct)
+        energy_jf = tf.squeeze(pe+ke_jf)
+
+        return energy, energy_jf, ke_jf, ke_direct, pe
+>>>>>>> Stashed changes
