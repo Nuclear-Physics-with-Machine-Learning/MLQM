@@ -1,4 +1,4 @@
-import torch
+import tf
 import numpy as np
 
 #from mlqm import H_BAR
@@ -25,23 +25,23 @@ class NuclearPotential(object):
 
     @tf.function
     def pionless_2b(self, *, r_ij):
-        pot_2b=torch.zeros(self.nwalk,6)
+        pot_2b=tf.zeros(self.nwalk,6)
         vkr = 4.0
         v0r = -487.6128
         v0s = -17.5515
         x = vkr * r_ij
-        vr = torch.exp(-x**2/4.0)
+        vr = tf.exp(-x**2/4.0)
         pot_2b[:,0] = vr*v0r
         pot_2b[:,2] = vr*v0s
         return pot_2b
 
     @tf.function
     def pionless_3b(self, *,  r_ij):
-        pot_3b = torch.zeros(self.nwalk)
+        pot_3b = tf.zeros(self.nwalk)
         vkr = 4.0
         ar3b = np.sqrt(677.79890)
         x = vkr * r_ij
-        vr = torch.exp(-x**2/4.0)
+        vr = tf.exp(-x**2/4.0)
         pot_3b = vr * ar3b
         return pot_3b
 
@@ -71,14 +71,14 @@ class NuclearPotential(object):
             for j in range (i+1,nparticles):
                 # 
                 x_ij = inputs[:,i,:]-inputs[:,j,:]
-                r_ij = torch.sqrt(torch.sum(x_ij**2,dim=1))
+                r_ij = tf.sqrt(tf.sum(x_ij**2,dim=1))
                 v_ij += potential.pionless_2b(r_ij)
                 if (self.npart > 2 ):
                    t_ij = potential.pionless_3b(r_ij)
                    gr3b[:,i] += t_ij
                    gr3b[:,j] += t_ij
                    V_ijk -= t_ij**2
-        V_ijk += 0.5 * torch.sum(gr3b**2, dim = 1)
+        V_ijk += 0.5 * tf.sum(gr3b**2, dim = 1)
         self.pe = v_ij[:,0] + self.alpha * v_ij[:,2] + V_ijk
 
 
@@ -214,22 +214,22 @@ class NuclearPotential(object):
         object.__init__(self)
 
     def pionless_2b(self, rr):
-        pot_2b=torch.zeros(self.nwalk,6)
+        pot_2b=tf.zeros(self.nwalk,6)
         vkr = 4.0
         v0r = -487.6128
         v0s = -17.5515
         x = vkr*rr
-        vr = torch.exp(-x**2/4.0)
+        vr = tf.exp(-x**2/4.0)
         pot_2b[:,0] = vr*v0r
         pot_2b[:,2] = vr*v0s
         return pot_2b
 
     def pionless_3b(self, rr):
-        pot_3b = torch.zeros(self.nwalk)
+        pot_3b = tf.zeros(self.nwalk)
         vkr = 4.0
         ar3b = np.sqrt(677.79890)
         x = vkr*rr
-        vr = torch.exp(-x**2/4.0)
+        vr = tf.exp(-x**2/4.0)
         pot_3b = vr * ar3b
         return pot_3b
 
