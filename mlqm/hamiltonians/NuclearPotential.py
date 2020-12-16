@@ -13,8 +13,17 @@ class NuclearPotential(object):
     """
 
     def __init__(self, M):
-        object.__init__(self)
-        self.mass = M
+        '''
+        Arguments:
+            mass {float} -- Nuclear mass, aka number of electrons
+
+        '''
+        Hamiltonian.__init__(self, **kwargs)
+
+        # Check the parameters have everything needed:
+        for parameter in ["mass"]:
+            if parameter not in self.parameters:
+                raise KeyError("Parameter {parameter} not suppliled as keyword arg to HarmonicOscillator")
 
 
     @tf.function
@@ -87,54 +96,39 @@ class NuclearPotential(object):
         return pe
 
     @tf.function
-    def kinetic_energy_jf(self, *, dlogw_dx, M):
-        """Return Kinetic energy
-
-        Calculate and return the KE directly
-
-        Otherwise, exception
-
+    def compute_energies(self, inputs, logw_of_x, dlogw_dx, d2logw_dx2):
+        '''Compute PE, KE_JF, and KE_direct
+        
+        Harmonic Oscillator Energy Calculations
+        
         Arguments:
-            logw_of_x {tf.Tensor} -- Computed derivative of the wavefunction
+            inputs {[type]} -- walker coordinates (shape is [nwalkers, nparticles, dimension])
+            logw_of_x {[type]} -- computed wave function at each walker
+            dlogw_dx {[type]} -- first derivative of wavefunction at each walker
+            d2logw_dx2 {[type]} -- second derivative of wavefunction at each walker
+        
+        Raises:
+            NotImplementedError -- [description]
 
         Returns:
-            tf.Tensor - potential energy of shape [1]
-        """
-        # < x | KE | psi > / < x | psi > =  1 / 2m [ < x | p | psi > / < x | psi >  = 1/2 w * x**2
+            pe -- potential energy
+            ke_jf -- JF Kinetic energy
+            ke_direct -- 2nd deriv computation of potential energy
+        '''
 
-        # Contract d2_w_dx over spatial dimensions and particles:
-        ke_jf = (H_BAR**2 / (2* M)) * tf.reduce_sum(dlogw_dx**2, axis=(1,2))
+        # Potential energy depends only on the wavefunction
+        pe = self.potential_energy(inputs=inputs, M = self.parameters["mass"])
 
-        return ke_jf
+        # KE by parts needs only one derivative
+        ke_jf = self.kinetic_energy_jf(dlogw_dx=dlogw_dx, M=self.parameters["mass"])
 
-    @tf.function
-    def kinetic_energy(self, *, KE_JF, d2logw_dx2, M):
-        """Return Kinetic energy
+        # True, directly, uses the second derivative
+        ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M=self.parameters["mass"])
 
-        If the potential energy is already computed, and no arguments are supplied,
-        return the cached value
 
-        If all arguments are supplied, calculate and return the KE.
+        return pe, ke_jf, ke_direct
 
-        Otherwise, exception
 
-        Arguments:
-            logw_of_x {tf.Tensor} -- Computed derivative of the wavefunction
-
-        Returns:
-            tf.Tensor - potential energy of shape [1]
-        """
-        # print("Enter ke call")
-
-        # print("  d2logw_dx2.shape:", d2logw_dx2.shape)
-        # print("  KE_JF.shape:", KE_JF.shape)
-        ke = -(H_BAR**2 / (2 * M)) * tf.reduce_sum(d2logw_dx2, axis=(1,2))
-        # print("  ke.shape:", ke.shape)
-        ke = ke  - KE_JF
-        # print("  ke.shape:", ke.shape)
-        # print("Exit ke call")
-
-        return ke
 
     @tf.function
     def energy(self, wavefunction, inputs):
@@ -179,14 +173,6 @@ class NuclearPotential(object):
         d2logw_dx2 = tf.einsum("wpdwpd->wpd",d2logw_dx2)
 
 
-        # Potential energy depends only on the wavefunction
-        pe = self.potential_energy(inputs=inputs)
-
-        # KE by parts needs only one derivative
-        ke_jf = self.kinetic_energy_jf(dlogw_dx=dlogw_dx, M = self.mass)
-
-        # True, directly, uses the second derivative
-        ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M = self.mass)
 
         # print("pe.shape: ", pe.shape)
         # print("ke_jf.shape: ", ke_jf.shape)
