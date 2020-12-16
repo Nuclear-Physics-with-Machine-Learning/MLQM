@@ -104,9 +104,15 @@ class MetropolisSampler(object):
         # Generate a long set of random number from which we will pull:
         random_numbers = tf.math.log(tf.random.uniform(shape = [nkicks,shape[0],1], dtype=dtype))
 
+        # Generate a long list of kicks:
+        # print(shape)
+        kicks = kicker(shape=[nkicks, *shape], **kicker_params, dtype=dtype)
+        # print(kicks.shape)
+
         for i_kick in tf.range(nkicks):
             # Create a kick:
-            kick = kicker(shape=shape, **kicker_params, dtype=dtype)
+            kick = kicks[i_kick]
+            # kick = kicker(shape=shape, **kicker_params, dtype=dtype)
             kicked = walkers + kick
 
             # Compute the values of the wave function, which should be of shape
