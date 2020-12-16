@@ -40,20 +40,20 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         self.activation = tf.keras.activations.softplus
 
         self.individual_net = tf.keras.models.Sequential()
-        self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = self.activation))
-        # self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = self.activation))
-        # self.individual_net.add(tf.keras.layers.Dense(32, use_bias = False))
+        self.individual_net.add(tf.keras.layers.Dense(32, use_bias = True, activation = self.activation))
+        self.individual_net.add(tf.keras.layers.Dense(32, use_bias = True, activation = self.activation))
+        # self.individual_net.add(tf.keras.layers.Dense(32, use_bias = True))
 
 
         self.aggregate_net = tf.keras.models.Sequential()
         self.aggregate_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = self.activation))
-        # self.aggregate_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = self.activation))
+        self.aggregate_net.add(tf.keras.layers.Dense(32, use_bias = False, activation = self.activation))
         self.aggregate_net.add(tf.keras.layers.Dense(1, use_bias = False))
 
         # self.normalization_exponent = tf.Variable(2.0, dtype=DEFAULT_TENSOR_TYPE)
         # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
 
-    @tf.function
+    @tf.function(experimental_compile=False)
     def call(self, inputs, trainable=None):
         # Mean subtract for all particles:
         if self.nparticles > 1 and self.mean_subtract:

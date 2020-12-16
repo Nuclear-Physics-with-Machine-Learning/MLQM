@@ -10,6 +10,8 @@ import pickle
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+# os.environ['TF_XLA_FLAGS'] = "--tf_xla_auto_jit=1 --tf_xla_auto_jit=fusible"
+
 import tensorflow as tf
 #
 # try:
@@ -101,7 +103,12 @@ class exec(object):
         self.nparticles = int(self.config['General']['nparticles'])
         self.save_path  = self.config["General"]["save_path"]
         self.model_name = self.config["General"]["model_name"]
+        if "profile" in self.config["General"]:
+            self.profile = self.config["General"]["profile"]
+        else:
+            self.profile = False
 
+        self.set_compute_parameters()
 
 
         self.build_sampler()
@@ -213,13 +220,11 @@ class exec(object):
         elif self.hamiltonian_form == "NuclearPotential":
             from mlqm.hamiltonians import NuclearPotential
 
-            required_keys = ["mass", "Z"]
+            required_keys = ["mass"]
             self.check_potential_parameters(self.hamiltonian_form, required_keys, self.config["Hamiltonian"])
 
-
             self.hamiltonian = NuclearPotential(
-                M           = float(self.config["Hamiltonian"]["mass"]),
-                omega       = float(self.config["Hamiltonian"]["omega"]),
+                M           = float(self.config["Hamiltonian"]['mass'])
             )
         else:
             raise Exception(f"Unknown potential requested: {self.hamiltonian_form}")
@@ -233,8 +238,17 @@ class exec(object):
             self.optimizer   = pickle.load(file=_f)
 
 
-    def run(self):
+    def set_compute_parameters(self):
         tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
+        tf.debugging.set_log_device_placement(False)
+
+        physical_devices = tf.config.list_physical_devices('GPU')
+        for device in physical_devices:
+            tf.config.experimental.set_memory_growth(device, True)
+
+    def run(self):
+
+
         x = self.sampler.sample()
 
         # For each dimension, randomly pick a degree
@@ -247,11 +261,12 @@ class exec(object):
         # from mlqm.models import NeuralWavefunction
         # self.wavefunction = NeuralWavefunction(self.dimension, self.nparticles)
 
-        print(self.wavefunction)
-
         # Run the wave function once to initialize all its weights
 
         _ = self.wavefunction(x)
+        #
+        # with self.writer.as_default():
+        #     tf.summary.graph(self.wavefunction.get_concrete_function().graph)
 
         # We attempt to restore the weights:
         try:
@@ -287,8 +302,14 @@ class exec(object):
         # energy, energy_by_parts = self.hamiltonian.energy(self.wavefunction, x)
         energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x)
 
+
         while self.global_step < self.iterations:
             if not self.active: break
+            #
+            # if self.profile:
+            #     tf.profiler.experimental.start(self.save_path)
+            #     tf.summary.trace_on(graph=True)
+
 
             start = time.time()
 
@@ -312,6 +333,11 @@ class exec(object):
 
             # Iterate:
             self.global_step += 1
+
+            # if self.profile:
+            #     tf.profiler.experimental.stop()
+            #     tf.summary.trace_off()
+            #
 
     # @tf.function
     def summary(self, metrics, step):
@@ -364,6 +390,7 @@ class exec(object):
     def sr_step(self, nequilibrations, naverages, nobservations, nvoid):
 
         metrics = {}
+
 
         nblock = nequilibrations + naverages
         block_estimator = Estimator(info=None)
@@ -601,7 +628,6 @@ class exec(object):
     def finalize(self):
         # Take the network and snapshot it to file:
         self.wavefunction.save_weights(self.model_path)
-        print (self.model_path)
         # Save the global step:
         with open(self.save_path + "/global_step.pkl", 'wb') as _f:
             pickle.dump(self.global_step, file=_f)

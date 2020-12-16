@@ -64,14 +64,14 @@ class AtomicPotential(object):
         pe_1 = - (Z * ELECTRON_CHARGE**2 ) * tf.reduce_sum( 1. / (r + 1e-8), axis=1 )
 
         # This is the sum of 1/r for all particles with other particles.
-        n_particles = inputs.shape[1]
-        for i_particle in range(n_particles):
-            centroid = inputs[:,i_particle,:]
-
-            r = tf.math.sqrt(tf.reduce_sum((inputs -centroid)**2, axis=2))
-            pe_2 = -0.5* (ELECTRON_CHARGE**2 ) * tf.reduce_sum( 1. / (r + 1e-8), axis=1 )
-            # Because this force is symmetric, I'm multiplying by 0.5 to prevent overflow
-        pe_2 = 0.
+        # n_particles = inputs.shape[1]
+        # for i_particle in range(n_particles):
+        #     centroid = inputs[:,i_particle,:]
+        #
+        #     r = tf.math.sqrt(tf.reduce_sum((inputs -centroid)**2, axis=2))
+        #     pe_2 = -0.5* (ELECTRON_CHARGE**2 ) * tf.reduce_sum( 1. / (r + 1e-8), axis=1 )
+        #     # Because this force is symmetric, I'm multiplying by 0.5 to prevent overflow
+        # pe_2 = 0.
         return pe_1 + pe_2
 
     @tf.function

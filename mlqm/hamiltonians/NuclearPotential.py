@@ -1,8 +1,3 @@
-import tf
-import numpy as np
-
-#from mlqm import H_BAR
-#from mlqm import M
 
 import tensorflow as tf
 import numpy
@@ -11,33 +6,31 @@ import logging
 logger = logging.getLogger()
 
 from mlqm import H_BAR
+from mlqm import DEFAULT_TENSOR_TYPE
 
 class NuclearPotential(object):
     """Nuclear Physics Potential
     """
 
-    def __init__(self, M : float, omega : float):
-
+    def __init__(self, M):
         object.__init__(self)
+        self.mass = M
 
-        self.M = M
-        self.omega = omega
 
     @tf.function
-    def pionless_2b(self, *, r_ij):
-        pot_2b=tf.zeros(self.nwalk,6)
+    def pionless_2b(self, *, r_ij, nwalkers):
+        pot_2b=tf.zeros(shape=(nwalkers,6), dtype=DEFAULT_TENSOR_TYPE)
         vkr = 4.0
         v0r = -487.6128
         v0s = -17.5515
         x = vkr * r_ij
         vr = tf.exp(-x**2/4.0)
-        pot_2b[:,0] = vr*v0r
-        pot_2b[:,2] = vr*v0s
-        return pot_2b
+
+        return v0r*vr, v0s*vr
 
     @tf.function
-    def pionless_3b(self, *,  r_ij):
-        pot_3b = tf.zeros(self.nwalk)
+    def pionless_3b(self, *,  r_ij, nwalkers):
+        pot_3b = tf.zeros(shape=(nwalkers))
         vkr = 4.0
         ar3b = np.sqrt(677.79890)
         x = vkr * r_ij
@@ -46,7 +39,7 @@ class NuclearPotential(object):
         return pot_3b
 
     @tf.function
-    def potential_energy(self, *, inputs,):
+    def potential_energy(self, *, inputs):
         """Return potential energy
 
         Calculate and return the PE.
@@ -64,22 +57,31 @@ class NuclearPotential(object):
         nwalkers   = inputs.shape[0]
         nparticles = inputs.shape[1]
 
-        v_ij = tf.zeros(size=[nwalkers,6])
-        gr3b = tf.zeros(size=[nwalkers,nparticles])
-        V_ijk = tf.zeros(size=[nwalkers])
+        if nparticles == 2:
+            alpha = 1.0
+        elif nparticles > 2:
+            alpha = -1.0
+
+        v_ij = tf.zeros(shape=[nwalkers,6], dtype=DEFAULT_TENSOR_TYPE)
+        gr3b = tf.zeros(shape=[nwalkers,nparticles], dtype=DEFAULT_TENSOR_TYPE)
+        V_ijk = tf.zeros(shape=[nwalkers], dtype=DEFAULT_TENSOR_TYPE)
         for i in range (nparticles-1):
             for j in range (i+1,nparticles):
-                # 
+                #
                 x_ij = inputs[:,i,:]-inputs[:,j,:]
-                r_ij = tf.sqrt(tf.sum(x_ij**2,dim=1))
-                v_ij += potential.pionless_2b(r_ij)
-                if (self.npart > 2 ):
-                   t_ij = potential.pionless_3b(r_ij)
+                r_ij = tf.sqrt(tf.reduce_sum(x_ij**2,axis=1))
+                print("r_ij.shape: ", r_ij.shape)
+                print("v_ij.shape: ", v_ij.shape)
+                vrr, vrs = self.pionless_2b(r_ij=r_ij, nwalkers=nwalkers)
+                # v_ij += self.pionless_2b(r_ij=r_ij, nwalkers=nwalkers)
+                if (nparticles > 2 ):
+                   t_ij = self.pionless_3b(r_ij=r_ij, nwalkers=nwalkers)
                    gr3b[:,i] += t_ij
                    gr3b[:,j] += t_ij
                    V_ijk -= t_ij**2
-        V_ijk += 0.5 * tf.sum(gr3b**2, dim = 1)
-        self.pe = v_ij[:,0] + self.alpha * v_ij[:,2] + V_ijk
+        V_ijk += 0.5 * tf.reduce_sum(gr3b**2, axis = 1)
+        pe = vrr + alpha * vrs + V_ijk
+        # self.pe = v_ij[:,0] + self.alpha * v_ij[:,2] + V_ijk
 
 
         return pe
@@ -101,7 +103,7 @@ class NuclearPotential(object):
         # < x | KE | psi > / < x | psi > =  1 / 2m [ < x | p | psi > / < x | psi >  = 1/2 w * x**2
 
         # Contract d2_w_dx over spatial dimensions and particles:
-        ke_jf = (H_BAR**2 / (2 * M)) * tf.reduce_sum(dlogw_dx**2, axis=(1,2))
+        ke_jf = (H_BAR**2 / (2* M)) * tf.reduce_sum(dlogw_dx**2, axis=(1,2))
 
         return ke_jf
 
@@ -178,13 +180,13 @@ class NuclearPotential(object):
 
 
         # Potential energy depends only on the wavefunction
-        pe = self.potential_energy(inputs=inputs, M = self.M, omega=self.omega)
+        pe = self.potential_energy(inputs=inputs)
 
         # KE by parts needs only one derivative
-        ke_jf = self.kinetic_energy_jf(dlogw_dx=dlogw_dx, M=self.M)
+        ke_jf = self.kinetic_energy_jf(dlogw_dx=dlogw_dx, M = self.mass)
 
         # True, directly, uses the second derivative
-        ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M=self.M)
+        ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M = self.mass)
 
         # print("pe.shape: ", pe.shape)
         # print("ke_jf.shape: ", ke_jf.shape)
@@ -203,35 +205,3 @@ class NuclearPotential(object):
         # print("energy_jf.shape:", energy_jf.shape)
 
         return energy, energy_jf, ke_jf, ke_direct, pe
-
-
-
-
-class NuclearPotential(object):
-
-    def __init__(self,nwalk):
-        self.nwalk=nwalk
-        object.__init__(self)
-
-    def pionless_2b(self, rr):
-        pot_2b=tf.zeros(self.nwalk,6)
-        vkr = 4.0
-        v0r = -487.6128
-        v0s = -17.5515
-        x = vkr*rr
-        vr = tf.exp(-x**2/4.0)
-        pot_2b[:,0] = vr*v0r
-        pot_2b[:,2] = vr*v0s
-        return pot_2b
-
-    def pionless_3b(self, rr):
-        pot_3b = tf.zeros(self.nwalk)
-        vkr = 4.0
-        ar3b = np.sqrt(677.79890)
-        x = vkr*rr
-        vr = tf.exp(-x**2/4.0)
-        pot_3b = vr * ar3b
-        return pot_3b
-
-
-
