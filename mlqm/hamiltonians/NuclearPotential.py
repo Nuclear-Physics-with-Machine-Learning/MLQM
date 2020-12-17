@@ -7,12 +7,13 @@ logger = logging.getLogger()
 
 from mlqm import H_BAR
 from mlqm import DEFAULT_TENSOR_TYPE
+from mlqm.hamiltonians import Hamiltonian
 
-class NuclearPotential(object):
+class NuclearPotential(Hamiltonian):
     """Nuclear Physics Potential
     """
 
-    def __init__(self, M):
+    def __init__(self, **kwargs):
         '''
         Arguments:
             mass {float} -- Nuclear mass, aka number of electrons
@@ -117,7 +118,7 @@ class NuclearPotential(object):
         '''
 
         # Potential energy depends only on the wavefunction
-        pe = self.potential_energy(inputs=inputs, M = self.parameters["mass"])
+        pe = self.potential_energy(inputs=inputs)
 
         # KE by parts needs only one derivative
         ke_jf = self.kinetic_energy_jf(dlogw_dx=dlogw_dx, M=self.parameters["mass"])
@@ -128,66 +129,3 @@ class NuclearPotential(object):
 
         return pe, ke_jf, ke_direct
 
-
-
-    @tf.function
-    def energy(self, wavefunction, inputs):
-        """Compute the expectation valye of energy of the supplied wavefunction.
-
-        Computes the integral of the wavefunction in this potential
-
-        Arguments:
-            wavefunction {Wavefunction model} -- Callable wavefunction object
-            inputs {tf.Tensor} -- Tensor of shape [N, dimension], must have graph enabled
-            delta {tf.Tensor} -- Integral Computation 'dx'
-
-        Returns:
-            tf.tensor - Energy of shape [n_walkers]
-        """
-
-
-        # This function takes the inputs
-        # And computes the expectation value of the energy at each input point
-
-
-        # Turning off all tape watching except for the inputs:
-        # Using the outer-most tape to watch the computation of the first derivative:
-        with tf.GradientTape(persistent=True) as tape:
-            # Use the inner tape to watch the computation of the wavefunction:
-            tape.watch(inputs)
-            with tf.GradientTape() as second_tape:
-                second_tape.watch(inputs)
-                logw_of_x = wavefunction(inputs, training=True)
-            # Get the derivative of logw_of_x with respect to inputs
-            dlogw_dx = second_tape.gradient(logw_of_x, inputs)
-
-        # Get the derivative of dlogw_dx with respect to inputs (aka second derivative)
-
-        # We have to extract the diagonal of the jacobian, which comes out with shape
-        # [nwalkers, nparticles, dimension, nwalkers, nparticles, dimension]
-
-        # This is the full hessian computation:
-        d2logw_dx2 = tape.jacobian(dlogw_dx, inputs)
-
-        # And this contracts:
-        d2logw_dx2 = tf.einsum("wpdwpd->wpd",d2logw_dx2)
-
-
-
-        # print("pe.shape: ", pe.shape)
-        # print("ke_jf.shape: ", ke_jf.shape)
-        # print("ke_direct.shape: ", ke_direct.shape)
-
-        # print("tf.reduce_mean(pe): ", tf.reduce_mean(pe))
-        # print("tf.reduce_mean(ke_jf): ", tf.reduce_mean(ke_jf))
-        # print("tf.reduce_mean(ke_direct): ", tf.reduce_mean(ke_direct))
-
-
-        # Total energy computations:
-        energy = tf.squeeze(pe+ke_direct)
-        energy_jf = tf.squeeze(pe+ke_jf)
-
-        # print("energy.shape:", energy.shape)
-        # print("energy_jf.shape:", energy_jf.shape)
-
-        return energy, energy_jf, ke_jf, ke_direct, pe

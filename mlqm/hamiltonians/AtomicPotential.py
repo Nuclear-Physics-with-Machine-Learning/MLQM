@@ -2,8 +2,9 @@ import tensorflow as tf
 import numpy
 
 from mlqm import H_BAR, ELECTRON_CHARGE
+from mlqm.hamiltonians import Hamiltonian
 
-class AtomicPotential(object):
+class AtomicPotential(Hamiltonian):
     """Atomic Hamiltonian
 
     Implementation of the atomic hamiltonian
