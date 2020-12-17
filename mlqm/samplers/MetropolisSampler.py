@@ -95,6 +95,14 @@ class MetropolisSampler(object):
             kicker_params {iter} -- Parameters to pass to the kicker, unrolled automatically
         """
 
+        # Drop the model to reduced precision for this:
+        # params = wavefunction.parameters()
+        # print(params)
+
+        # reduced_wf = tf.cast(wavefunction, dtype=self.dtype)
+        # wavefunction.cast(self.dtype)
+
+
         # We need to compute the wave function twice:
         # Once for the original coordiate, and again for the kicked coordinates
         acceptance = tf.convert_to_tensor(0.0)
@@ -117,7 +125,6 @@ class MetropolisSampler(object):
 
             # Compute the values of the wave function, which should be of shape
             # [nwalkers, 1]
-            # original_w = wavefunction(walkers)
             kicked_wavefunction   = wavefunction(kicked)
 
 
