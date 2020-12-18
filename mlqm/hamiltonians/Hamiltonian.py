@@ -21,7 +21,6 @@ class Hamiltonian(object):
 
         '''
         object.__init__(self)
-
         self.parameters = {}
         # Cast them all to tf constants:
         for key in kwargs: 

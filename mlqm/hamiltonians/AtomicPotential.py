@@ -22,9 +22,9 @@ class AtomicPotential(Hamiltonian):
         Hamiltonian.__init__(self, **kwargs)
 
         # Check the parameters have everything needed:
-        for parameter in ["mass", "Z"]:
+        for parameter in ["mass", "z"]:
             if parameter not in self.parameters:
-                raise KeyError("Parameter {parameter} not suppliled as keyword arg to HarmonicOscillator")
+                raise KeyError(f"Parameter {parameter} not suppliled as keyword arg to HarmonicOscillator")
 
 
 
@@ -67,7 +67,7 @@ class AtomicPotential(Hamiltonian):
         #     r = tf.math.sqrt(tf.reduce_sum((inputs -centroid)**2, axis=2))
         #     pe_2 = -0.5* (ELECTRON_CHARGE**2 ) * tf.reduce_sum( 1. / (r + 1e-8), axis=1 )
         #     # Because this force is symmetric, I'm multiplying by 0.5 to prevent overflow
-        # pe_2 = 0.
+        pe_2 = 0.
         return pe_1 + pe_2
 
 
@@ -93,20 +93,13 @@ class AtomicPotential(Hamiltonian):
         '''
 
         # Potential energy depends only on the wavefunction
-        pe = self.potential_energy(inputs=inputs, Z=self.parameters['Z'])
+        pe = self.potential_energy(inputs=inputs, Z=self.parameters['z'])
 
         # KE by parts needs only one derivative
         ke_jf = self.kinetic_energy_jf(dlogw_dx=dlogw_dx, M=self.parameters["mass"])
 
         # True, directly, uses the second derivative
         ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M=self.parameters["mass"])
-
-        # Potential energy depends only on the wavefunction
-        pe = self.potential_energy(inputs=inputs, )
-        # KE by parts needs only one derivative
-        ke_jf = self.kinetic_energy_jf(dlogw_dx=dlogw_dx, M=self.mu)
-        # True, directly, uses the second derivative
-        ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M=self.mu)
 
 
         return pe, ke_jf, ke_direct

@@ -24,7 +24,7 @@ class NuclearPotential(Hamiltonian):
         # Check the parameters have everything needed:
         for parameter in ["mass"]:
             if parameter not in self.parameters:
-                raise KeyError("Parameter {parameter} not suppliled as keyword arg to HarmonicOscillator")
+                raise KeyError(f"Parameter {parameter} not suppliled as keyword arg to HarmonicOscillator")
 
 
     @tf.function
