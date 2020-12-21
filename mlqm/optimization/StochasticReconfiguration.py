@@ -114,8 +114,7 @@ class StochasticReconfiguration(object):
         # First do a void walk to thermalize after a new configuration.
         # By default, this will use the previous walkers as a starting configurations.
         #   This one does all the kicks.
-        acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid*10)
-
+        acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid)
 
 
         # Get the current walker locations:
@@ -126,12 +125,16 @@ class StochasticReconfiguration(object):
 
         # Here, if MPI is available, we can do a reduction (sum) over walker variables
 
-        print(energy)
-
-
+        print(energy.shape)
         flattened_jacobian, flat_shape = self.jacobian(x_current, self.wavefunction)
 
+        print(flattened_jacobian.shape)
+
         dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(flattened_jacobian, energy)
+
+        print(dpsi_i.shape)
+        print(dpsi_ij.shape)
+        print(dpsi_i_EL.shape)
 
         # Here, if MPI is available, AVERAGE the oberservables over all ranks
         # MPI_average(dspi_i)
@@ -145,10 +148,6 @@ class StochasticReconfiguration(object):
         energy_jf_summed  = tf.reduce_sum(energy_jf) / self.nwalkers_local
         energy2_jf_summed = tf.reduce_sum(energy_jf**2) / self.nwalkers_local
 
-
-
-
-        print(energy_summed.shape)
 
         # We do here an MPI sum over observed variables, particularly energy
 
@@ -188,10 +187,10 @@ class StochasticReconfiguration(object):
         shapes = [ p.shape for p in self.wavefunction.trainable_variables ]
         delta_p = [ tf.reshape(g, s) for g, s in zip(gradient, shapes)]
 
-        metrics['energy/energy']     = energy_summed
-        metrics['energy/error']      = tf.sqrt(energy2_summed - energy_summed**2)
-        metrics['energy/energy_jf']  = energy_jf_summed
-        metrics['energy/error_jf']   = tf.sqrt(energy2_jf_summed - energy_jf_summed**2) 
+        metrics['energy/energy']     = tf.reduce_sum(energy) / self.nwalkers_local
+        metrics['energy/error']      = tf.math.reduce_std(energy) / self.nwalkers_local
+        metrics['energy/energy_jf']  = tf.reduce_sum(energy_jf) / self.nwalkers_local
+        metrics['energy/error_jf']   = tf.math.reduce_std(energy_jf) / self.nwalkers_local
         metrics['metropolis/acceptance'] = acceptance
 
         self.latest_gradients = delta_p

@@ -11,7 +11,7 @@ class GaussianBoundaryCondition(tf.keras.layers.Layer):
         tf.keras.layers.Layer
     """
 
-    def __init__(self, n : int, exp : float=0.1, trainable : bool=True):
+    def __init__(self, n : int, exp : float=0.1, trainable : bool=True, dtype = tf.float64):
         """Initializer
 
         Create a new exponentional boundary condition
@@ -23,7 +23,7 @@ class GaussianBoundaryCondition(tf.keras.layers.Layer):
             exp {float} -- Starting value of exponents.  Must be broadcastable to the number of dimensions (default: {1.0})
             trainable {bool} -- Whether to allow the boundary condition to be trainable (default: {True})
         """
-        tf.keras.layers.Layer.__init__(self)
+        tf.keras.layers.Layer.__init__(self, dtype=dtype)
 
 
 
@@ -31,11 +31,11 @@ class GaussianBoundaryCondition(tf.keras.layers.Layer):
             raise Exception("Dimension must be at least 1 for GaussianBoundaryCondition")
 
         # Use numpy to broadcast to the right dimension:
-        exp = numpy.asarray(exp, dtype=numpy.float64)
+        exp = numpy.asarray(exp)
         exp = numpy.broadcast_to(exp, (n,))
 
         # This is the parameter controlling the shape of the exponent:
-        self.exponent = tf.Variable(exp, trainable=trainable, dtype=tf.float64)
+        self.exponent = tf.Variable(exp, trainable=trainable, dtype=dtype)
 
 
     @tf.function

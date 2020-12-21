@@ -105,7 +105,7 @@ class MetropolisSampler(object):
 
         # We need to compute the wave function twice:
         # Once for the original coordiate, and again for the kicked coordinates
-        acceptance = tf.convert_to_tensor(0.0)
+        acceptance = tf.convert_to_tensor(0.0, dtype=dtype)
         # Calculate the current wavefunction value:
         current_wavefunction = wavefunction(walkers)
 
@@ -146,6 +146,6 @@ class MetropolisSampler(object):
             accept = tf.reshape(accept, shape)
             walkers = tf.where(accept, kicked, walkers)
 
-            acceptance = tf.reduce_mean(tf.cast(accept, tf.float32))
+            acceptance = tf.reduce_mean(tf.cast(accept, dtype))
 
         return walkers, acceptance

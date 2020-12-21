@@ -14,7 +14,7 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
         tf.keras.layers.Layer
     """
 
-    def __init__(self,  n : int, nparticles : int, degree : int, alpha : float):
+    def __init__(self,  n : int, nparticles : int, degree : int, alpha : float, dtype=tf.float64):
         """Initializer
 
         Create a harmonic oscillator wave function
@@ -28,7 +28,7 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
         Raises:
             Exception -- [description]
         """
-        tf.keras.layers.Layer.__init__(self)
+        tf.keras.layers.Layer.__init__(self, dtype=dtype)
 
         self.n = n
         if self.n < 1 or self.n > 3:
@@ -40,6 +40,8 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
         # Use numpy to broadcast to the right dimension:
         degree = numpy.asarray(degree, dtype=numpy.int32)
         degree = numpy.broadcast_to(degree, (self.n,))
+
+        self.type = dtype
 
         # Degree of the polynomial:
         self.degree = degree
@@ -87,10 +89,13 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
             # For each dimension:
             self.polynomial_norm[_n] = 1.0 / numpy.sqrt(2**_d * numpy.math.factorial(_d))
 
-        self.polynomial_norm = tf.convert_to_tensor(self.polynomial_norm.astype(numpy.float64))
+        self.polynomial_norm = tf.convert_to_tensor(self.polynomial_norm, dtype=self.type)
+        self.polynomial      = tf.convert_to_tensor(self.polynomial, dtype=self.type)
 
 
-        self.exp = GaussianBoundaryCondition(n=self.n, exp=numpy.sqrt(self.alpha), trainable=False)
+        self.exp = GaussianBoundaryCondition(
+            n=self.n, exp=numpy.sqrt(self.alpha), trainable=False, dtype=self.type)
+
 
     @tf.function
     def call(self, inputs):
@@ -99,7 +104,7 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
         y = inputs[:,0,:]
 
         # Create the output tensor with the right shape, plus the constant term:
-        polynomial_result = tf.zeros(y.shape,dtype=tf.float64)
+        polynomial_result = tf.zeros(y.shape,dtype=self.type)
 
         # This is a somewhat basic implementation:
         # Loop over degree:
@@ -115,6 +120,7 @@ class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
             # Multiply every element (which is the dth power) by the appropriate
             # coefficient in it's dimension
             res_vec = poly_term * self.polynomial[d]
+
             # Add this to the result:
             polynomial_result += res_vec
 
