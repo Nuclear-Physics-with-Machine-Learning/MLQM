@@ -1,6 +1,8 @@
 import tensorflow as tf
 import numpy
 
+
+
 class Estimator(object):
     """ Accumulate block and totalk averages and errors
     """
@@ -8,37 +10,53 @@ class Estimator(object):
         if info is not None:
             print(f"Set the following estimators: E, E2,E_jf,E2_jf,acc,weight,Psi_i,H*Psi_i,Psi_ij ")
 
+        # This class holds accumulated measurements of various tensors and their square.
+        # It also enables MPI reduction
+
+        self.reset()
+
+
     def reset(self):
-        self.energy = 0
-        self.energy2 = 0
-        self.energy_jf = 0
-        self.energy2_jf = 0
-        self.acceptance = 0
-        self.weight = 0
-        self.dpsi_i = 0
-        self.dpsi_i_EL = 0
-        self.dpsi_ij = 0
+        self.tensor_dict = {
+            "energy"     : 0,
+            "energy2"    : 0,
+            "energy_jf"  : 0,
+            "energy2_jf" : 0,
+            "acceptance" : 0,
+            "weight"     : 0,
+            "dpsi_i"     : 0,
+            "dpsi_i_EL"  : 0,
+            "dpsi_ij"    : 0,
+        }
+
+    @tf.function
+    def allreduce(self):
+
+        for key in self.tensor_dict.keys():
+            self.tensor_dict[key] = hvd.allreduce(self.tensor_dict[key], op="sum")
+
+        return
 
     def accumulate(self,energy,energy_jf,acceptance,weight,dpsi_i,dpsi_i_EL,dpsi_ij,estim_wgt) :
-        self.energy += energy/estim_wgt
-        self.energy2 += (energy/estim_wgt)**2
-        self.energy_jf += energy_jf/estim_wgt
-        self.energy2_jf += (energy_jf/estim_wgt)**2
-        self.acceptance += acceptance/estim_wgt
-        self.weight += weight/estim_wgt
-        self.dpsi_i += dpsi_i/estim_wgt
-        self.dpsi_i_EL += dpsi_i_EL/estim_wgt
-        self.dpsi_ij += dpsi_ij/estim_wgt
+        self.tensor_dict["energy"]     += energy/estim_wgt
+        self.tensor_dict["energy2"]    += (energy/estim_wgt)**2
+        self.tensor_dict["energy_jf"]  += energy_jf/estim_wgt
+        self.tensor_dict["energy2_jf"] += (energy_jf/estim_wgt)**2
+        self.tensor_dict["acceptance"] += acceptance/estim_wgt
+        self.tensor_dict["weight"]     += weight/estim_wgt
+        self.tensor_dict["dpsi_i"]     += dpsi_i/estim_wgt
+        self.tensor_dict["dpsi_i_EL"]  += dpsi_i_EL/estim_wgt
+        self.tensor_dict["dpsi_ij"]    += dpsi_ij/estim_wgt
 
     def finalize(self,nav):
-        self.energy /= nav
-        self.energy2 /= nav
-        self.energy_jf /= nav
-        self.energy2_jf /= nav
-        self.acceptance /= nav
-        self.dpsi_i /= nav
-        self.dpsi_i_EL /= nav
-        self.dpsi_ij /= nav
-        error= tf.sqrt((self.energy2 - self.energy**2) / (nav-1))
-        error_jf = tf.sqrt((self.energy2_jf - self.energy_jf**2) / (nav-1))
+        self.tensor_dict["energy"]     /= nav
+        self.tensor_dict["energy2"]    /= nav
+        self.tensor_dict["energy_jf"]  /= nav
+        self.tensor_dict["energy2_jf"] /= nav
+        self.tensor_dict["acceptance"] /= nav
+        self.tensor_dict["dpsi_i"]     /= nav
+        self.tensor_dict["dpsi_i_EL"]  /= nav
+        self.tensor_dict["dpsi_ij"]    /= nav
+        error= tf.sqrt((self.tensor_dict["energy2"] - self.tensor_dict["energy"]**2) / (nav-1))
+        error_jf = tf.sqrt((self.tensor_dict["energy2_jf"] - self.tensor_dict["energy_jf"]**2) / (nav-1))
         return error, error_jf

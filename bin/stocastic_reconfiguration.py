@@ -10,20 +10,19 @@ import pickle
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
-# os.environ['TF_XLA_FLAGS'] = "--tf_xla_auto_jit=1 --tf_xla_auto_jit=fusible"
+os.environ['TF_XLA_FLAGS'] = "--tf_xla_auto_jit=fusible"
 
 import tensorflow as tf
-#
-# try:
-#     import horovod.tensorflow as hvd
-#     hvd.init()
-#     from mpi4py import MPI
-#
-#     # This is to force each rank onto it's own GPU:
-#     os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank() + 1)
-#     MPI_AVAILABLE=True
-# except:
-#     MPI_AVAILABLE=False
+
+try:
+    import horovod.tensorflow as hvd
+    hvd.init()
+
+    # This is to force each rank onto it's own GPU:
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
+    MPI_AVAILABLE=True
+except:
+    MPI_AVAILABLE=False
 
 # Use mixed precision for inference (metropolis walk)
 # from tensorflow.keras.mixed_precision import experimental as mixed_precision
@@ -34,12 +33,18 @@ import logging
 logger = logging.getLogger()
 
 # Create a handler for STDOUT, but only on the root rank:
-# if not MPI_AVAILABLE or hvd.rank() == 0:
-handler = logging.StreamHandler(sys.stdout)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
+if not MPI_AVAILABLE or hvd.rank() == 0:
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+else:
+    # in this case, MPI is available but it's not rank 0
+    # create a null handler
+    handler = logging.NullHandler()
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
 
 
 # Add the local folder to the import path:
@@ -68,10 +73,14 @@ class exec(object):
 
         self.args = parser.parse_args()
         #
-        # if MPI_AVAILABLE:
-        #     self.rank = hvd.rank()
-        #     self.size = hvd.size()
-        #     self.local_rank = hvd.local_rank()
+        if MPI_AVAILABLE:
+            self.rank = hvd.rank()
+            self.size = hvd.size()
+            self.local_rank = hvd.local_rank()
+        else:
+            self.rank = 0
+            self.size = 1
+            self.local_rank = 1
 
         # Open the config file:
         self.config = configparser.ConfigParser()
@@ -86,11 +95,10 @@ class exec(object):
         sampler      = self.config['Sampler']
 
         opt_parameters = [
-            "iterations", 
-            "delta", 
-            "eps", 
-            "gamma", 
-            "eta"
+            "iterations",
+            "delta",
+            "eps",
+            "gamma",
         ]
 
         for key in opt_parameters:
@@ -101,13 +109,12 @@ class exec(object):
         self.delta           = float(optimization['delta'])
         self.eps             = float(optimization['eps'])
         self.gamma           = float(optimization['gamma'])
-        self.eta             = float(optimization['eta'])
 
 
         sampler_parameters = [
-            "n_thermalize", 
-            "n_void_steps", 
-            "n_observable_measurements", 
+            "n_thermalize",
+            "n_void_steps",
+            "n_observable_measurements",
             "n_walkers_per_observation",
         ]
         for key in sampler_parameters:
@@ -148,11 +155,7 @@ class exec(object):
         # Create a wavefunction:
         from mlqm.models import DeepSetsWavefunction
         wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles, mean_subtract=False)
-        
-        # if MPI_AVAILABLE:
-        #     # We have to broadcast the wavefunction parameter here:
-        #     hvd.broadcast_variables(self.wavefunction.variables, 0)
-        #
+
 
         # Run the wave function once to initialize all its weights
         _ = wavefunction(x)
@@ -166,13 +169,12 @@ class exec(object):
             eps     = self.eps,
             npt     = wavefunction.n_parameters(),
             gamma   = self.gamma,
-            eta     = self.eta,
             dtype   = DEFAULT_TENSOR_TYPE)
 
 
         self.sr_worker   = StochasticReconfiguration(
-            sampler                   = sampler, 
-            wavefunction              = wavefunction, 
+            sampler                   = sampler,
+            wavefunction              = wavefunction,
             hamiltonian               = hamiltonian,
             optimizer                 = optimizer,
             n_observable_measurements = self.n_observable_measurements,
@@ -271,6 +273,7 @@ class exec(object):
     def set_compute_parameters(self):
         tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
         tf.debugging.set_log_device_placement(False)
+        tf.config.run_functions_eagerly(False)
 
         physical_devices = tf.config.list_physical_devices('GPU')
         for device in physical_devices:
@@ -294,6 +297,13 @@ class exec(object):
             pass
 
 
+        if MPI_AVAILABLE and hvd.size() > 1:
+            # We have to broadcast the wavefunction parameter here:
+            hvd.broadcast_variables(self.sr_worker.wavefunction.variables, 0)
+
+            # Also ned to broadcast the optimizer state:
+
+
         # First step - thermalize:
         logger.info("About to thermalize.")
         self.sr_worker.equilibrate(1)
@@ -303,7 +313,7 @@ class exec(object):
 
         while self.global_step < self.iterations:
             if not self.active: break
-            
+
             if self.profile:
                 tf.profiler.experimental.start(self.save_path)
                 tf.summary.trace_on(graph=True)
@@ -329,7 +339,7 @@ class exec(object):
             if self.profile:
                 tf.profiler.experimental.stop()
                 tf.summary.trace_off()
-            
+
 
     # @tf.function
     def summary(self, metrics, step):

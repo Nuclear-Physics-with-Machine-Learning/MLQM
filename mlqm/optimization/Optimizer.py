@@ -146,13 +146,12 @@ logger = logging.getLogger()
 
 class Optimizer(object):
 
-    def __init__(self,delta,eps,npt,gamma, eta, dtype=tf.float64):
+    def __init__(self,delta,eps,npt,gamma, dtype=tf.float64):
         self.dtype  = dtype
-        self.eps    = tf.convert_to_tensor(eps, dtype=self.dtype)
-        self.delta  = tf.convert_to_tensor(delta, dtype=self.dtype)
-        self.gamma  = tf.convert_to_tensor(gamma, dtype=self.dtype)
-        self.eta    = tf.convert_to_tensor(eta  , dtype=self.dtype)
-        self.npt    = npt
+        self.eps    = tf.constant(tf.convert_to_tensor(eps, dtype=self.dtype))
+        self.delta  = tf.constant(tf.convert_to_tensor(delta, dtype=self.dtype))
+        self.gamma  = tf.constant(tf.convert_to_tensor(gamma, dtype=self.dtype))
+        self.npt    = tf.constant(npt)
 #
         #momentum:
         self.vtm1   = 0.0
@@ -165,8 +164,7 @@ class Optimizer(object):
 
     def sr(self,energy,dpsi_i,dpsi_i_EL,dpsi_ij):
 
-        # f_i= tf.cast(tf.cast(self.delta, tf.float32) * ( dpsi_i * energy - dpsi_i_EL ), tf.float64)
-        f_i= tf.cast(self.delta * ( dpsi_i * energy - dpsi_i_EL ), self.dtype)
+        f_i= tf.cast(( dpsi_i * energy - dpsi_i_EL ), self.dtype)
         S_ij = dpsi_ij - dpsi_i * tf.transpose(dpsi_i)
         i = 0
         while True:
@@ -181,16 +179,17 @@ class Optimizer(object):
                 positive_definite = False
                 logger.error(f"Warning, Cholesky did not find a positive definite matrix on attempt {i}")
             if (positive_definite):
-                dp_i = tf.linalg.cholesky_solve(U_ij, f_i)
-                dp_0 = 1. - self.delta * tf.cast(energy, self.dtype) - tf.reduce_sum(tf.cast(dpsi_i, self.dtype)*dp_i)
+                if self.gamma != 0.0:
+                    dp_i = tf.linalg.cholesky_solve(U_ij, f_i)
+                    dp_0 = 1. - self.delta * tf.cast(energy, self.dtype) - tf.reduce_sum(tf.cast(dpsi_i, self.dtype)*dp_i)
 
-                dp_i = (self.gamma * self.vtm1 + (1. - self.gamma) * ( dp_i / dp_0 ))
+                    dp_i = (self.gamma * self.vtm1 + (1. - self.gamma) * ( dp_i / dp_0 ))
 
-                self.vmt1   = dp_i
+                    self.vmt1  = dp_i
 
-                dp_i *= self.eta
-
-                # dp_i = self.eta * tf.linalg.cholesky_solve(U_ij, f_i)
+                    dp_i *= self.delta
+                else:
+                    dp_i = self.delta * tf.linalg.cholesky_solve(U_ij, f_i)
 
 
                 dist = self.par_dist(dp_i, tf.cast(S_ij, self.dtype))

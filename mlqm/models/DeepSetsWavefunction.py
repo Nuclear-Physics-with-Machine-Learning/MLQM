@@ -37,20 +37,20 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.mean_subtract = mean_subtract
 
-        self.activation  = tf.keras.activations.tanh
-        self.initializer = tf.keras.initializers.HeNormal
+        self.activation  = tf.keras.activations.softplus
+        # self.initializer = tf.keras.initializers.HeNormal
 
         self.individual_net = tf.keras.models.Sequential()
         self.individual_net.add(
-            tf.keras.layers.Dense(16, 
-                use_bias    = True, 
-                kernel_initializer = self.initializer,
+            tf.keras.layers.Dense(16,
+                use_bias    = True,
+                # kernel_initializer = self.initializer,
                 activation = self.activation)
             )
         self.individual_net.add(
-            tf.keras.layers.Dense(16, 
-                use_bias = True, 
-                kernel_initializer = self.initializer,
+            tf.keras.layers.Dense(16,
+                use_bias = True,
+                # kernel_initializer = self.initializer,
                 activation = self.activation)
             )
 
@@ -59,18 +59,18 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.aggregate_net = tf.keras.models.Sequential()
         self.aggregate_net.add(
-            tf.keras.layers.Dense(16, 
-                use_bias = False, 
-                kernel_initializer = self.initializer,
+            tf.keras.layers.Dense(16,
+                use_bias = False,
+                # kernel_initializer = self.initializer,
                 activation = self.activation)
             )
         self.aggregate_net.add(
-            tf.keras.layers.Dense(16, 
-                use_bias = False, 
-                kernel_initializer = self.initializer,
+            tf.keras.layers.Dense(16,
+                use_bias = False,
+                # kernel_initializer = self.initializer,
                 activation = self.activation)
             )
-        self.aggregate_net.add(tf.keras.layers.Dense(1, 
+        self.aggregate_net.add(tf.keras.layers.Dense(1,
             use_bias = False))
 
 

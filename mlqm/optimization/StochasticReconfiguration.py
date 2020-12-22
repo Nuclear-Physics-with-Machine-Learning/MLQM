@@ -9,9 +9,22 @@ from mlqm.hamiltonians import Hamiltonian
 from mlqm.optimization import Optimizer
 from mlqm.samplers     import Estimator, MetropolisSampler
 
+
+try:
+    import horovod.tensorflow as hvd
+    hvd.init()
+    from mpi4py import MPI
+
+    # This is to force each rank onto it's own GPU:
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
+    MPI_AVAILABLE=True
+except:
+    MPI_AVAILABLE=False
+
+
 class StochasticReconfiguration(object):
 
-    def __init__(self, 
+    def __init__(self,
             sampler                   : MetropolisSampler,
             wavefunction              : callable,
             hamiltonian               : Hamiltonian,
@@ -35,15 +48,14 @@ class StochasticReconfiguration(object):
         self.n_concurrent_obs_per_rank = n_concurrent_obs_per_rank
 
         # MPI Enabled?
-        self.distributed = False
-
-        if self.distributed:
-            pass
+        if MPI_AVAILABLE:
+            self.size = hvd.size()
+            self.rank = hvd.rank()
         else:
-            self.n_ranks = 1
-            self.rank    = 1
+            self.size = 1
+            self.rank = 1
 
-        pass
+        self.estimator = Estimator()
 
 
 
@@ -113,6 +125,9 @@ class StochasticReconfiguration(object):
 
             # Update the parameters:
             for i_param in range(len(self.wavefunction.trainable_variables)):
+                # print(f"Gradient: {self.latest_gradients[i_param]}")
+                # print(f"Variable: {self.wavefunction.trainable_variables[i_param]}")
+                # print(f"Ratio: {tf.reduce_mean(tf.abs(self.latest_gradients[i_param] / self.wavefunction.trainable_variables[i_param]))}")
                 self.wavefunction.trainable_variables[i_param].assign_add(self.latest_gradients[i_param])
 
 
@@ -134,8 +149,7 @@ class StochasticReconfiguration(object):
         kicker = tf.random.normal
         kicker_params = {"mean": 0.0, "stddev" : 0.4}
 
-        estimator = Estimator()
-        estimator.reset()
+        self.estimator.reset()
 
         # We need to know how many times to loop over the walkers and metropolis step.
         # The total number of observations is set: self.n_observable_measurements
@@ -145,21 +159,24 @@ class StochasticReconfiguration(object):
 
         n_loops_total = int(self.n_observable_measurements / self.n_concurrent_obs_per_rank)
 
-        if self.distributed:
-            n_loops_total /= self.n_ranks
+        if MPI_AVAILABLE:
+            n_loops_total /= self.size
 
+        # logger.debug(" -- Coordinating loop length")
 
         # We do a check that n_loops_total * n_concurrent_obs_per_rank matches expectations:
-        if n_loops_total * self.n_concurrent_obs_per_rank*self.n_ranks != self.n_observable_measurements:
+        if n_loops_total * self.n_concurrent_obs_per_rank*self.size != self.n_observable_measurements:
             exception_str = "Total number of observations to compute is unexpected!\n"
             exception_str += f"  Expected to have {self.n_observable_measurements}, have:\n"
             exception_str += f"  -- A loop of {self.n_concurrent_obs_per_rank} observations"
-            exception_str += f" for {n_loops_total} loops over {self.n_ranks} ranks"
+            exception_str += f" for {n_loops_total} loops over {self.size} ranks"
             exception_str += f"  -- ({self.n_concurrent_obs_per_rank})*({n_loops_total}"
-            exception_str += f")*({self.n_ranks}) != {self.n_observable_measurements}\n"
+            exception_str += f")*({self.size}) != {self.n_observable_measurements}\n"
             raise Exception(exception_str)
 
+
         for i_loop in range(n_loops_total):
+            # logger.debug(f" -- evaluating loop {i_loop} of {n_loops_total}")
 
             # First do a void walk to thermalize after a new configuration.
             # By default, this will use the previous walkers as a starting configurations.
@@ -174,14 +191,13 @@ class StochasticReconfiguration(object):
             energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
 
             # Here, we split the energy and other objects into sizes of nwalkers_per_observation
-            if self.n_concurrent_obs_per_rank != 1:
-                x_current  = tf.split(x_current, self.n_concurrent_obs_per_rank, axis=0)
-                energy     = tf.split(energy,    self.n_concurrent_obs_per_rank, axis=0)
-                energy_jf  = tf.split(energy_jf, self.n_concurrent_obs_per_rank, axis=0)
-                ke_jf      = tf.split(ke_jf,     self.n_concurrent_obs_per_rank, axis=0)
-                ke_direct  = tf.split(ke_direct, self.n_concurrent_obs_per_rank, axis=0)
-                pe         = tf.split(pe,        self.n_concurrent_obs_per_rank, axis=0)
-
+            # if self.n_concurrent_obs_per_rank != 1:
+            x_current  = tf.split(x_current, self.n_concurrent_obs_per_rank, axis=0)
+            energy     = tf.split(energy,    self.n_concurrent_obs_per_rank, axis=0)
+            energy_jf  = tf.split(energy_jf, self.n_concurrent_obs_per_rank, axis=0)
+            ke_jf      = tf.split(ke_jf,     self.n_concurrent_obs_per_rank, axis=0)
+            ke_direct  = tf.split(ke_direct, self.n_concurrent_obs_per_rank, axis=0)
+            pe         = tf.split(pe,        self.n_concurrent_obs_per_rank, axis=0)
 
             # For each observation, we compute the jacobian.
             # flattened_jacobian is a list, flat_shape is just one instance
@@ -198,7 +214,7 @@ class StochasticReconfiguration(object):
 
                 dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(flattened_jacobian[i_obs], obs_energy)
 
-                estimator.accumulate(
+                self.estimator.accumulate(
                     tf.reduce_sum(obs_energy),
                     tf.reduce_sum(obs_energy_jf),
                     acceptance,
@@ -210,15 +226,16 @@ class StochasticReconfiguration(object):
 
 
         # INTERCEPT HERE with MPI to allreduce the estimator objects.
-        # MPI_average(estimator)
+        if MPI_AVAILABLE:
+            self.estimator.allreduce()
 
         # At this point, we need to average the observables that feed into the optimizer:
-        error, error_jf = estimator.finalize(self.n_observable_measurements)
+        error, error_jf = self.estimator.finalize(self.n_observable_measurements)
 
         metrics = {}
-        metrics["energy/ke_jf"]     = tf.reduce_sum(energy_jf)
-        metrics["energy/ke"]        = tf.reduce_sum(ke_direct)
-        metrics["energy/pe"]        = tf.reduce_sum(pe)
+        metrics["energy/ke_jf"]     = tf.reduce_mean(tf.reduce_sum(ke_jf, axis=0) / self.n_walkers_per_observation)
+        metrics["energy/ke"]        = tf.reduce_mean(tf.reduce_sum(ke_direct, axis=0) / self.n_walkers_per_observation)
+        metrics["energy/pe"]        = tf.reduce_mean(tf.reduce_sum(pe, axis=0) / self.n_walkers_per_observation)
         metrics["energy/ke_jf_std"] = tf.math.reduce_std(ke_jf)
         metrics["energy/ke_std"]    = tf.math.reduce_std(ke_direct)
         metrics["energy/pe_std"]    = tf.math.reduce_std(pe)
@@ -235,10 +252,10 @@ class StochasticReconfiguration(object):
 ###########################################################################################
         # logger.info(f"psi norm{tf.reduce_mean(log_wpsi)}")
         dp_i = self.optimizer.sr(
-            estimator.energy,
-            estimator.dpsi_i,
-            estimator.dpsi_i_EL,
-            estimator.dpsi_ij)
+            self.estimator.tensor_dict["energy"],
+            self.estimator.tensor_dict["dpsi_i"],
+            self.estimator.tensor_dict["dpsi_i_EL"],
+            self.estimator.tensor_dict["dpsi_ij"])
 
         # Here, we recover the shape of the parameters of the network:
         running_index = 0
@@ -251,11 +268,11 @@ class StochasticReconfiguration(object):
         shapes = [ p.shape for p in self.wavefunction.trainable_variables ]
         delta_p = [ tf.reshape(g, s) for g, s in zip(gradient, shapes)]
 
-        metrics['energy/energy']     = estimator.energy
+        metrics['energy/energy']     = self.estimator.tensor_dict["energy"]
         metrics['energy/error']      = error
-        metrics['energy/energy_jf']  = estimator.energy_jf
+        metrics['energy/energy_jf']  = self.estimator.tensor_dict["energy_jf"]
         metrics['energy/error_jf']   = error_jf
-        metrics['metropolis/acceptance'] = estimator.acceptance
+        metrics['metropolis/acceptance'] = self.estimator.tensor_dict["acceptance"]
 
         self.latest_gradients = delta_p
 
