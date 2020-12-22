@@ -106,6 +106,7 @@ class Hamiltonian(object):
 
         # And this contracts:
         d2logw_dx2 = tf.einsum("wpdwpd->wpd",d2logw_dx2)
+        
 
         return logw_of_x, dlogw_dx, d2logw_dx2
 

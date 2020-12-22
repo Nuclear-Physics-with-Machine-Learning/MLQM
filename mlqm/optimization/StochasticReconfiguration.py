@@ -5,20 +5,43 @@ import logging
 # Set up logging:
 logger = logging.getLogger()
 
-from mlqm.samplers     import Estimator
+from mlqm.hamiltonians import Hamiltonian
+from mlqm.optimization import Optimizer
+from mlqm.samplers     import Estimator, MetropolisSampler
 
 class StochasticReconfiguration(object):
 
-    def __init__(self, sampler, wavefunction, hamiltonian, optimizer):
+    def __init__(self, 
+            sampler                   : MetropolisSampler,
+            wavefunction              : callable,
+            hamiltonian               : Hamiltonian,
+            optimizer                 : Optimizer,
+            n_observable_measurements : int,
+            n_void_steps              : int,
+            n_walkers_per_observation : int,
+            n_concurrent_obs_per_rank : int,
+        ):
 
+        # Store the objects:
         self.sampler      = sampler
-        self.hamiltonian  = hamiltonian
         self.wavefunction = wavefunction
+        self.hamiltonian  = hamiltonian
         self.optimizer    = optimizer
 
-        self.nwalkers_local     = self.sampler.nwalkers
-        self.nwalkers_global    = self.nwalkers_local
+        # Store the measurement configurations:
+        self.n_observable_measurements = n_observable_measurements
+        self.n_void_steps              = n_void_steps
+        self.n_walkers_per_observation = n_walkers_per_observation
+        self.n_concurrent_obs_per_rank = n_concurrent_obs_per_rank
 
+        # MPI Enabled?
+        self.distributed = False
+
+        if self.distributed:
+            pass
+        else:
+            self.n_ranks = 1
+            self.rank    = 1
 
         pass
 
@@ -28,13 +51,13 @@ class StochasticReconfiguration(object):
     @tf.function
     def batched_jacobian(self, nobs, x_current_arr, wavefunction, jac_fnc):
         ret_jac = []
-        ret_shape = []
+        # ret_shape = []
         for i in range(nobs):
             flattened_jacobian, flat_shape = jac_fnc(x_current_arr[i], wavefunction)
             ret_jac.append(flattened_jacobian)
-            ret_shape.append(flat_shape)
+            # ret_shape.append(flat_shape)
 
-        return ret_jac, ret_shape
+        return ret_jac, flat_shape
 
 
 
@@ -75,10 +98,10 @@ class StochasticReconfiguration(object):
         dpsi_i = tf.reshape(dpsi_i, [-1,1])
 
         # To compute <O^m O^n>
-        dpsi_ij = tf.linalg.matmul(flattened_jacobian, flattened_jacobian, transpose_a = True) / self.nwalkers_local
+        dpsi_ij = tf.linalg.matmul(flattened_jacobian, flattened_jacobian, transpose_a = True) / self.n_walkers_per_observation
 
         # Computing <O^m H>:
-        dpsi_i_EL = tf.linalg.matmul(tf.reshape(energy, [1,self.nwalkers_local]), flattened_jacobian)
+        dpsi_i_EL = tf.linalg.matmul(tf.reshape(energy, [1,self.n_walkers_per_observation]), flattened_jacobian)
         # This makes this the same shape as the other tensors
         dpsi_i_EL = tf.reshape(dpsi_i_EL, [-1, 1])
 
@@ -102,7 +125,7 @@ class StochasticReconfiguration(object):
 
         return acceptance
 
-    def sr_step(self, nvoid):
+    def sr_step(self):
 
         metrics = {}
         self.latest_gradients = None
@@ -111,57 +134,94 @@ class StochasticReconfiguration(object):
         kicker = tf.random.normal
         kicker_params = {"mean": 0.0, "stddev" : 0.4}
 
-        # First do a void walk to thermalize after a new configuration.
-        # By default, this will use the previous walkers as a starting configurations.
-        #   This one does all the kicks.
-        acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=nvoid)
+        estimator = Estimator()
+        estimator.reset()
+
+        # We need to know how many times to loop over the walkers and metropolis step.
+        # The total number of observations is set: self.n_observable_measurements
+        # There is an optimization to walk in parallel with n_concurrent_obs_per_rank
+        # Without MPI, the number of loops is then n_observable_measurements / n_concurrent_obs_per_rank
+        # WITH MPI, we have to reduce the number of loops by the total number of ranks.
+
+        n_loops_total = int(self.n_observable_measurements / self.n_concurrent_obs_per_rank)
+
+        if self.distributed:
+            n_loops_total /= self.n_ranks
 
 
-        # Get the current walker locations:
-        x_current  = self.sampler.sample()
+        # We do a check that n_loops_total * n_concurrent_obs_per_rank matches expectations:
+        if n_loops_total * self.n_concurrent_obs_per_rank*self.n_ranks != self.n_observable_measurements:
+            exception_str = "Total number of observations to compute is unexpected!\n"
+            exception_str += f"  Expected to have {self.n_observable_measurements}, have:\n"
+            exception_str += f"  -- A loop of {self.n_concurrent_obs_per_rank} observations"
+            exception_str += f" for {n_loops_total} loops over {self.n_ranks} ranks"
+            exception_str += f"  -- ({self.n_concurrent_obs_per_rank})*({n_loops_total}"
+            exception_str += f")*({self.n_ranks}) != {self.n_observable_measurements}\n"
+            raise Exception(exception_str)
 
-        # Compute the observables:
-        energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
+        for i_loop in range(n_loops_total):
 
-        # Here, if MPI is available, we can do a reduction (sum) over walker variables
-
-        print(energy.shape)
-        flattened_jacobian, flat_shape = self.jacobian(x_current, self.wavefunction)
-
-        print(flattened_jacobian.shape)
-
-        dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(flattened_jacobian, energy)
-
-        print(dpsi_i.shape)
-        print(dpsi_ij.shape)
-        print(dpsi_i_EL.shape)
-
-        # Here, if MPI is available, AVERAGE the oberservables over all ranks
-        # MPI_average(dspi_i)
-        # MPI_average(dpsi_ij)
-        # MPI_average(dpsi_i_EL)
+            # First do a void walk to thermalize after a new configuration.
+            # By default, this will use the previous walkers as a starting configurations.
+            #   This one does all the kicks in a compiled function.
+            acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=self.n_void_steps)
 
 
+            # Get the current walker locations:
+            x_current  = self.sampler.sample()
 
-        energy_summed     = tf.reduce_sum(energy) / self.nwalkers_local
-        energy2_summed    = tf.reduce_sum(energy**2) / self.nwalkers_local
-        energy_jf_summed  = tf.reduce_sum(energy_jf) / self.nwalkers_local
-        energy2_jf_summed = tf.reduce_sum(energy_jf**2) / self.nwalkers_local
+            # Compute the observables:
+            energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
+
+            # Here, we split the energy and other objects into sizes of nwalkers_per_observation
+            if self.n_concurrent_obs_per_rank != 1:
+                x_current  = tf.split(x_current, self.n_concurrent_obs_per_rank, axis=0)
+                energy     = tf.split(energy,    self.n_concurrent_obs_per_rank, axis=0)
+                energy_jf  = tf.split(energy_jf, self.n_concurrent_obs_per_rank, axis=0)
+                ke_jf      = tf.split(ke_jf,     self.n_concurrent_obs_per_rank, axis=0)
+                ke_direct  = tf.split(ke_direct, self.n_concurrent_obs_per_rank, axis=0)
+                pe         = tf.split(pe,        self.n_concurrent_obs_per_rank, axis=0)
 
 
-        # We do here an MPI sum over observed variables, particularly energy
+            # For each observation, we compute the jacobian.
+            # flattened_jacobian is a list, flat_shape is just one instance
+            flattened_jacobian, flat_shape = self.batched_jacobian(
+                self.n_concurrent_obs_per_rank, x_current, self.wavefunction, self.jacobian)
 
-        # energy = 
+            # Here, if MPI is available, we can do a reduction (sum) over walker variables
+
+            # Now, compute observables, store them in an estimator:
+
+            for i_obs in range(self.n_concurrent_obs_per_rank):
+                obs_energy      = energy[i_obs]     / self.n_walkers_per_observation
+                obs_energy_jf   = energy_jf[i_obs]  / self.n_walkers_per_observation
+
+                dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(flattened_jacobian[i_obs], obs_energy)
+
+                estimator.accumulate(
+                    tf.reduce_sum(obs_energy),
+                    tf.reduce_sum(obs_energy_jf),
+                    acceptance,
+                    1.,
+                    dpsi_i,
+                    dpsi_i_EL,
+                    dpsi_ij,
+                    1.)
 
 
+        # INTERCEPT HERE with MPI to allreduce the estimator objects.
+        # MPI_average(estimator)
+
+        # At this point, we need to average the observables that feed into the optimizer:
+        error, error_jf = estimator.finalize(self.n_observable_measurements)
 
         metrics = {}
-        metrics["energy/ke_jf"] = tf.reduce_sum(energy_jf)
-        metrics["energy/ke"] = tf.reduce_sum(ke_direct)
-        metrics["energy/pe"] = tf.reduce_sum(pe)
+        metrics["energy/ke_jf"]     = tf.reduce_sum(energy_jf)
+        metrics["energy/ke"]        = tf.reduce_sum(ke_direct)
+        metrics["energy/pe"]        = tf.reduce_sum(pe)
         metrics["energy/ke_jf_std"] = tf.math.reduce_std(ke_jf)
-        metrics["energy/ke_std"] = tf.math.reduce_std(ke_direct)
-        metrics["energy/pe_std"] = tf.math.reduce_std(pe)
+        metrics["energy/ke_std"]    = tf.math.reduce_std(ke_direct)
+        metrics["energy/pe_std"]    = tf.math.reduce_std(pe)
 
 
         # if MPI_AVAILABLE:
@@ -174,7 +234,11 @@ class StochasticReconfiguration(object):
 # NOTE: THE ABOVE REDUCTION WILL MESS UP THE ERROR CALCULATIONS
 ###########################################################################################
         # logger.info(f"psi norm{tf.reduce_mean(log_wpsi)}")
-        dp_i = self.optimizer.sr(energy_summed,dpsi_i,dpsi_i_EL,dpsi_ij)
+        dp_i = self.optimizer.sr(
+            estimator.energy,
+            estimator.dpsi_i,
+            estimator.dpsi_i_EL,
+            estimator.dpsi_ij)
 
         # Here, we recover the shape of the parameters of the network:
         running_index = 0
@@ -187,11 +251,11 @@ class StochasticReconfiguration(object):
         shapes = [ p.shape for p in self.wavefunction.trainable_variables ]
         delta_p = [ tf.reshape(g, s) for g, s in zip(gradient, shapes)]
 
-        metrics['energy/energy']     = tf.reduce_sum(energy) / self.nwalkers_local
-        metrics['energy/error']      = tf.math.reduce_std(energy) / self.nwalkers_local
-        metrics['energy/energy_jf']  = tf.reduce_sum(energy_jf) / self.nwalkers_local
-        metrics['energy/error_jf']   = tf.math.reduce_std(energy_jf) / self.nwalkers_local
-        metrics['metropolis/acceptance'] = acceptance
+        metrics['energy/energy']     = estimator.energy
+        metrics['energy/error']      = error
+        metrics['energy/energy_jf']  = estimator.energy_jf
+        metrics['energy/error_jf']   = error_jf
+        metrics['metropolis/acceptance'] = estimator.acceptance
 
         self.latest_gradients = delta_p
 

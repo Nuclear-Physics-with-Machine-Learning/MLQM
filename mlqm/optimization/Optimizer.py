@@ -181,14 +181,16 @@ class Optimizer(object):
                 positive_definite = False
                 logger.error(f"Warning, Cholesky did not find a positive definite matrix on attempt {i}")
             if (positive_definite):
-                # dp_i = tf.linalg.cholesky_solve(U_ij, f_i)
-                # dp_0 = 1. - self.delta * tf.cast(energy, self.dtype) - tf.reduce_sum(tf.cast(dpsi_i, self.dtype)*dp_i)
+                dp_i = tf.linalg.cholesky_solve(U_ij, f_i)
+                dp_0 = 1. - self.delta * tf.cast(energy, self.dtype) - tf.reduce_sum(tf.cast(dpsi_i, self.dtype)*dp_i)
 
-                # dp_i = self.gamma * self.vtm1 + self.eta * ( dp_i / dp_0 )
+                dp_i = (self.gamma * self.vtm1 + (1. - self.gamma) * ( dp_i / dp_0 ))
 
-                # self.vmt1   = dp_i
+                self.vmt1   = dp_i
 
-                dp_i = self.eta * tf.linalg.cholesky_solve(U_ij, f_i)
+                dp_i *= self.eta
+
+                # dp_i = self.eta * tf.linalg.cholesky_solve(U_ij, f_i)
 
 
                 dist = self.par_dist(dp_i, tf.cast(S_ij, self.dtype))

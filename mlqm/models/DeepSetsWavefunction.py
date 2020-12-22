@@ -42,13 +42,13 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.individual_net = tf.keras.models.Sequential()
         self.individual_net.add(
-            tf.keras.layers.Dense(32, 
+            tf.keras.layers.Dense(16, 
                 use_bias    = True, 
                 kernel_initializer = self.initializer,
                 activation = self.activation)
             )
         self.individual_net.add(
-            tf.keras.layers.Dense(32, 
+            tf.keras.layers.Dense(16, 
                 use_bias = True, 
                 kernel_initializer = self.initializer,
                 activation = self.activation)
@@ -59,13 +59,13 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.aggregate_net = tf.keras.models.Sequential()
         self.aggregate_net.add(
-            tf.keras.layers.Dense(32, 
+            tf.keras.layers.Dense(16, 
                 use_bias = False, 
                 kernel_initializer = self.initializer,
                 activation = self.activation)
             )
         self.aggregate_net.add(
-            tf.keras.layers.Dense(32, 
+            tf.keras.layers.Dense(16, 
                 use_bias = False, 
                 kernel_initializer = self.initializer,
                 activation = self.activation)

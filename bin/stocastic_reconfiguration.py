@@ -83,26 +83,55 @@ class exec(object):
 
 
         optimization = self.config['Optimization']
-        sr_parameters = ["iterations","nequilibrations","nvoid", "delta", "eps"]
-        for key in sr_parameters:
+        sampler      = self.config['Sampler']
+
+        opt_parameters = [
+            "iterations", 
+            "delta", 
+            "eps", 
+            "gamma", 
+            "eta"
+        ]
+
+        for key in opt_parameters:
             if key not in optimization:
                 raise Exception(f"Configuration for Optimization missing key {key}")
 
-        self.iterations      = int(optimization['iterations'])
-        self.nequilibrations = int(optimization['nequilibrations'])
-        self.nvoid           = int(optimization['nvoid'])
-
+        self.iterations      = int(  optimization['iterations'])
         self.delta           = float(optimization['delta'])
         self.eps             = float(optimization['eps'])
         self.gamma           = float(optimization['gamma'])
         self.eta             = float(optimization['eta'])
 
+
+        sampler_parameters = [
+            "n_thermalize", 
+            "n_void_steps", 
+            "n_observable_measurements", 
+            "n_walkers_per_observation",
+        ]
+        for key in sampler_parameters:
+            if key not in sampler:
+                raise Exception(f"Configuration for Sampler missing key {key}")
+
+
+        self.n_thermalize               = int(sampler['n_thermalize'])
+        self.n_observable_measurements  = int(sampler['n_observable_measurements'])
+        self.n_void_steps               = int(sampler['n_void_steps'])
+        self.n_walkers_per_observation  = int(sampler['n_walkers_per_observation'])
+
+        if "n_concurrent_obs_per_rank" in sampler:
+            self.n_concurrent_obs_per_rank = int(sampler['n_concurrent_obs_per_rank'])
+        else:
+            self.n_concurrent_obs_per_rank = 1
+
         self.global_step     = 0
 
         self.dimension  = int(self.config['General']['dimension'])
         self.nparticles = int(self.config['General']['nparticles'])
-        self.save_path  = self.config["General"]["save_path"]
-        self.model_name = self.config["General"]["model_name"]
+        self.save_path  =     self.config["General"]["save_path"]
+        self.model_name =     self.config["General"]["model_name"]
+
         if "profile" in self.config["General"]:
             self.profile = self.config["General"]["profile"]
         else:
@@ -141,8 +170,18 @@ class exec(object):
             dtype   = DEFAULT_TENSOR_TYPE)
 
 
-        print(wavefunction)
-        self.sr_worker   = self.build_sr_worker(sampler, wavefunction, hamiltonian, optimizer)
+        self.sr_worker   = StochasticReconfiguration(
+            sampler                   = sampler, 
+            wavefunction              = wavefunction, 
+            hamiltonian               = hamiltonian,
+            optimizer                 = optimizer,
+            n_observable_measurements = self.n_observable_measurements,
+            n_void_steps              = self.n_void_steps,
+            n_walkers_per_observation = self.n_walkers_per_observation,
+            n_concurrent_obs_per_rank = self.n_concurrent_obs_per_rank
+        )
+
+
 
 
 
@@ -177,41 +216,21 @@ class exec(object):
             self.config.write(cfg)
 
 
-    def build_sr_worker(self, sampler, wavefunction, hamiltonian, optimizer):
+    # def build_sr_worker(self, sampler, wavefunction, hamiltonian, optimizer):
 
-        sr_worker = StochasticReconfiguration(sampler, wavefunction, hamiltonian, optimizer)
+    #     sr_worker = StochasticReconfiguration(sampler, wavefunction, hamiltonian, optimizer)
 
-        return sr_worker
+    #     return sr_worker
 
     def build_sampler(self):
 
-        # First, check the sampler has all required config items:
-        sampler = self.config["Sampler"]
-
-        required_keys = ["nwalkers"]
-
-        for key in required_keys:
-            if key not in sampler:
-                raise Exception(f"Configuration for Sampler missing key {key}")
-
-        self.nwalkers   = int(sampler['nwalkers'])
-
-        # if MPI_AVAILABLE and self.size != 1:
-        #     # Scale down the number of walkers:
-        #     nwalkers = int(self.nwalkers / self.size)
-        #     if self.nwalkers / self.size != nwalkers:
-        #         logger.error("ERROR: number of walkers is not evenly divided by MPI COMM size")
-        #
-        #     self.nwalkers = nwalkers
-
-
         from mlqm.samplers import MetropolisSampler
 
-        # As an optimization, we increase the number of walkers by nobservations
+        # As an optimization, we increase the number of walkers by n_concurrent_obs_per_rank
         sampler = MetropolisSampler(
             n           = self.dimension,
             nparticles  = self.nparticles,
-            nwalkers    = self.nwalkers,
+            nwalkers    = self.n_walkers_per_observation * self.n_concurrent_obs_per_rank,
             initializer = tf.random.normal,
             init_params = {"mean": 0.0, "stddev" : 0.2},
             dtype       = DEFAULT_TENSOR_TYPE)
@@ -268,15 +287,18 @@ class exec(object):
         # We attempt to restore the weights:
         try:
             self.restore()
-            print("Loaded weights, optimizer and global step!")
+            logger.debug("Loaded weights, optimizer and global step!")
         except Exception as excep:
-            print("Failed to load weights!")
-            print(excep)
+            logger.debug("Failed to load weights!")
+            logger.debug(excep)
             pass
 
 
         # First step - thermalize:
-        self.sr_worker.equilibrate(self.nequilibrations)
+        logger.info("About to thermalize.")
+        self.sr_worker.equilibrate(1)
+        self.sr_worker.equilibrate(self.n_thermalize)
+        logger.info("Finished thermalization.")
 
 
         while self.global_step < self.iterations:
@@ -289,7 +311,7 @@ class exec(object):
 
             start = time.time()
 
-            metrics  = self.sr_worker.sr_step(self.nvoid)
+            metrics  = self.sr_worker.sr_step()
 
             self.summary(metrics, self.global_step)
 
@@ -318,12 +340,12 @@ class exec(object):
 
     def finalize(self):
         # Take the network and snapshot it to file:
-        self.wavefunction.save_weights(self.model_path)
+        self.sr_worker.wavefunction.save_weights(self.model_path)
         # Save the global step:
         with open(self.save_path + "/global_step.pkl", 'wb') as _f:
             pickle.dump(self.global_step, file=_f)
         with open(self.save_path + "/optimizer.pkl", 'wb') as _f:
-            pickle.dump(self.optimizer, file=_f)
+            pickle.dump(self.sr_worker.optimizer, file=_f)
 
     def interupt_handler(self, sig, frame):
         logger.info("Snapshoting weights...")
