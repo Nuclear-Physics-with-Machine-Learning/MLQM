@@ -19,7 +19,10 @@ try:
     hvd.init()
 
     # This is to force each rank onto it's own GPU:
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
+    if (hvd.size() != 1 ):
+        # Only set this if there is more than one GPU.  Otherwise, its probably
+        # Set elsewhere
+        os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
     MPI_AVAILABLE=True
 except:
     MPI_AVAILABLE=False
@@ -324,6 +327,8 @@ class exec(object):
         self.sr_worker.compile()
         logger.info("Finished compilation.")
 
+        checkpoint_iteration = 500
+
         while self.global_step < self.iterations:
             if not self.active: break
 
@@ -349,6 +354,10 @@ class exec(object):
             # Iterate:
             self.global_step += 1
 
+            if checkpoint_iteration % self.global_step == 0:
+                if not MPI_AVAILABLE or hvd.rank() == 0:
+                    self.save_weights()
+
             if self.profile:
                 tf.profiler.experimental.stop()
                 tf.summary.trace_off()
@@ -361,16 +370,18 @@ class exec(object):
                 for key in metrics:
                     tf.summary.scalar(key, metrics[key], step=step)
 
+    def save_weights(self):
+        # Take the network and snapshot it to file:
+        self.sr_worker.wavefunction.save_weights(self.model_path)
+        # Save the global step:
+        with open(self.save_path + "/global_step.pkl", 'wb') as _f:
+            pickle.dump(self.global_step, file=_f)
+        with open(self.save_path + "/optimizer.pkl", 'wb') as _f:
+            pickle.dump(self.sr_worker.optimizer, file=_f)
 
     def finalize(self):
         if not MPI_AVAILABLE or hvd.rank() == 0:
-            # Take the network and snapshot it to file:
-            self.sr_worker.wavefunction.save_weights(self.model_path)
-            # Save the global step:
-            with open(self.save_path + "/global_step.pkl", 'wb') as _f:
-                pickle.dump(self.global_step, file=_f)
-            with open(self.save_path + "/optimizer.pkl", 'wb') as _f:
-                pickle.dump(self.sr_worker.optimizer, file=_f)
+            self.save_weights()
 
     def interupt_handler(self, sig, frame):
         logger.info("Snapshoting weights...")
