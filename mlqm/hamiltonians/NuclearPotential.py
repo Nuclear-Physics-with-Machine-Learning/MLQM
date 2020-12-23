@@ -80,8 +80,6 @@ class NuclearPotential(Hamiltonian):
                 #
                 x_ij = inputs[:,i,:]-inputs[:,j,:]
                 r_ij = tf.sqrt(tf.reduce_sum(x_ij**2,axis=1))
-                print("r_ij.shape: ", r_ij.shape)
-                print("v_ij.shape: ", v_ij.shape)
                 vrr, vrs = self.pionless_2b(r_ij=r_ij, nwalkers=nwalkers)
                 # v_ij += self.pionless_2b(r_ij=r_ij, nwalkers=nwalkers)
                 if (nparticles > 2 ):
