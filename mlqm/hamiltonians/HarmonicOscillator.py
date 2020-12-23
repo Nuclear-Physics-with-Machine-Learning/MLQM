@@ -4,7 +4,6 @@ import numpy
 import logging
 logger = logging.getLogger()
 
-from mlqm import H_BAR
 from mlqm.hamiltonians import Hamiltonian
 
 class HarmonicOscillator(Hamiltonian):
@@ -48,15 +47,15 @@ class HarmonicOscillator(Hamiltonian):
     @tf.function
     def compute_energies(self, inputs, logw_of_x, dlogw_dx, d2logw_dx2):
         '''Compute PE, KE_JF, and KE_direct
-        
+
         Harmonic Oscillator Energy Calculations
-        
+
         Arguments:
             inputs {[type]} -- walker coordinates (shape is [nwalkers, nparticles, dimension])
             logw_of_x {[type]} -- computed wave function at each walker
             dlogw_dx {[type]} -- first derivative of wavefunction at each walker
             d2logw_dx2 {[type]} -- second derivative of wavefunction at each walker
-        
+
         Raises:
             NotImplementedError -- [description]
 

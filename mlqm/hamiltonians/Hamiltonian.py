@@ -4,7 +4,6 @@ import numpy
 import logging
 logger = logging.getLogger()
 
-from mlqm import H_BAR
 from mlqm import DEFAULT_TENSOR_TYPE
 
 class Hamiltonian(object):
@@ -26,6 +25,7 @@ class Hamiltonian(object):
         for key in kwargs:
             self.parameters[key] = tf.constant(float(kwargs[key]),dtype=DEFAULT_TENSOR_TYPE)
 
+        self.HBAR = tf.constant(1.0, dtype = DEFAULT_TENSOR_TYPE)
 
     def potential_energy(self, *, inputs):
         """Return potential energy
@@ -57,7 +57,7 @@ class Hamiltonian(object):
         # < x | KE | psi > / < x | psi > =  1 / 2m [ < x | p | psi > / < x | psi >  = 1/2 w * x**2
 
         # Contract d2_w_dx over spatial dimensions and particles:
-        ke_jf = (H_BAR**2 / (2 * M)) * tf.reduce_sum(dlogw_dx**2, axis=(1,2))
+        ke_jf = (self.HBAR**2 / (2 * M)) * tf.reduce_sum(dlogw_dx**2, axis=(1,2))
 
         return ke_jf
 
@@ -76,7 +76,7 @@ class Hamiltonian(object):
             tf.Tensor - potential energy of shape [1]
         """
 
-        ke = -(H_BAR**2 / (2 * M)) * tf.reduce_sum(d2logw_dx2, axis=(1,2))
+        ke = -(self.HBAR**2 / (2 * M)) * tf.reduce_sum(d2logw_dx2, axis=(1,2))
         ke = ke  - KE_JF
 
         return ke
