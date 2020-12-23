@@ -102,13 +102,66 @@ class Hamiltonian(object):
         # [nwalkers, nparticles, dimension, nwalkers, nparticles, dimension]
 
         # This is the full hessian computation:
-        d2logw_dx2 = tape.jacobian(dlogw_dx, inputs)
+        d2logw_dx2 = tape.batch_jacobian(dlogw_dx, inputs)
 
         # And this contracts:
+        d2logw_dx2 = tf.einsum("wpdpd->wpd",d2logw_dx2)
+
+        return logw_of_x, dlogw_dx, d2logw_dx2
+
+    '''
+    This whole section is correct but a bad implementation
+
+    @tf.function
+    def derivative_single_walker(self, wavefunction, walker):
+
+        # Using the outer-most tape to watch the computation of the first derivative:
+        with tf.GradientTape(persistent=True) as tape:
+            tape.watch(walker)
+            # Use the inner tape to watch the computation of the wavefunction:
+            with tf.GradientTape(persistent=True) as second_tape:
+                second_tape.watch(walker)
+                logw_of_x = wavefunction(walker, training=True)
+            # Get the derivative of logw_of_x with respect to inputs
+            dlogw_dx = second_tape.gradient(logw_of_x, walker)
+
+        d2logw_dx2 = tape.jacobian(dlogw_dx, walker)
         d2logw_dx2 = tf.einsum("wpdwpd->wpd",d2logw_dx2)
+
+        return logw_of_x, dlogw_dx, d2logw_dx2
+
+    @tf.function
+    def compute_derivatives(self, wavefunction : tf.keras.models.Model, inputs : tf.Tensor):
+
+        output_shape = inputs.shape
+        inputs = tf.split(inputs, output_shape[0], axis=0)
+
+        logw_of_x, dlogw_dx, d2logw_dx2 = zip(*(self.derivative_single_walker(wavefunction, i) for i in inputs))
+        # Get the derivative of dlogw_dx with respect to inputs
+        # (aka second derivative)
+
+        # We have to extract the diagonal of the jacobian,
+         # which comes out with shape
+        # [nwalkers, nparticles, dimension, nwalkers, nparticles, dimension]
+
+        # For a fixed number of particles and dimension,
+        # this memory usage grows as nwalkers**2
+        # BUT, the jacobian is block diagonal: if you
+        # access the block [i,:,:,j,:,:] it is all zero unless i == j.
+
+        # In this implementation, we're computing the jacobian PER walker and
+        # only with respect to it's own inputs.  So, the jacobians are all
+        # shaped like [1, npart, ndim, 1, npart, ndim] which grows linearly
+        # with the number of walkers instead of quadratically.
+
+        #restack everything:
+        logw_of_x  = tf.reshape(tf.concat(logw_of_x, axis=0), (output_shape[0], 1))
+        dlogw_dx   = tf.reshape(tf.concat(dlogw_dx, axis=0), output_shape)
+        d2logw_dx2 = tf.reshape(tf.concat(d2logw_dx2, axis=0), output_shape)
 
 
         return logw_of_x, dlogw_dx, d2logw_dx2
+    '''
 
     @tf.function
     def compute_energies(self, inputs, logw_of_x, dlogw_dx, d2logw_dx2):
