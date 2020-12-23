@@ -140,6 +140,18 @@ class StochasticReconfiguration(object):
 
         return acceptance
 
+    # @tf.function
+    def compile(self):
+        # This step gets fresh walkers and computes their energy, which calls compile steps
+
+        kicker = tf.random.normal
+        kicker_params = {"mean": 0.0, "stddev" : 0.4}
+        acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=1)
+        x_current  = self.sampler.sample()
+        energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
+
+
+    # @profile
     def sr_step(self):
 
         metrics = {}

@@ -10,7 +10,7 @@ import pickle
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
-os.environ['TF_XLA_FLAGS'] = "--tf_xla_auto_jit=fusible"
+# os.environ['TF_XLA_FLAGS'] = "--tf_xla_auto_jit=fusible"
 
 import tensorflow as tf
 
@@ -208,14 +208,15 @@ class exec(object):
         else:
             self.save_path += append_token
 
-
-        self.writer = tf.summary.create_file_writer(self.save_path)
+        if not MPI_AVAILABLE or hvd.rank() == 0:
+            self.writer = tf.summary.create_file_writer(self.save_path)
 
         self.model_path = self.save_path + self.model_name
 
         # We also snapshot the configuration into the log dir:
-        with open(self.save_path + 'config.snapshot.ini', 'w') as cfg:
-            self.config.write(cfg)
+        if not MPI_AVAILABLE or hvd.rank() == 0:
+            with open(self.save_path + 'config.snapshot.ini', 'w') as cfg:
+                self.config.write(cfg)
 
 
     # def build_sr_worker(self, sampler, wavefunction, hamiltonian, optimizer):
@@ -262,12 +263,13 @@ class exec(object):
         return hamiltonian
 
     def restore(self):
-        self.sr_worker.wavefunction.load_weights(self.model_path)
+        if not MPI_AVAILABLE or hvd.rank() == 0:
+            self.sr_worker.wavefunction.load_weights(self.model_path)
 
-        with open(self.save_path + "/global_step.pkl", 'rb') as _f:
-            self.global_step = pickle.load(file=_f)
-        with open(self.save_path + "/optimizer.pkl", 'rb') as _f:
-            self.optimizer   = pickle.load(file=_f)
+            with open(self.save_path + "/global_step.pkl", 'rb') as _f:
+                self.global_step = pickle.load(file=_f)
+            with open(self.save_path + "/optimizer.pkl", 'rb') as _f:
+                self.sr_worker.optimizer   = pickle.load(file=_f)
 
 
     def set_compute_parameters(self):
@@ -279,6 +281,7 @@ class exec(object):
         for device in physical_devices:
             tf.config.experimental.set_memory_growth(device, True)
 
+    # @profile
     def run(self):
 
 
@@ -298,11 +301,17 @@ class exec(object):
 
 
         if MPI_AVAILABLE and hvd.size() > 1:
+            logger.info("Broadcasting initial model and optimizer state.")
             # We have to broadcast the wavefunction parameter here:
             hvd.broadcast_variables(self.sr_worker.wavefunction.variables, 0)
 
             # Also ned to broadcast the optimizer state:
-
+            self.sr_worker.optimizer = hvd.broadcast_object(
+                self.sr_worker.optimizer, root_rank=0)
+            # And the global step:
+            self.global_step = hvd.broadcast_object(
+                self.global_step, root_rank=0)
+            logger.info("Done broadcasting initial model and optimizer state.")
 
         # First step - thermalize:
         logger.info("About to thermalize.")
@@ -310,6 +319,10 @@ class exec(object):
         self.sr_worker.equilibrate(self.n_thermalize)
         logger.info("Finished thermalization.")
 
+        # Now, call once to compile:
+        logger.info("About to compile.")
+        self.sr_worker.compile()
+        logger.info("Finished compilation.")
 
         while self.global_step < self.iterations:
             if not self.active: break
@@ -343,19 +356,21 @@ class exec(object):
 
     # @tf.function
     def summary(self, metrics, step):
-        with self.writer.as_default():
-            for key in metrics:
-                tf.summary.scalar(key, metrics[key], step=step)
+        if not MPI_AVAILABLE or hvd.rank() == 0:
+            with self.writer.as_default():
+                for key in metrics:
+                    tf.summary.scalar(key, metrics[key], step=step)
 
 
     def finalize(self):
-        # Take the network and snapshot it to file:
-        self.sr_worker.wavefunction.save_weights(self.model_path)
-        # Save the global step:
-        with open(self.save_path + "/global_step.pkl", 'wb') as _f:
-            pickle.dump(self.global_step, file=_f)
-        with open(self.save_path + "/optimizer.pkl", 'wb') as _f:
-            pickle.dump(self.sr_worker.optimizer, file=_f)
+        if not MPI_AVAILABLE or hvd.rank() == 0:
+            # Take the network and snapshot it to file:
+            self.sr_worker.wavefunction.save_weights(self.model_path)
+            # Save the global step:
+            with open(self.save_path + "/global_step.pkl", 'wb') as _f:
+                pickle.dump(self.global_step, file=_f)
+            with open(self.save_path + "/optimizer.pkl", 'wb') as _f:
+                pickle.dump(self.sr_worker.optimizer, file=_f)
 
     def interupt_handler(self, sig, frame):
         logger.info("Snapshoting weights...")

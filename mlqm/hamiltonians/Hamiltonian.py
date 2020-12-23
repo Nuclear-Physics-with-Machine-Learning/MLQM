@@ -15,18 +15,18 @@ class Hamiltonian(object):
 
     def __init__(self, **kwargs):
         ''' Initialize the Hamiltonian
-    
-        The derived class will check parameters, but this converts all of them to floats 
+
+        The derived class will check parameters, but this converts all of them to floats
         and scores as TF Constants.
 
         '''
         object.__init__(self)
         self.parameters = {}
         # Cast them all to tf constants:
-        for key in kwargs: 
+        for key in kwargs:
             self.parameters[key] = tf.constant(float(kwargs[key]),dtype=DEFAULT_TENSOR_TYPE)
 
-    
+
     def potential_energy(self, *, inputs):
         """Return potential energy
 
@@ -106,22 +106,22 @@ class Hamiltonian(object):
 
         # And this contracts:
         d2logw_dx2 = tf.einsum("wpdwpd->wpd",d2logw_dx2)
-        
+
 
         return logw_of_x, dlogw_dx, d2logw_dx2
 
     @tf.function
     def compute_energies(self, inputs, logw_of_x, dlogw_dx, d2logw_dx2):
         '''Compute PE, KE_JF, and KE_direct
-        
+
         Placeholder for a user to implement their calculation of the energies.
-        
+
         Arguments:
             inputs {[type]} -- walker coordinates (shape is [nwalkers, nparticles, dimension])
             logw_of_x {[type]} -- computed wave function at each walker
             dlogw_dx {[type]} -- first derivative of wavefunction at each walker
             d2logw_dx2 {[type]} -- second derivative of wavefunction at each walker
-        
+
         Raises:
             NotImplementedError -- [description]
 
@@ -166,6 +166,5 @@ class Hamiltonian(object):
         # Total energy computations:
         energy = tf.squeeze(pe+ke_direct)
         energy_jf = tf.squeeze(pe+ke_jf)
-
 
         return energy, energy_jf, ke_jf, ke_direct, pe
