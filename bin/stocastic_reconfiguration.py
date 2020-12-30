@@ -157,11 +157,12 @@ class exec(object):
 
         # Create a wavefunction:
         from mlqm.models import DeepSetsWavefunction
-        wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles, mean_subtract=False)
+        wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles, mean_subtract=True)
 
 
         # Run the wave function once to initialize all its weights
         _ = wavefunction(x)
+
 
         from mlqm.optimization import Optimizer
 
