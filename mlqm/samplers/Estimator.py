@@ -1,6 +1,14 @@
 import tensorflow as tf
 import numpy
 
+try:
+    import horovod.tensorflow as hvd
+    hvd.init()
+    MPI_AVAILABLE=True
+except:
+    MPI_AVAILABLE=False
+
+from mlqm import DEFAULT_TENSOR_TYPE
 
 
 class Estimator(object):
@@ -23,18 +31,17 @@ class Estimator(object):
             "energy_jf"  : 0,
             "energy2_jf" : 0,
             "acceptance" : 0,
-            "weight"     : 0,
+            "weight"     : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
             "dpsi_i"     : 0,
             "dpsi_i_EL"  : 0,
             "dpsi_ij"    : 0,
         }
 
-    @tf.function
+    # @tf.function
     def allreduce(self):
 
         for key in self.tensor_dict.keys():
-            self.tensor_dict[key] = hvd.allreduce(self.tensor_dict[key], op="sum")
-
+            self.tensor_dict[key] = hvd.allreduce(self.tensor_dict[key], op=hvd.Sum)
         return
 
     def accumulate(self,energy,energy_jf,acceptance,weight,dpsi_i,dpsi_i_EL,dpsi_ij,estim_wgt) :

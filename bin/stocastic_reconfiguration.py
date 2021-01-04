@@ -33,13 +33,15 @@ except:
 # mixed_precision.set_policy(policy)
 
 import logging
+from logging import handlers
 logger = logging.getLogger()
 
 # Create a handler for STDOUT, but only on the root rank:
 if not MPI_AVAILABLE or hvd.rank() == 0:
-    handler = logging.StreamHandler(sys.stdout)
+    stream_handler = logging.StreamHandler()
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
+    stream_handler.setFormatter(formatter)
+    handler = handlers.MemoryHandler(capacity = 100, target=stream_handler)
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)
 else:
@@ -143,7 +145,7 @@ class exec(object):
         self.model_name =     self.config["General"]["model_name"]
 
         if "profile" in self.config["General"]:
-            self.profile = self.config["General"]["profile"]
+            self.profile = self.config["General"].getboolean("profile")
         else:
             self.profile = False
 
@@ -285,7 +287,6 @@ class exec(object):
         for device in physical_devices:
             tf.config.experimental.set_memory_growth(device, True)
 
-    # @profile
     def run(self):
 
 
@@ -319,7 +320,6 @@ class exec(object):
 
         # First step - thermalize:
         logger.info("About to thermalize.")
-        self.sr_worker.equilibrate(1)
         self.sr_worker.equilibrate(self.n_thermalize)
         logger.info("Finished thermalization.")
 
@@ -342,22 +342,26 @@ class exec(object):
 
             metrics  = self.sr_worker.sr_step()
 
-            self.summary(metrics, self.global_step)
 
             self.sr_worker.update_model()
+
+            metrics['time'] = time.time() - start
+
+            self.summary(metrics, self.global_step)
 
             if self.global_step % 1 == 0:
                 logger.info(f"step = {self.global_step}, energy = {metrics['energy/energy'].numpy():.3f}, err = {metrics['energy/error'].numpy():.3f}")
                 logger.info(f"step = {self.global_step}, energy_jf = {metrics['energy/energy_jf'].numpy():.3f}, err = {metrics['energy/error_jf'].numpy():.3f}")
                 logger.info(f"acc  = {metrics['metropolis/acceptance'].numpy():.3f}")
-                logger.info(f"time = {time.time() - start:.3f}")
+                logger.info(f"time = {metrics['time']:.3f}")
 
             # Iterate:
             self.global_step += 1
 
             if checkpoint_iteration % self.global_step == 0:
                 if not MPI_AVAILABLE or hvd.rank() == 0:
-                    self.save_weights()
+                    # self.save_weights()
+                    pass
 
             if self.profile:
                 tf.profiler.experimental.stop()

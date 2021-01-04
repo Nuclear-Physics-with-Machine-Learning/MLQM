@@ -40,9 +40,9 @@ class NuclearPotential(Hamiltonian):
 
     @tf.function
     def pionless_3b(self, *,  r_ij, nwalkers):
-        pot_3b = tf.zeros(shape=(nwalkers))
+        pot_3b = tf.zeros(shape=(nwalkers), dtype=DEFAULT_TENSOR_TYPE)
         vkr = 4.0
-        ar3b = np.sqrt(677.79890)
+        ar3b = tf.constant(26.0345712467, dtype=DEFAULT_TENSOR_TYPE)
         x = vkr * r_ij
         vr = tf.exp(-x**2/4.0)
         pot_3b = vr * ar3b
@@ -73,7 +73,8 @@ class NuclearPotential(Hamiltonian):
             alpha = -1.0
 
         v_ij = tf.zeros(shape=[nwalkers,6], dtype=DEFAULT_TENSOR_TYPE)
-        gr3b = tf.zeros(shape=[nwalkers,nparticles], dtype=DEFAULT_TENSOR_TYPE)
+        # gr3b = tf.Variable(tf.zeros(shape=[nwalkers,nparticles], dtype=DEFAULT_TENSOR_TYPE))
+        gr3b = [tf.zeros(shape=[nwalkers], dtype=DEFAULT_TENSOR_TYPE) for p in range(nparticles)]
         V_ijk = tf.zeros(shape=[nwalkers], dtype=DEFAULT_TENSOR_TYPE)
         for i in range (nparticles-1):
             for j in range (i+1,nparticles):
@@ -84,9 +85,13 @@ class NuclearPotential(Hamiltonian):
                 # v_ij += self.pionless_2b(r_ij=r_ij, nwalkers=nwalkers)
                 if (nparticles > 2 ):
                    t_ij = self.pionless_3b(r_ij=r_ij, nwalkers=nwalkers)
-                   gr3b[:,i] += t_ij
-                   gr3b[:,j] += t_ij
+                   gr3b[i] += t_ij
+                   gr3b[j] += t_ij
+                   # gr3b[i] = gr3b[:,i].assign(gr3b[:,i] + t_ij)
+                   # gr3b = gr3b[:,j].assign(gr3b[:,j] + t_ij)
                    V_ijk -= t_ij**2
+        # stack up gr3b:
+        gr3b = tf.stack(gr3b, axis=1)
         V_ijk += 0.5 * tf.reduce_sum(gr3b**2, axis = 1)
         pe = vrr + alpha * vrs + V_ijk
         # self.pe = v_ij[:,0] + self.alpha * v_ij[:,2] + V_ijk

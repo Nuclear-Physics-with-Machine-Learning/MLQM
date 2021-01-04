@@ -13,14 +13,9 @@ from mlqm.samplers     import Estimator, MetropolisSampler
 try:
     import horovod.tensorflow as hvd
     hvd.init()
-    from mpi4py import MPI
-
-    # This is to force each rank onto it's own GPU:
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
     MPI_AVAILABLE=True
 except:
     MPI_AVAILABLE=False
-
 
 class StochasticReconfiguration(object):
 
@@ -63,16 +58,11 @@ class StochasticReconfiguration(object):
     @tf.function
     def batched_jacobian(self, nobs, x_current_arr, wavefunction, jac_fnc):
         ret_jac = []
-        # ret_shape = []
         for i in range(nobs):
             flattened_jacobian, flat_shape = jac_fnc(x_current_arr[i], wavefunction)
             ret_jac.append(flattened_jacobian)
-            # ret_shape.append(flat_shape)
 
         return ret_jac, flat_shape
-
-
-
 
 
     @tf.function
@@ -151,7 +141,6 @@ class StochasticReconfiguration(object):
         energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
 
 
-    # @profile
     def sr_step(self):
 
         metrics = {}
@@ -171,9 +160,9 @@ class StochasticReconfiguration(object):
 
         n_loops_total = int(self.n_observable_measurements / self.n_concurrent_obs_per_rank)
 
-        if MPI_AVAILABLE:
-            n_loops_total /= self.size
 
+        if MPI_AVAILABLE:
+            n_loops_total = int(n_loops_total / self.size)
         # logger.debug(" -- Coordinating loop length")
 
         # We do a check that n_loops_total * n_concurrent_obs_per_rank matches expectations:
@@ -252,17 +241,6 @@ class StochasticReconfiguration(object):
         metrics["energy/ke_std"]    = tf.math.reduce_std(ke_direct)
         metrics["energy/pe_std"]    = tf.math.reduce_std(pe)
 
-
-        # if MPI_AVAILABLE:
-        #     # Here, we have to do a reduction over all params used to calculate gradients
-        #     energy    = hvd.allreduce(energy)
-        #     dpsi_i    = hvd.allreduce(dpsi_i)
-        #     dpsi_i_EL = hvd.allreduce(dpsi_i_EL)
-        #     dpsi_ij   = hvd.allreduce(dpsi_ij)
-###########################################################################################
-# NOTE: THE ABOVE REDUCTION WILL MESS UP THE ERROR CALCULATIONS
-###########################################################################################
-        # logger.info(f"psi norm{tf.reduce_mean(log_wpsi)}")
         dp_i = self.optimizer.sr(
             self.estimator.tensor_dict["energy"],
             self.estimator.tensor_dict["dpsi_i"],

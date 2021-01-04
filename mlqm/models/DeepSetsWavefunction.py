@@ -37,7 +37,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.mean_subtract = mean_subtract
 
-        self.activation  = tf.keras.activations.softplus
+        self.activation  = tf.keras.activations.tanh
         # self.initializer = tf.keras.initializers.HeNormal
 
         self.individual_net = tf.keras.models.Sequential()
