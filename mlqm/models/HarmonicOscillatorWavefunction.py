@@ -1,66 +1,72 @@
-import torch
+import tensorflow as tf
 import numpy
 
 from .GaussianBoundaryCondition import GaussianBoundaryCondition
 
 
-class HarmonicOscillatorWavefunction(torch.nn.Module):
+class HarmonicOscillatorWavefunction(tf.keras.layers.Layer):
     """Implememtation of the harmonic oscillator wave funtions
-    
+
     Create a polynomial, up to `degree` in every dimension `n`, that is the
     exact solution to the harmonic oscillator wave function.
 
     Extends:
-        torch.nn.Module
+        tf.keras.layers.Layer
     """
 
-    def __init__(self,  n : int, degree : int, alpha : float):
+    def __init__(self,  n : int, nparticles : int, degree : int, alpha : float, dtype=tf.float64):
         """Initializer
-        
+
         Create a harmonic oscillator wave function
-        
+
         Arguments:
             n {int} -- Dimension of the oscillator (1 <= n <= 3)
+            nparticles {int} -- Number of particles
             degree {int} -- Degree of the solution (broadcastable to n)
             alpha {float} -- Alpha parameter (m * omega / hbar)
-        
+
         Raises:
             Exception -- [description]
         """
-        torch.nn.Module.__init__(self)
-        
+        tf.keras.layers.Layer.__init__(self, dtype=dtype)
+
         self.n = n
-        if self.n < 1 or self.n > 3: 
+        if self.n < 1 or self.n > 3:
             raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillatorWavefunction")
+
+        if nparticles > 1:
+            raise Exception("HarmonicOscillatorWavefunction is only for 1 particle for testing.")
 
         # Use numpy to broadcast to the right dimension:
         degree = numpy.asarray(degree, dtype=numpy.int32)
         degree = numpy.broadcast_to(degree, (self.n,))
 
+        self.type = dtype
+
         # Degree of the polynomial:
         self.degree = degree
-        
+
         if numpy.min(self.degree) < 0 or numpy.max(self.degree) > 4:
             raise Exception("Only the first 5 hermite polynomials are supported")
 
         alpha = numpy.asarray(alpha, dtype=numpy.int32)
         alpha = numpy.broadcast_to(alpha, (self.n,))
         self.alpha = alpha
-        
+
         # Normalization:
         self.norm = numpy.power(self.alpha / numpy.pi, 0.25)
         self.norm = numpy.prod(self.norm)
-        
+
 
         # Craft the polynomial coefficients:
 
         # Add one to the degree since they start at "0"
         # Polynomial is of shape [degree, largest_dimension]
-        self.polynomial = torch.zeros(size=(max(self.degree) + 1, self.n))
+        self.polynomial = numpy.zeros(shape=(max(self.degree) + 1, self.n), dtype=numpy.float64)
         #  Loop over the coefficents and set them:
 
         # Loop over dimension:
-        self.polynomial_norm = torch.zeros(size=(self.n,))
+        self.polynomial_norm = numpy.zeros(shape=(self.n,), dtype=numpy.float64)
         for _n in range(self.n):
             # Loop over degree:
             _d = self.degree[_n]
@@ -83,16 +89,22 @@ class HarmonicOscillatorWavefunction(torch.nn.Module):
             # For each dimension:
             self.polynomial_norm[_n] = 1.0 / numpy.sqrt(2**_d * numpy.math.factorial(_d))
 
+        self.polynomial_norm = tf.convert_to_tensor(self.polynomial_norm, dtype=self.type)
+        self.polynomial      = tf.convert_to_tensor(self.polynomial, dtype=self.type)
 
 
-        self.exp = GaussianBoundaryCondition(n=self.n, exp=numpy.sqrt(self.alpha), trainable=False)
-    
-    def forward(self, inputs):
-    
-        y = inputs
-        
+        self.exp = GaussianBoundaryCondition(
+            n=self.n, exp=numpy.sqrt(self.alpha), trainable=False, dtype=self.type)
+
+
+    @tf.function
+    def call(self, inputs):
+
+        # Slice the inputs to restrict to just one particle:
+        y = inputs[:,0,:]
+
         # Create the output tensor with the right shape, plus the constant term:
-        polynomial_result = torch.zeros(inputs.shape)
+        polynomial_result = tf.zeros(y.shape,dtype=self.type)
 
         # This is a somewhat basic implementation:
         # Loop over degree:
@@ -103,20 +115,25 @@ class HarmonicOscillatorWavefunction(torch.nn.Module):
             # This gets reduced by summing over all degrees for a fixed dimenions
             # Then they are reduced by multiplying over dimensions
             poly_term = y**d
-            
-            # Multiply every element (which is the dth power) by the appropriate 
+
+
+            # Multiply every element (which is the dth power) by the appropriate
             # coefficient in it's dimension
             res_vec = poly_term * self.polynomial[d]
 
             # Add this to the result:
             polynomial_result += res_vec
 
+
         # Multiply the results across dimensions at every point:
-        polynomial_result = torch.prod(polynomial_result, dim=1)
+        polynomial_result = tf.reduce_prod(polynomial_result, axis=1)
 
-        boundary_condition = self.exp(y)
+        # Again restrict the BC to just one particle:
+        boundary_condition = self.exp(inputs)[:,0]
 
-        total_normalization = self.norm * torch.prod(self.polynomial_norm)
-            
-        return boundary_condition * polynomial_result * total_normalization
+        total_normalization = self.norm * tf.reduce_prod(self.polynomial_norm)
+        epsilon = 1e-16
+        # Add epsilon here to prevent underflow
+        wavefunction = tf.math.log(boundary_condition * polynomial_result * total_normalization + epsilon)
 
+        return tf.reshape(wavefunction, [-1, 1])

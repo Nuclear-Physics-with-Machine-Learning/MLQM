@@ -1,9 +1,9 @@
-import torch
+import tensorflow as tf
 import numpy
 
 from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
     
-class PolynomialWavefunction(torch.nn.Module):
+class PolynomialWavefunction(tf.keras.models.Model):
     """Implememtation of a Polynomial wave funtion in N dimensions
     
     Create a polynomial, up to `degree` in every dimension `n`, fittable
@@ -12,16 +12,17 @@ class PolynomialWavefunction(torch.nn.Module):
     Boundary condition, if not supplied, is gaussian like in every dimension.
     
     Extends:
-        torch.nn.Module
+        tf.keras.models.Model
     """
 
-    def __init__(self,  n : int, degree : int, boundary_condition :torch.nn.Module = None):
+    def __init__(self,  n : int, nparticles : int, degree : int, boundary_condition :tf.keras.layers.Layer = None):
         """Initializer
         
         Create a polynomial wave function with exponential boundary condition
         
         Arguments:
             n {int} -- Dimension of the oscillator (1 <= n <= 3)
+            nparticles {int} -- number of particles
             degree {int} -- Degree of the solution
             alpha {float} -- Alpha parameter (m * omega / hbar)
         
@@ -29,11 +30,14 @@ class PolynomialWavefunction(torch.nn.Module):
             Exception -- [description]
         """
 
-        torch.nn.Module.__init__(self)
+        tf.keras.models.Model.__init__(self)
         
         self.n = n
         if self.n < 1 or self.n > 3: 
             raise Exception("Dimension must be 1, 2, or 3 for PolynomialWavefunction")
+
+        if nparticles > 1:
+            raise Exception("Polynomial wavefunction is only supported for one particle")
 
         # Use numpy to broadcast to the right dimension:
         degree = numpy.asarray(degree, dtype=numpy.int32)
@@ -53,20 +57,23 @@ class PolynomialWavefunction(torch.nn.Module):
 
         # Add one to the degree since they start at "0"
         # Polynomial is of shape [degree, largest_dimension]
-        self.polynomial = torch.ones(size=(max(self.degree) +1 , self.n))
+        self.polynomial = tf.Variable(
+            initial_value = tf.random.normal(shape=(max(self.degree) +1 , self.n), dtype=tf.float32),
+            trainable=True )
 
-        if boundary_condition is None:
-            self.bc = ExponentialBoundaryCondition(self.n)
-        else:
-            self.bc = boundary_condition
+        # if boundary_condition is None:
+        #     self.bc = ExponentialBoundaryCondition(self.n)
+        # else:
+        #     self.bc = boundary_condition
 
 
 
-    def forward(self, inputs):
-        y = inputs
+    def call(self, inputs, training=None):
+        # Restrict to just one particle
+        y = inputs[:,0,:]
         
         # Create the output tensor with the right shape, plus the constant term:
-        polynomial_result = torch.zeros(inputs.shape)
+        polynomial_result = tf.zeros(y.shape)
 
         # This is a somewhat basic implementation:
         # Loop over degree:
@@ -86,32 +93,27 @@ class PolynomialWavefunction(torch.nn.Module):
             polynomial_result += res_vec
 
         # Multiply the results across dimensions at every point:
-        polynomial_result = torch.prod(polynomial_result, dim=1)
+        polynomial_result = tf.reduce_prod(polynomial_result, axis=1)
 
-        boundary_condition = self.bc(y)
+        # boundary_condition = self.bc(y)
 
+        # print(polynomial_result.shape)
+        # print(boundary_condition.shape)
             
-        return boundary_condition * polynomial_result * self.norm
+        return polynomial_result * self.norm
+        # return boundary_condition * polynomial_result * self.norm
 
     
     def update_normalization(self, inputs, delta):
         # Inputs is expected to be a range of parameters along an x axis.
-        with torch.no_grad():
-            value = self.forward(inputs)
-            N = value ** 2
+        value = self.call(inputs)
+        
+        print(value.shape)
+        N = value ** 2
 
 
-            N = torch.sum(N * delta)
-            self.norm *= 1/torch.sqrt(N)
-
-            # The normalization condition is that the integral of the wavefunction squared
-            # should be equal to 1 (probability sums to 1.)
+        N = tf.reduce_sum(N * delta)
+        self.norm *= 1/tf.sqrt(N)
 
         return
     
-
-    def zero_grad(self):
-        """Sets gradients of all model parameters to zero."""
-        for p in self.parameters():
-            if p.grad is not None:
-                p.grad.data.zero_()

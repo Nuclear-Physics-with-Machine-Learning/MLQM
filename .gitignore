@@ -3,8 +3,17 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Profiling files:
+*.lprof
+
+*.model
+
 # C extensions
 *.so
+
+*.pdf
+*.log
+*.dat
 
 # Distribution / packaging
 .Python

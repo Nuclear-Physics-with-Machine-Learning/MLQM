@@ -1,127 +1,77 @@
-import torch
+import tensorflow as tf
 import numpy
 
-from mlqm import H_BAR
+import logging
+logger = logging.getLogger()
 
-class HarmonicOscillator(object):
+from mlqm.hamiltonians import Hamiltonian
+
+class HarmonicOscillator(Hamiltonian):
     """Harmonic Oscillator Potential
-    
+
     Implementation of the quantum harmonic oscillator hamiltonian
     """
 
-    def __init__(self,  n : int, M : float, omega : float):
+    def __init__(self, **kwargs):
 
-        object.__init__(self)
+        Hamiltonian.__init__(self, **kwargs)
+
+        # Check the parameters have everything needed:
+        for parameter in ["mass", "omega"]:
+            if parameter not in self.parameters:
+                raise KeyError(f"Parameter {parameter} not suppliled as keyword arg to HarmonicOscillator")
 
 
-        self.n = n
-        if self.n < 1 or self.n > 3: 
-            raise Exception("Dimension must be 1, 2, or 3 for HarmonicOscillator")
-
-        self.M = M
-
-        self.omega = omega
-
-        # Several objects get stored for referencing, if needed, after energy computation:
-        self.pe = None
-        self.ke = None
-
-    def potential_energy(self, *, wavefunction=None, inputs=None, delta=None, w_of_x=None):
+    @tf.function
+    def potential_energy(self, *, inputs, M, omega):
         """Return potential energy
-        
-        If the potential energy is already computed, and no arguments are supplied,
-        return the cached value
 
-        If all arguments are supplied, calculate and return the PE.
+        Calculate and return the PE.
 
-        Otherwise, exception
-        
         Arguments:
-            wavefunction {Wavefunction model} -- Callable wavefunction object
-            inputs {torch.Tensor} -- Tensor of shape [N, dimension], must have graph enabled
-            delta {torch.Tensor} -- Integral Computation 'dx'
-            w_of_x {torch.Tensor} -- Optional, can use a cached forward pass of the wavefunction
-        
+            inputs {tf.Tensor} -- Tensor of shape [N, dimension], must have graph enabled
         Returns:
-            torch.Tensor - potential energy of shape [1]
+            tf.Tensor - potential energy of shape [1]
         """
 
-        if self.pe is not None:
-            if wavefunction is None and inputs is None and delta is None:
-                return self.pe
-        
-        if wavefunction is None or inputs is None or delta is None:
-            raise Exception("Must provide all or none of wavefunction, inputs, AND delta to potential_energy computation")
-        
-        if w_of_x is None:
-            w_of_x = wavefunction(inputs)
+        # Potential calculation
+        # < x | H | psi > / < x | psi > = < x | 1/2 w * x**2  | psi > / < x | psi >  = 1/2 w * x**2
+        # print("Enter pe call")
 
-        x_squared =torch.sum(inputs**2, dim=1) 
-        self.pe = (0.5 * self.M * self.omega**2 ) * torch.sum(w_of_x**2 * x_squared * delta )
+        # x Squared needs to contract over spatial dimensions:
+        x_squared = tf.reduce_sum(inputs**2, axis=(1, 2))
+        pe = (0.5 * M * omega**2 ) * x_squared
 
-        return self.pe
+        return pe
 
-    def kinetic_energy(self, *, w_prime_dx=None, delta = None):
-        """Return Kinetic energy
-        
-        If the potential energy is already computed, and no arguments are supplied,
-        return the cached value
+    @tf.function
+    def compute_energies(self, inputs, logw_of_x, dlogw_dx, d2logw_dx2):
+        '''Compute PE, KE_JF, and KE_direct
 
-        If all arguments are supplied, calculate and return the PE.
+        Harmonic Oscillator Energy Calculations
 
-        Otherwise, exception
-        
         Arguments:
-            w_of_x {torch.Tensor} -- Computed derivative of the wavefunction
-        
+            inputs {[type]} -- walker coordinates (shape is [nwalkers, nparticles, dimension])
+            logw_of_x {[type]} -- computed wave function at each walker
+            dlogw_dx {[type]} -- first derivative of wavefunction at each walker
+            d2logw_dx2 {[type]} -- second derivative of wavefunction at each walker
+
+        Raises:
+            NotImplementedError -- [description]
+
         Returns:
-            torch.Tensor - potential energy of shape [1]
-        """
+            pe -- potential energy
+            ke_jf -- JF Kinetic energy
+            ke_direct -- 2nd deriv computation of potential energy
+        '''
 
-        if self.ke is not None:
-            if w_prime_dx is None and delta is None:
-                return self.ke
-        self.ke = (H_BAR**2 / (2 * self.M)) * torch.sum(w_prime_dx**2 * delta)
-        return self.ke
+        # Potential energy depends only on the wavefunction
+        pe = self.potential_energy(inputs=inputs, M = self.parameters["mass"], omega=self.parameters["omega"])
 
+        # KE by parts needs only one derivative
+        ke_jf = self.kinetic_energy_jf(dlogw_dx=dlogw_dx, M=self.parameters["mass"])
 
-    def energy(self, wavefunction, inputs, delta):
-        """Compute the expectation valye of energy of the supplied wavefunction.
-        
-        Computes the integral of the wavefunction in this potential
-        
-        Arguments:
-            wavefunction {Wavefunction model} -- Callable wavefunction object
-            inputs {torch.Tensor} -- Tensor of shape [N, dimension], must have graph enabled
-            delta {torch.Tensor} -- Integral Computation 'dx'
-        
-        Returns:
-            torch.tensor - Energy of shape [1]
-        """
+        # True, directly, uses the second derivative
+        ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M=self.parameters["mass"])
 
-
-        # This function takes the inputs
-        # And computes the expectation value of the energy.
-        
-        # This is the value of the wave function:
-        w_of_x = wavefunction(inputs)
-
-        # Sum the wavefunction and call backwards to get the derivative of it with respect to x:
-        grad_catalyst = torch.sum(w_of_x)
-        grad_catalyst.backward(retain_graph = True)
-        # This is the first derivative of the wave function:
-        
-        w_prime_dx = inputs.grad
-        
-        # Now we can compute integrals:
-        normalization = torch.sum(w_of_x**2 * delta)
-        
-        pe = self.potential_energy(wavefunction=wavefunction, inputs=inputs, delta=delta, w_of_x=w_of_x) 
-        
-        ke = self.kinetic_energy(w_prime_dx=w_prime_dx, delta=delta)
-        
-        energy = (pe + ke) / normalization
-        
-        return energy
-
-
+        return pe, ke_jf, ke_direct
