@@ -176,7 +176,6 @@ class StochasticReconfiguration(object):
             raise Exception(exception_str)
 
 
-        print(n_loops_total)
         for i_loop in range(n_loops_total):
             # logger.debug(f" -- evaluating loop {i_loop} of {n_loops_total}")
 
@@ -189,13 +188,9 @@ class StochasticReconfiguration(object):
             # Get the current walker locations:
             x_current  = self.sampler.sample()
 
-            print("x_current: ", x_current)
 
             # Compute the observables:
             energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
-
-            print("Energy: ", energy)
-            print("PE: ", pe)
 
             # Here, we split the energy and other objects into sizes of nwalkers_per_observation
             # if self.n_concurrent_obs_per_rank != 1:

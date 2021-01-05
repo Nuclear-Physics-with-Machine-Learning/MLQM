@@ -13,7 +13,7 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 # os.environ['TF_XLA_FLAGS'] = "--tf_xla_auto_jit=fusible"
 
 import tensorflow as tf
-tf.random.set_seed(1)
+# tf.random.set_seed(2)
 
 try:
     import horovod.tensorflow as hvd
@@ -350,7 +350,6 @@ class exec(object):
 
             metrics  = self.sr_worker.sr_step()
 
-            exit()
 
             self.sr_worker.update_model()
 

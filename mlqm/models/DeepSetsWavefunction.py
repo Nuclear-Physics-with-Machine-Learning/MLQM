@@ -60,7 +60,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         # self.initializer = tf.keras.initializers.HeNormal
 
         n_filters_per_layer = 32
-        n_layers            = 1
+        n_layers            = 6
         bias                = False
         activation          = tf.keras.activations.tanh
 
@@ -71,7 +71,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
                 use_bias = False)
             )
 
-        for l in range(n_filters_per_layer):
+        for l in range(n_layers):
             self.individual_net.add(
                 ResidualBlock(n_filters_per_layer,
                     use_bias    = bias,
@@ -88,7 +88,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         # bias                = False
         # activation          = tf.keras.activations.tanh
 
-        for l in range(n_filters_per_layer):
+        for l in range(n_layers):
             self.aggregate_net.add(
                 ResidualBlock(n_filters_per_layer,
                     use_bias    = bias,
