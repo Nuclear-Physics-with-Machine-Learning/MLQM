@@ -278,6 +278,7 @@ class exec(object):
 
     def restore(self):
         if not MPI_AVAILABLE or hvd.rank() == 0:
+            print("Restoring on rank 0")
             self.sr_worker.wavefunction.load_weights(self.model_path)
 
             with open(self.save_path + "/global_step.pkl", 'rb') as _f:
@@ -289,7 +290,7 @@ class exec(object):
     def set_compute_parameters(self):
         tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
         tf.debugging.set_log_device_placement(False)
-        tf.config.run_functions_eagerly(True)
+        tf.config.run_functions_eagerly(False)
 
         physical_devices = tf.config.list_physical_devices('GPU')
         for device in physical_devices:
@@ -313,6 +314,7 @@ class exec(object):
             pass
 
 
+
         if MPI_AVAILABLE and hvd.size() > 1:
             logger.info("Broadcasting initial model and optimizer state.")
             # We have to broadcast the wavefunction parameter here:
@@ -325,6 +327,9 @@ class exec(object):
             self.global_step = hvd.broadcast_object(
                 self.global_step, root_rank=0)
             logger.info("Done broadcasting initial model and optimizer state.")
+
+
+
 
         # First step - thermalize:
         logger.info("About to thermalize.")

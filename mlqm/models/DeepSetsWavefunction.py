@@ -15,7 +15,12 @@ class ResidualBlock(tf.keras.models.Model):
     def __init__(self, n_output, activation, use_bias):
         tf.keras.models.Model.__init__(self)
 
-        self.layer = tf.keras.layers.Dense(n_output, activation = activation, use_bias = use_bias)
+        self.layer = tf.keras.layers.Dense(n_output,
+            activation = activation, use_bias = use_bias,
+            # kernel_initializer = tf.keras.initializers.HeNormal
+
+            )
+
 
     def call(self, inputs):
 
@@ -57,10 +62,9 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.mean_subtract = mean_subtract
 
-        # self.initializer = tf.keras.initializers.HeNormal
 
         n_filters_per_layer = 32
-        n_layers            = 6
+        n_layers            = 4
         bias                = False
         activation          = tf.keras.activations.tanh
 
@@ -75,7 +79,6 @@ class DeepSetsWavefunction(tf.keras.models.Model):
             self.individual_net.add(
                 ResidualBlock(n_filters_per_layer,
                     use_bias    = bias,
-                    # kernel_initializer = self.initializer,
                     activation = activation)
                 )
 
@@ -92,7 +95,6 @@ class DeepSetsWavefunction(tf.keras.models.Model):
             self.aggregate_net.add(
                 ResidualBlock(n_filters_per_layer,
                     use_bias    = bias,
-                    # kernel_initializer = self.initializer,
                     activation = activation)
                 )
         self.aggregate_net.add(tf.keras.layers.Dense(1,
@@ -120,7 +122,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         # Compute the initial boundary condition, which the network will slowly overcome
         # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
-        boundary_condition = -.2 * tf.reduce_sum(xinputs**2, axis=(1,2))
+        boundary_condition = -.4 * tf.reduce_sum(xinputs**2, axis=(1,2))
         boundary_condition = tf.reshape(boundary_condition, [-1,1])
 
 
