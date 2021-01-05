@@ -4,6 +4,26 @@ from mlqm import DEFAULT_TENSOR_TYPE
 
 #from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
 
+class ResidualBlock(tf.keras.models.Model):
+    """A dense layer with a bypass lane
+    
+    Computes the residual of the inputs.  Will error if n_output != n_input
+    
+    Extends:
+        tf.keras.models.Model
+    """
+    def __init__(self, n_output, activation, use_bias):
+        tf.keras.models.Model.__init__(self)
+
+        self.layer = tf.keras.layers.Dense(n_output, activation = activation, use_bias = use_bias)
+
+    def call(self, inputs):
+
+        x = self.layer(inputs)
+
+        return inputs + x
+
+
 class DeepSetsWavefunction(tf.keras.models.Model):
     """Create a neural network eave function in N dimensions
 
@@ -43,12 +63,16 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         self.individual_net = tf.keras.models.Sequential()
         self.individual_net.add(
             tf.keras.layers.Dense(32,
+                use_bias = False)
+            )
+        self.individual_net.add(
+            ResidualBlock(32,
                 use_bias    = True,
                 # kernel_initializer = self.initializer,
                 activation = self.activation)
             )
         self.individual_net.add(
-            tf.keras.layers.Dense(32,
+            ResidualBlock(32,
                 use_bias = True,
                 # kernel_initializer = self.initializer,
                 activation = self.activation)
@@ -59,13 +83,13 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.aggregate_net = tf.keras.models.Sequential()
         self.aggregate_net.add(
-            tf.keras.layers.Dense(32,
+            ResidualBlock(32,
                 use_bias = False,
                 # kernel_initializer = self.initializer,
                 activation = self.activation)
             )
         self.aggregate_net.add(
-            tf.keras.layers.Dense(32,
+            ResidualBlock(32,
                 use_bias = False,
                 # kernel_initializer = self.initializer,
                 activation = self.activation)

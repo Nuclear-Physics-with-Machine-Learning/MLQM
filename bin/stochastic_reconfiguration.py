@@ -165,6 +165,12 @@ class exec(object):
         # Run the wave function once to initialize all its weights
         _ = wavefunction(x)
 
+        n_parameters = 0
+        for p in wavefunction.trainable_variables:
+            n_parameters += tf.reduce_prod(p.shape)
+
+        logger.info(f"Number of parameters in this network: {n_parameters}")
+
 
         from mlqm.optimization import Optimizer
 
