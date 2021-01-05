@@ -29,7 +29,6 @@ class NuclearPotential(Hamiltonian):
 
     @tf.function
     def pionless_2b(self, *, r_ij, nwalkers):
-        pot_2b=tf.zeros(shape=(nwalkers,6), dtype=DEFAULT_TENSOR_TYPE)
         vkr = 4.0
         v0r = -487.6128
         v0s = -17.5515
@@ -72,19 +71,25 @@ class NuclearPotential(Hamiltonian):
         elif nparticles > 2:
             alpha = -1.0
 
-        v_ij = tf.zeros(shape=[nwalkers,6], dtype=DEFAULT_TENSOR_TYPE)
+        # print("Alpha: ", alpha)
+
         # gr3b = tf.Variable(tf.zeros(shape=[nwalkers,nparticles], dtype=DEFAULT_TENSOR_TYPE))
         gr3b = [tf.zeros(shape=[nwalkers], dtype=DEFAULT_TENSOR_TYPE) for p in range(nparticles)]
-        V_ijk = tf.zeros(shape=[nwalkers], dtype=DEFAULT_TENSOR_TYPE)
+        V_ijk = tf.zeros(shape=[nwalkers], dtype=DEFAULT_TENSOR_TYPE) # three body potential terms
+        v_ij  = tf.zeros(shape=[nwalkers], dtype=DEFAULT_TENSOR_TYPE) # 2 body potential terms:
         for i in range (nparticles-1):
             for j in range (i+1,nparticles):
                 #
                 x_ij = inputs[:,i,:]-inputs[:,j,:]
                 r_ij = tf.sqrt(tf.reduce_sum(x_ij**2,axis=1))
                 vrr, vrs = self.pionless_2b(r_ij=r_ij, nwalkers=nwalkers)
+                # print("vrr: ", vrr)
+                # print("vrs: ", vrs)
                 # v_ij += self.pionless_2b(r_ij=r_ij, nwalkers=nwalkers)
+                v_ij += vrr + alpha * vrs
                 if (nparticles > 2 ):
                    t_ij = self.pionless_3b(r_ij=r_ij, nwalkers=nwalkers)
+                   # print(f"t_ij for {i}_{j}: ", t_ij)
                    gr3b[i] += t_ij
                    gr3b[j] += t_ij
                    # gr3b[i] = gr3b[:,i].assign(gr3b[:,i] + t_ij)
@@ -93,8 +98,9 @@ class NuclearPotential(Hamiltonian):
         # stack up gr3b:
         gr3b = tf.stack(gr3b, axis=1)
         V_ijk += 0.5 * tf.reduce_sum(gr3b**2, axis = 1)
-        pe = vrr + alpha * vrs + V_ijk
-        # self.pe = v_ij[:,0] + self.alpha * v_ij[:,2] + V_ijk
+        # print("V_ijk: ", V_ijk)
+        # print("2body E:", v_ij)
+        pe = v_ij + V_ijk
 
 
         return pe
