@@ -6,9 +6,9 @@ from mlqm import DEFAULT_TENSOR_TYPE
 
 class ResidualBlock(tf.keras.models.Model):
     """A dense layer with a bypass lane
-    
+
     Computes the residual of the inputs.  Will error if n_output != n_input
-    
+
     Extends:
         tf.keras.models.Model
     """
@@ -57,43 +57,44 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.mean_subtract = mean_subtract
 
-        self.activation  = tf.keras.activations.tanh
         # self.initializer = tf.keras.initializers.HeNormal
 
+        n_filters_per_layer = 32
+        n_layers            = 1
+        bias                = False
+        activation          = tf.keras.activations.tanh
+
         self.individual_net = tf.keras.models.Sequential()
+
         self.individual_net.add(
-            tf.keras.layers.Dense(32,
+            tf.keras.layers.Dense(n_filters_per_layer,
                 use_bias = False)
             )
-        self.individual_net.add(
-            ResidualBlock(32,
-                use_bias    = True,
-                # kernel_initializer = self.initializer,
-                activation = self.activation)
-            )
-        self.individual_net.add(
-            ResidualBlock(32,
-                use_bias = True,
-                # kernel_initializer = self.initializer,
-                activation = self.activation)
-            )
 
+        for l in range(n_filters_per_layer):
+            self.individual_net.add(
+                ResidualBlock(n_filters_per_layer,
+                    use_bias    = bias,
+                    # kernel_initializer = self.initializer,
+                    activation = activation)
+                )
 
 
 
         self.aggregate_net = tf.keras.models.Sequential()
-        self.aggregate_net.add(
-            ResidualBlock(32,
-                use_bias = False,
-                # kernel_initializer = self.initializer,
-                activation = self.activation)
-            )
-        self.aggregate_net.add(
-            ResidualBlock(32,
-                use_bias = False,
-                # kernel_initializer = self.initializer,
-                activation = self.activation)
-            )
+        #
+        # n_filters_per_layer = 64
+        # n_layers            = 4
+        # bias                = False
+        # activation          = tf.keras.activations.tanh
+
+        for l in range(n_filters_per_layer):
+            self.aggregate_net.add(
+                ResidualBlock(n_filters_per_layer,
+                    use_bias    = bias,
+                    # kernel_initializer = self.initializer,
+                    activation = activation)
+                )
         self.aggregate_net.add(tf.keras.layers.Dense(1,
             use_bias = False))
 

@@ -13,6 +13,7 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 # os.environ['TF_XLA_FLAGS'] = "--tf_xla_auto_jit=fusible"
 
 import tensorflow as tf
+tf.random.set_seed(1)
 
 try:
     import horovod.tensorflow as hvd
@@ -165,6 +166,7 @@ class exec(object):
         # Run the wave function once to initialize all its weights
         _ = wavefunction(x)
 
+
         n_parameters = 0
         for p in wavefunction.trainable_variables:
             n_parameters += tf.reduce_prod(p.shape)
@@ -287,7 +289,7 @@ class exec(object):
     def set_compute_parameters(self):
         tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
         tf.debugging.set_log_device_placement(False)
-        tf.config.run_functions_eagerly(False)
+        tf.config.run_functions_eagerly(True)
 
         physical_devices = tf.config.list_physical_devices('GPU')
         for device in physical_devices:
@@ -348,6 +350,7 @@ class exec(object):
 
             metrics  = self.sr_worker.sr_step()
 
+            exit()
 
             self.sr_worker.update_model()
 
