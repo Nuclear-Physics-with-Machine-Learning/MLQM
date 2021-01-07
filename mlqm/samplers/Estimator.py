@@ -45,7 +45,7 @@ class Estimator(object):
             self.tensor_dict[key] = hvd.allreduce(self.tensor_dict[key], op=hvd.Sum)
         return
 
-    def accumulate(self,energy,energy_jf,acceptance,weight,dpsi_i,dpsi_i_EL,dpsi_ij,estim_wgt) :
+    def accumulate(self,energy,energy_jf,acceptance,weight,r,dpsi_i,dpsi_i_EL,dpsi_ij,estim_wgt) :
         self.tensor_dict["energy"]     += energy/estim_wgt
         self.tensor_dict["energy2"]    += (energy/estim_wgt)**2
         self.tensor_dict["energy_jf"]  += energy_jf/estim_wgt

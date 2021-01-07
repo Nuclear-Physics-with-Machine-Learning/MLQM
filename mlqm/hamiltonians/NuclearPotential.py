@@ -28,7 +28,7 @@ class NuclearPotential(Hamiltonian):
         self.HBAR = tf.constant(197.327, dtype = DEFAULT_TENSOR_TYPE)
 
     @tf.function
-    def pionless_2b(self, *, r_ij, nwalkers):
+    def pionless_2b(self, *, r_ij):
         vkr = 4.0
         v0r = -487.6128
         v0s = -17.5515
@@ -47,7 +47,7 @@ class NuclearPotential(Hamiltonian):
         pot_3b = vr * ar3b
         return pot_3b
 
-    @tf.function
+    # @tf.function
     def potential_energy(self, *, inputs):
         """Return potential energy
 
@@ -82,7 +82,8 @@ class NuclearPotential(Hamiltonian):
                 #
                 x_ij = inputs[:,i,:]-inputs[:,j,:]
                 r_ij = tf.sqrt(tf.reduce_sum(x_ij**2,axis=1))
-                vrr, vrs = self.pionless_2b(r_ij=r_ij, nwalkers=nwalkers)
+                # print(r_ij)
+                vrr, vrs = self.pionless_2b(r_ij=r_ij)
                 # print("vrr: ", vrr)
                 # print("vrs: ", vrs)
                 # v_ij += self.pionless_2b(r_ij=r_ij, nwalkers=nwalkers)
@@ -96,6 +97,7 @@ class NuclearPotential(Hamiltonian):
                    # gr3b = gr3b[:,j].assign(gr3b[:,j] + t_ij)
                    V_ijk -= t_ij**2
         # stack up gr3b:
+        # print("v_ij: ", v_ij)
         gr3b = tf.stack(gr3b, axis=1)
         V_ijk += 0.5 * tf.reduce_sum(gr3b**2, axis = 1)
         # print("V_ijk: ", V_ijk)
@@ -105,7 +107,7 @@ class NuclearPotential(Hamiltonian):
 
         return pe
 
-    @tf.function
+    # @tf.function
     def compute_energies(self, inputs, logw_of_x, dlogw_dx, d2logw_dx2):
         '''Compute PE, KE_JF, and KE_direct
 

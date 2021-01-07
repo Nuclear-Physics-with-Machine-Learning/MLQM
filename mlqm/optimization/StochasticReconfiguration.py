@@ -192,7 +192,15 @@ class StochasticReconfiguration(object):
             # Compute the observables:
             energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
 
-            r = x_current**2, axis=(1,2)
+            # R is computed but it needs to be WRT the center of mass of all particles
+            # So, mean subtract if needed:
+            if self.wavefunction.mean_subtract:
+                mean = tf.reduce_mean(x_current, axis=1)
+                r = x_current - mean[:,None,:]
+            else:
+                r = x_current
+
+            r = tf.reduce_sum(r**2, axis=(1,2))
             r = tf.reduce_mean(tf.math.sqrt(r))
 
             # Here, we split the energy and other objects into sizes of nwalkers_per_observation
@@ -237,6 +245,8 @@ class StochasticReconfiguration(object):
 
         # At this point, we need to average the observables that feed into the optimizer:
         error, error_jf = self.estimator.finalize(self.n_observable_measurements)
+
+
 
         metrics = {}
         metrics["energy/ke_jf"]     = tf.reduce_mean(tf.reduce_sum(ke_jf, axis=0) / self.n_walkers_per_observation)
