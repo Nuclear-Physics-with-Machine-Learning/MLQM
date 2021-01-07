@@ -32,6 +32,7 @@ class Estimator(object):
             "energy2_jf" : 0,
             "acceptance" : 0,
             "weight"     : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
+            "r"          : 0,
             "dpsi_i"     : 0,
             "dpsi_i_EL"  : 0,
             "dpsi_ij"    : 0,
@@ -51,6 +52,7 @@ class Estimator(object):
         self.tensor_dict["energy2_jf"] += (energy_jf/estim_wgt)**2
         self.tensor_dict["acceptance"] += acceptance/estim_wgt
         self.tensor_dict["weight"]     += weight/estim_wgt
+        self.tensor_dict["r"]          += r/estim_wgt
         self.tensor_dict["dpsi_i"]     += dpsi_i/estim_wgt
         self.tensor_dict["dpsi_i_EL"]  += dpsi_i_EL/estim_wgt
         self.tensor_dict["dpsi_ij"]    += dpsi_ij/estim_wgt
@@ -61,6 +63,7 @@ class Estimator(object):
         self.tensor_dict["energy_jf"]  /= nav
         self.tensor_dict["energy2_jf"] /= nav
         self.tensor_dict["acceptance"] /= nav
+        self.tensor_dict["r"]          /= nav
         self.tensor_dict["dpsi_i"]     /= nav
         self.tensor_dict["dpsi_i_EL"]  /= nav
         self.tensor_dict["dpsi_ij"]    /= nav

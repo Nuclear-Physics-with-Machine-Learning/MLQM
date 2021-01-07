@@ -192,6 +192,9 @@ class StochasticReconfiguration(object):
             # Compute the observables:
             energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
 
+            r = x_current**2, axis=(1,2)
+            r = tf.reduce_mean(tf.math.sqrt(r))
+
             # Here, we split the energy and other objects into sizes of nwalkers_per_observation
             # if self.n_concurrent_obs_per_rank != 1:
             x_current  = tf.split(x_current, self.n_concurrent_obs_per_rank, axis=0)
@@ -221,6 +224,7 @@ class StochasticReconfiguration(object):
                     tf.reduce_sum(obs_energy_jf),
                     acceptance,
                     1.,
+                    r,
                     dpsi_i,
                     dpsi_i_EL,
                     dpsi_ij,
@@ -264,7 +268,7 @@ class StochasticReconfiguration(object):
         metrics['energy/energy_jf']  = self.estimator.tensor_dict["energy_jf"]
         metrics['energy/error_jf']   = error_jf
         metrics['metropolis/acceptance'] = self.estimator.tensor_dict["acceptance"]
-
+        metrics['metropolis/r']      = self.estimator.tensor_dict['r']
         self.latest_gradients = delta_p
 
         return  metrics
