@@ -59,7 +59,7 @@ mlqm_dir = os.path.dirname(mlqm_dir)
 sys.path.insert(0,mlqm_dir)
 from mlqm import hamiltonians
 from mlqm.samplers     import Estimator
-from mlqm.optimization import Optimizer, StochasticReconfiguration
+from mlqm.optimization import GradientCalculator, StochasticReconfiguration
 from mlqm import DEFAULT_TENSOR_TYPE
 
 
@@ -96,15 +96,12 @@ class exec(object):
         self.active = True
 
 
-
         optimization = self.config['Optimization']
-        sampler      = self.config['Sampler']
-
         opt_parameters = [
             "iterations",
             "delta",
             "eps",
-            "gamma",
+            "optimizer",
         ]
 
         for key in opt_parameters:
@@ -114,9 +111,10 @@ class exec(object):
         self.iterations      = int(  optimization['iterations'])
         self.delta           = float(optimization['delta'])
         self.eps             = float(optimization['eps'])
-        self.gamma           = float(optimization['gamma'])
+        self.optimizer_type  = optimization['optimizer']
 
 
+        sampler      = self.config['Sampler']
         sampler_parameters = [
             "n_thermalize",
             "n_void_steps",
@@ -176,14 +174,16 @@ class exec(object):
 
         from mlqm.optimization import Optimizer
 
+        gradient_calc = GradientCalculator(self.eps, dtype = tf.float64)
 
-        # Create an optimizer
-        optimizer = Optimizer(
-            delta   = self.delta,
-            eps     = self.eps,
-            npt     = wavefunction.n_parameters(),
-            gamma   = self.gamma,
-            dtype   = DEFAULT_TENSOR_TYPE)
+        # Switch on the type of optimizer:
+        if self.optimizer_type == "flat":
+            from mlqm.optimization import FlatOptimizer
+            optimizer = FlatOptimizer(delta = self.delta)
+        elif self.optimizer_type == "adam":
+            optimizer = tf.keras.optimizers.Adam(learning_rate = self.delta)
+        else:
+            raise Exception(f"Cannot create optimizer of type {self.optimizer_type}")
 
 
         self.sr_worker   = StochasticReconfiguration(
@@ -191,6 +191,7 @@ class exec(object):
             wavefunction              = wavefunction,
             hamiltonian               = hamiltonian,
             optimizer                 = optimizer,
+            gradient_calc             = gradient_calc,
             n_observable_measurements = self.n_observable_measurements,
             n_void_steps              = self.n_void_steps,
             n_walkers_per_observation = self.n_walkers_per_observation,
@@ -278,7 +279,7 @@ class exec(object):
 
     def restore(self):
         if not MPI_AVAILABLE or hvd.rank() == 0:
-            print("Restoring on rank 0")
+            print("Trying to restore model")
             self.sr_worker.wavefunction.load_weights(self.model_path)
 
             with open(self.save_path + "/global_step.pkl", 'rb') as _f:

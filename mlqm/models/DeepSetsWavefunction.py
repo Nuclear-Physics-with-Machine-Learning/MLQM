@@ -63,8 +63,8 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         self.mean_subtract = mean_subtract
 
 
-        n_filters_per_layer = 32
-        n_layers            = 4
+        n_filters_per_layer = 16
+        n_layers            = 2
         bias                = False
         activation          = tf.keras.activations.softplus
         residual            = True
