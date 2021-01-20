@@ -9,13 +9,10 @@ from mlqm.hamiltonians import Hamiltonian
 from mlqm.optimization import FlatOptimizer, GradientCalculator
 from mlqm.samplers     import Estimator, MetropolisSampler
 
+from mlqm import MPI_AVAILABLE
 
-try:
+if MPI_AVAILABLE:
     import horovod.tensorflow as hvd
-    hvd.init()
-    MPI_AVAILABLE=True
-except:
-    MPI_AVAILABLE=False
 
 class StochasticReconfiguration(object):
 
@@ -136,6 +133,7 @@ class StochasticReconfiguration(object):
         x_current  = self.sampler.sample()
         energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
 
+<<<<<<< HEAD
     def walk_and_accumulate_observables(self, 
             estimator,
             _wavefunction,
@@ -163,6 +161,45 @@ class StochasticReconfiguration(object):
         estimator.reset()
 
         for i_loop in range(_n_loops_total):
+=======
+
+    def sr_step(self):
+
+        metrics = {}
+        self.latest_gradients = None
+
+
+        kicker = tf.random.normal
+        kicker_params = {"mean": 0.0, "stddev" : 0.2}
+
+        self.estimator.reset()
+
+        # We need to know how many times to loop over the walkers and metropolis step.
+        # The total number of observations is set: self.n_observable_measurements
+        # There is an optimization to walk in parallel with n_concurrent_obs_per_rank
+        # Without MPI, the number of loops is then n_observable_measurements / n_concurrent_obs_per_rank
+        # WITH MPI, we have to reduce the number of loops by the total number of ranks.
+
+        n_loops_total = int(self.n_observable_measurements / self.n_concurrent_obs_per_rank)
+
+
+        if MPI_AVAILABLE:
+            n_loops_total = int(n_loops_total / self.size)
+        # logger.debug(" -- Coordinating loop length")
+
+        # We do a check that n_loops_total * n_concurrent_obs_per_rank matches expectations:
+        if n_loops_total * self.n_concurrent_obs_per_rank*self.size != self.n_observable_measurements:
+            exception_str = "Total number of observations to compute is unexpected!\n"
+            exception_str += f"  Expected to have {self.n_observable_measurements}, have:\n"
+            exception_str += f"  -- A loop of {self.n_concurrent_obs_per_rank} observations"
+            exception_str += f" for {n_loops_total} loops over {self.size} ranks"
+            exception_str += f"  -- ({self.n_concurrent_obs_per_rank})*({n_loops_total}"
+            exception_str += f")*({self.size}) != {self.n_observable_measurements}\n"
+            raise Exception(exception_str)
+
+
+        for i_loop in range(n_loops_total):
+>>>>>>> master
             # logger.debug(f" -- evaluating loop {i_loop} of {n_loops_total}")
 
             # First do a void walk to thermalize after a new configuration.
