@@ -116,6 +116,7 @@ class StochasticReconfiguration(object):
         if self.latest_gradients is not None:
             self.optimizer.apply_gradients(zip(self.latest_gradients, self.wavefunction.trainable_variables))
 
+        print(self.wavefunction.trainable_variables)
 
     def equilibrate(self, n_equilibrations):
 
@@ -232,6 +233,7 @@ class StochasticReconfiguration(object):
                     1.)
 
 
+
         # INTERCEPT HERE with MPI to allreduce the estimator objects.
         if MPI_AVAILABLE:
             self.estimator.allreduce()
@@ -327,6 +329,8 @@ class StochasticReconfiguration(object):
         # At this point, we need to average the observables that feed into the optimizer:
         error, error_jf = self.estimator.finalize(self.n_observable_measurements)
 
+        for key in self.estimator.tensor_dict:
+            print(f"{key}: {self.estimator.tensor_dict[key]}")
 
 
         dp_i, opt_metrics = self.gradient_calc.sr(

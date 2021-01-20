@@ -65,9 +65,9 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         n_filters_per_layer = 16
         n_layers            = 2
-        bias                = False
+        bias                = True
         activation          = tf.keras.activations.softplus
-        residual            = True
+        residual            = False
 
 
         self.individual_net = tf.keras.models.Sequential()

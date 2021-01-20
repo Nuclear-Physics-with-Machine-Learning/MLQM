@@ -11,7 +11,7 @@ class FlatOptimizer(object):
             delta {float} -- Imaginary time step for optimization (aka, learning rate)
         '''
 
-        self.delta = tf.convert_to_tensor(delta)
+        self.delta = tf.convert_to_tensor(delta, dtype=tf.float64)
 
     # @tf.function
     def apply_gradients(self, grads_and_vars):

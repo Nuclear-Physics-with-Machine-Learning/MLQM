@@ -25,21 +25,28 @@ class GaussianBoundaryCondition(tf.keras.layers.Layer):
         """
         tf.keras.layers.Layer.__init__(self, dtype=dtype)
 
-
+        self.mean_subtract = True
 
         if n < 1:
             raise Exception("Dimension must be at least 1 for GaussianBoundaryCondition")
 
-        # Use numpy to broadcast to the right dimension:
-        exp = numpy.asarray(exp)
-        exp = numpy.broadcast_to(exp, (n,))
 
         # This is the parameter controlling the shape of the exponent:
-        self.exponent = tf.Variable(exp, trainable=trainable, dtype=dtype)
+        self.exponent = tf.Variable(exp, trainable=True, dtype=dtype)
+        self.exponent2 = tf.Variable(0.02, trainable=True, dtype=dtype)
 
 
     @tf.function
     def call(self, inputs):
-        exponent_term = tf.reduce_sum((self.exponent * inputs)**2, axis=2)
-        result = tf.exp(- (exponent_term) / 2.)
-        return result
+        # Mean subtract for all particles:
+        if  self.mean_subtract:
+            mean = tf.reduce_mean(inputs, axis=1)
+            xinputs = inputs - mean[:,None,:]
+        else:
+            xinputs = inputs
+
+        exponent_term1 = tf.reduce_sum((xinputs)**2, axis=(1,2))
+        exponent_term2 = tf.reduce_sum((xinputs)**4, axis=(1,2))
+        result = - self.exponent * exponent_term1 - self.exponent2*exponent_term2
+
+        return tf.reshape(result, [-1,1])

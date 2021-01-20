@@ -33,12 +33,14 @@ class GradientCalculator(object):
         return (tf.cast(a, self.dtype) if a.dtype != self.dtype else a for a in args)
 
 
-    @tf.function
+    # @tf.function
     def pd_solve(self, S_ij, eps, f_i):
 
         
         # Regularize along the diagonal:
         S_ij_d = self.regularize_S_ij(S_ij, eps)
+
+        print("S_ij_d: ", S_ij_d)
 
         # Next, we need S_ij to be positive definite.
         U_ij = tf.linalg.cholesky(S_ij_d)
@@ -48,7 +50,7 @@ class GradientCalculator(object):
         return dp_i
 
 
-    @tf.function
+    # @tf.function
     def sr(self,energy,dpsi_i,dpsi_i_EL,dpsi_ij):
 
         input_type = energy.dtype
@@ -60,8 +62,13 @@ class GradientCalculator(object):
         f_i= self.f_i(dpsi_i, energy, dpsi_i_EL)
         S_ij = self.S_ij(dpsi_ij, dpsi_i)
 
+        print("f_i: ", f_i)
+        print("S_ij: ", S_ij)
+
         # Get the adapted gradients from the matrix inversion and starting gradients:
         dp_i = self.pd_solve(S_ij, self.eps, f_i)
+
+        print("dp_i: ", dp_i)
 
         dist = self.par_dist(dp_i, tf.cast(S_ij, self.dtype))
 
