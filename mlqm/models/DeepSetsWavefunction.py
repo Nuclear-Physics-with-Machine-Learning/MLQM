@@ -17,7 +17,7 @@ class ResidualBlock(tf.keras.models.Model):
 
         self.layer = tf.keras.layers.Dense(n_output,
             activation = activation, use_bias = use_bias,
-            # kernel_initializer = tf.keras.initializers.HeNormal
+            kernel_initializer = tf.keras.initializers.Glorut_Normal
 
             )
 
@@ -65,6 +65,8 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         n_filters_per_layer = 32
         n_layers            = 4
+        # n_filters_per_layer = 4
+        # n_layers            = 1
         bias                = True
         activation          = tf.keras.activations.tanh
         residual            = False
@@ -74,21 +76,26 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.individual_net.add(
             tf.keras.layers.Dense(n_filters_per_layer,
-                use_bias = False)
+                use_bias = bias)
             )
 
         for l in range(n_layers):
+            if l == n_layers - 1:
+                _activation = None
+            else:
+                _activation = activation
+            print(_activation)
             if residual:
                 self.individual_net.add(
                     ResidualBlock(n_filters_per_layer,
                         use_bias    = bias,
-                        activation = activation)
+                        activation = _activation)
                     )
             else:
                 self.individual_net.add(
                     tf.keras.layers.Dense(n_filters_per_layer,
                         use_bias    = bias,
-                        activation = activation)
+                        activation = _activation)
                     )
 
 
@@ -137,7 +144,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         # Compute the initial boundary condition, which the network will slowly overcome
         # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
-        boundary_condition = -1. * tf.reduce_sum(xinputs**2, axis=(1,2))
+        boundary_condition = -0.2 * tf.reduce_sum(xinputs**2, axis=(1,2))
         boundary_condition = tf.reshape(boundary_condition, [-1,1])
 
 

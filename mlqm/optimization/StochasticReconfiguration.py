@@ -66,12 +66,51 @@ class StochasticReconfiguration(object):
 
     @tf.function
     def jacobian(self, x_current, wavefunction):
-        tape = tf.GradientTape()
+        tape = tf.GradientTape(persistent=True)
+        # n_walkers = x_current.shape[0]
 
+        # print("Doing forward pass")
         with tape:
             log_wpsi = wavefunction(x_current)
 
+        #     repeated_layers = []
+        #     for layer in wavefunction.trainable_variables:
+        #         repeated_layers.append(tf.broadcast_to(layer, (n_walkers,) + layer.shape))
+        #
+        # layer_jac = tape.jacobian(log_wpsi[0], layer)
+        # print(layer_jac)
+        # # # print(log_wpsi.shape)
+        # # print(x_current.shape)
+        # # print(n_walkers)
+        # jac = []
+        #
+        # for layer in repeated_layers:
+        #     # # print("layer: ", layer)
+        #     # # print("layer.shape: ", layer.shape)
+        #     # repeats = [1 for l in layer.shape]
+        #     # repeats[0] = n_walkers
+        #     # # print("repeats: ", repeats)
+        #     # repeated_layer = tf.tile(layer, repeats)
+        #     # repeated_layer = tf.reshape(repeated_layer, )
+        #     # # print("repeated_layer.shape: ", repeated_layer.shape)
+        #     # # print("repeated_layer[0]: ", repeated_layer[0])
+        #     # # print("repeated_layer[-1]: ", repeated_layer[-1])
+        #     layer_jac = tape.batch_jacobian(log_wpsi, layer)
+        #     # print(layer_jac.shape)
+        #     jac.append(layer_jac)
+        # # jac = []
+        # # for i in range(log_wpsi.shape[0]):
+        # #     jac.append(log_wpsi[i], wavefunction.trainable_variables)
+        # #
+        # # jac = tf.stack()
+        #
+        # # print(jac)
+
         jac = tape.jacobian(log_wpsi, wavefunction.trainable_variables)
+
+        # print(default_jac)
+
+        # exit()
 
         # Grab the original shapes ([1:] means everything except first dim):
         jac_shape = [j.shape[1:] for j in jac]
@@ -128,7 +167,7 @@ class StochasticReconfiguration(object):
         # This step gets fresh walkers and computes their energy, which calls compile steps
 
         kicker = tf.random.normal
-        kicker_params = {"mean": 0.0, "stddev" : 0.4}
+        kicker_params = {"mean": 0.0, "stddev" : 0.2}
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=1)
         x_current  = self.sampler.sample()
         energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
@@ -244,7 +283,7 @@ class StochasticReconfiguration(object):
 
 
         kicker = tf.random.normal
-        kicker_params = {"mean": 0.0, "stddev" : 0.4}
+        kicker_params = {"mean": 0.0, "stddev" : 0.2}
 
 
         # We need to know how many times to loop over the walkers and metropolis step.
