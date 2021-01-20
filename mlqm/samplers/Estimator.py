@@ -1,14 +1,10 @@
 import tensorflow as tf
 import numpy
 
-try:
-    import horovod.tensorflow as hvd
-    hvd.init()
-    MPI_AVAILABLE=True
-except:
-    MPI_AVAILABLE=False
+from mlqm import DEFAULT_TENSOR_TYPE, MPI_AVAILABLE
 
-from mlqm import DEFAULT_TENSOR_TYPE
+if MPI_AVAILABLE:
+    import horovod.tensorflow as hvd
 
 
 class Estimator(object):

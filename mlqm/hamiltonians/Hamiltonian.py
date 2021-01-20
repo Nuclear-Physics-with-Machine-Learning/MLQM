@@ -87,7 +87,7 @@ class Hamiltonian(object):
 
         # Turning off all tape watching except for the inputs:
         # Using the outer-most tape to watch the computation of the first derivative:
-        with tf.GradientTape(persistent=True) as tape:
+        with tf.GradientTape() as tape:
             # Use the inner tape to watch the computation of the wavefunction:
             tape.watch(inputs)
             with tf.GradientTape() as second_tape:
