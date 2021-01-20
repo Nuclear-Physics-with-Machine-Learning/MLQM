@@ -239,6 +239,45 @@ class StochasticReconfiguration(object):
         # Returning "by reference" since estimator is updated on the fly
         return flat_shape
 
+    def adapt_learning_rate(self, optimizer_type):
+        # Most of these are no-ops:
+        if optimizer_type == "flat":
+            return
+        if optimizer_type == "adam":
+            return
+        if optimizer_type == "energy_search":
+            self.optimize_energy()
+
+    def optimize_energy(self):
+        pass
+        # The energy optimization is fixed for a particular gradient.  We optimize the update length
+# def energy_dist(self, delta_p, params, x_s):
+#         log_wpsi_o = self.wavefunction.vmap_psi(params,x_s)
+#         energy_o, energy_jf_o = self.hamiltonian.energy(params, x_s)
+#         energy_o_sum = jnp.mean(energy_o) 
+#         energy2_o_sum = jnp.mean(energy_o**2)
+#         energy_o_err = jnp.sqrt((energy2_o_sum - energy_o_sum**2) / x_s.shape[0])
+#         params = jax.tree_multimap(self.wavefunction.update_add, params, delta_p)
+#         log_wpsi_n = self.wavefunction.vmap_psi(params,x_s)
+#         psi_norm = jnp.exp( ( log_wpsi_n - log_wpsi_o) )
+#         psi2_norm = psi_norm**2
+#         psi2_norm_sum = jnp.mean(psi2_norm)
+# # Compute the energy reweighting the stored walk
+#         energy_n, energy_jf_n = self.hamiltonian.energy(params, x_s)
+#         energy_n *= psi2_norm
+#         energy_n_sum = jnp.mean(energy_n) / psi2_norm_sum
+#         energy2_n_sum = jnp.mean(energy_n**2) / psi2_norm_sum
+#         energy_n_err=jnp.sqrt((energy2_n_sum - energy_n_sum**2) / x_s.shape[0] )
+# # Correlated energy difference
+#         energy_d = energy_n / psi2_norm_sum - energy_o
+#         energy_d_sum= jnp.mean(energy_d)
+#         energy2_d_sum= jnp.mean(energy_d**2)
+#         energy_d_err=jnp.sqrt((energy2_d_sum - energy_d_sum**2) / x_s.shape[0] )
+# # Set back the old parameters
+#         params = jax.tree_multimap(self.wavefunction.update_subtract, params, delta_p)
+#         return energy_d_sum, energy_d_err
+
+
     # @tf.function
     def sr_step(self):
 

@@ -356,6 +356,8 @@ class exec(object):
 
             metrics  = self.sr_worker.sr_step()
 
+            self.sr_worker.adapt_learning_rate(self.optimizer_type)
+
 
             self.sr_worker.update_model()
 

@@ -44,6 +44,8 @@ class MetropolisSampler(object):
         #  Run the initalize to get the first locations:
         self.walkers = initializer(shape=self.size, **init_params, dtype=dtype)
 
+        self.walker_history = []
+
     def sample(self):
         '''Just return the current locations
 
@@ -65,6 +67,9 @@ class MetropolisSampler(object):
             kicker {callable} -- A callable function for generating kicks
             kicker_params {iter} -- Arguments to the kicker function.
         '''
+
+        # Before kicking, append the current walkers to the walker history:
+
         # for i in range(nkicks):
         walkers, acceptance = self.internal_kicker(
             self.size, self.walkers, wavefunction, kicker, kicker_params, tf.constant(nkicks), dtype=self.dtype)
