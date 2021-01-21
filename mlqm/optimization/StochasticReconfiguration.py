@@ -106,7 +106,7 @@ class StochasticReconfiguration(object):
         #
         # # print(jac)
 
-        jac = tape.jacobian(log_wpsi, wavefunction.trainable_variables)
+        jac = tape.jacobian(log_wpsi, wavefunction.trainable_variables, parallel_iterations=1000)
 
         # print(default_jac)
 

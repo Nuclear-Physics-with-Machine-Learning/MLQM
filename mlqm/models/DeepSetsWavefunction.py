@@ -137,10 +137,10 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         x = []
         for p in range(self.nparticles):
-            x.append(self.individual_net(xinputs[:,p,:]))
+            x.append(tf.keras.activations.tanh(self.individual_net(xinputs[:,p,:])))
 
         x = tf.add_n(x)
-        x = self.aggregate_net(x)
+        x = tf.keras.activations.tanh(self.aggregate_net(x))
 
         # Compute the initial boundary condition, which the network will slowly overcome
         # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
