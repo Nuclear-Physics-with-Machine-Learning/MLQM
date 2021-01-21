@@ -165,41 +165,31 @@ class exec(object):
         # Run the wave function once to initialize all its weights
         _ = wavefunction(x)
 
+
+        
         i = 0
         for l in wavefunction.trainable_variables:
             n = tf.reduce_prod(l.shape)
-            vals = tf.linspace(i, i+n - 1, n) * 0.1
+            vals = tf.linspace(i, i+n - 1, n) * 0.01
             vals = tf.reshape(vals, l.shape)
             i += n
             l.assign(vals)
 
-       #  layer1 = tf.convert_to_tensor(
-       #      [[ 0.3489219 , -0.50900906, -0.4558019 , 0.35041329, 0.13075599, -0.38146976, 0.30663326, -0.50425643],
-       #       [-0.33106738, -0.48156944, 0.35325247, 0.40281701, 0.62476718, 0.28224391, 0.13344209, 0.43501344],
-       #       [-0.13727869, 0.5710659 , 0.11375315, 0.08393699, 0.186271 , -0.37491858, 0.08887104, 0.27979851]],
-       #       dtype=DEFAULT_TENSOR_TYPE)
 
-       #  wavefunction.trainable_variables[0].assign(layer1)
+        # test_x = tf.reshape(tf.linspace(0,11,12), (1,4,3))
+        """
+        DELETE THIS EVENTUALLY
+        test_x = tf.stack(
+            [ 0.01*tf.reshape(tf.linspace(0,11,12), (4,3)),
+              -0.02*tf.reshape(tf.linspace(0,11,12), (4,3))
+            ]
+          )
 
-       #  layer2 = tf.convert_to_tensor([-0.00690214, -0.0051368 , -0.01325359, 0.01598487, -0.00344443, 0.00162299, -0.00605711, -0.00034649], dtype=DEFAULT_TENSOR_TYPE)
-       #  wavefunction.trainable_variables[1].assign(layer2)
-
-       #  layer3 = tf.convert_to_tensor([[ 0.35409847],
-       # [ 0.36397254],
-       # [-0.09569313],
-       # [-0.69184577],
-       # [ 0.67957324],
-       # [ 0.31757203],
-       # [-0.95020753],
-       # [-0.41006503]], dtype=DEFAULT_TENSOR_TYPE)
-
-       #  wavefunction.trainable_variables[2].assign(layer3)
-
-
-        test_x = 0.01*tf.reshape(tf.linspace(0,11,12), (1,4,3))
-
-        print(test_x)
-        print(wavefunction(test_x))
+        n_walkers = test_x.shape[0]
+        print("n_walkers: ", n_walkers)
+        print("test_x: ", test_x)
+        print("wavefunction(test_x): ", wavefunction(test_x))
+        """
 
         n_parameters = 0
         for p in wavefunction.trainable_variables:
@@ -234,8 +224,43 @@ class exec(object):
             n_walkers_per_observation = self.n_walkers_per_observation,
             n_concurrent_obs_per_rank = self.n_concurrent_obs_per_rank
         )
+        """
+        DELETE THIS EVENTUALLY
+        energy, energy_jf, ke_jf, ke_direct, pe = hamiltonian.energy(wavefunction, test_x)
+
+        print("energy: ", energy)
+        print("energy_jf: ", energy_jf)
+        print("ke_jf: ", ke_jf)
+        print("ke_direct: ", ke_direct)
+        print("pe: ", pe)
+
+        flattened_jacobian, flat_shape = self.sr_worker.jacobian(test_x, wavefunction)
+
+        print(flattened_jacobian)
+
+        # print("test_x: ", test_x)
+        # print("wavefunction(test_x): ", wavefunction(test_x))
+
+        dpsi_i = tf.reduce_mean(flattened_jacobian, axis=0)
+        dpsi_i = tf.reshape(dpsi_i, [-1,1])
+
+        # To compute <O^m O^n>
+        dpsi_ij = tf.linalg.matmul(flattened_jacobian, flattened_jacobian, transpose_a = True) / n_walkers
+
+        # Computing <O^m H>:
+        dpsi_i_EL = tf.linalg.matmul(tf.reshape(energy, [1,n_walkers]), flattened_jacobian) / n_walkers
+        # This makes this the same shape as the other tensors
+        dpsi_i_EL = tf.reshape(dpsi_i_EL, [-1, 1])
 
 
+        print("dpsi_i: ", dpsi_i)
+        print("dpsi_i_EL: ", dpsi_i_EL)
+        print("dpsi_ij: ", dpsi_ij)
+
+        print("flattened_jacobian: ", flattened_jacobian)
+        
+        exit()
+        """
 
 
 
@@ -271,11 +296,6 @@ class exec(object):
                 self.config.write(cfg)
 
 
-    # def build_sr_worker(self, sampler, wavefunction, hamiltonian, optimizer):
-
-    #     sr_worker = StochasticReconfiguration(sampler, wavefunction, hamiltonian, optimizer)
-
-    #     return sr_worker
 
     def build_sampler(self):
 

@@ -8,7 +8,7 @@ ELECTRON_CHARGE = 1.0
 
 
 DEFAULT_TENSOR_TYPE="float64"
-
+MAX_PARALLEL_ITERATIONS=1000
 
 try:
     import horovod.tensorflow as hvd
