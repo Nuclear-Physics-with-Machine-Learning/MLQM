@@ -74,7 +74,7 @@ class StochasticReconfiguration(object):
             log_wpsi = wavefunction(x_current)
 
 
-        jac = tape.jacobian(log_wpsi, wavefunction.trainable_variables, parallel_iterations=MAX_PARALLEL_ITERATIONS)
+        jac = tape.jacobian(log_wpsi, wavefunction.trainable_variables)
 
 
         # Grab the original shapes ([1:] means everything except first dim):
@@ -117,7 +117,6 @@ class StochasticReconfiguration(object):
         if self.latest_gradients is not None:
             self.optimizer.apply_gradients(zip(self.latest_gradients, self.wavefunction.trainable_variables))
 
-        print(self.wavefunction.trainable_variables)
 
     def equilibrate(self, n_equilibrations):
 
@@ -257,7 +256,7 @@ class StochasticReconfiguration(object):
 # def energy_dist(self, delta_p, params, x_s):
 #         log_wpsi_o = self.wavefunction.vmap_psi(params,x_s)
 #         energy_o, energy_jf_o = self.hamiltonian.energy(params, x_s)
-#         energy_o_sum = jnp.mean(energy_o) 
+#         energy_o_sum = jnp.mean(energy_o)
 #         energy2_o_sum = jnp.mean(energy_o**2)
 #         energy_o_err = jnp.sqrt((energy2_o_sum - energy_o_sum**2) / x_s.shape[0])
 #         params = jax.tree_multimap(self.wavefunction.update_add, params, delta_p)
@@ -330,8 +329,8 @@ class StochasticReconfiguration(object):
         # At this point, we need to average the observables that feed into the optimizer:
         error, error_jf = self.estimator.finalize(self.n_observable_measurements)
 
-        for key in self.estimator.tensor_dict:
-            print(f"{key}: {self.estimator.tensor_dict[key]}")
+        # for key in self.estimator.tensor_dict:
+        #     print(f"{key}: {self.estimator.tensor_dict[key]}")
 
 
         dp_i, opt_metrics = self.gradient_calc.sr(

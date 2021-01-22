@@ -166,14 +166,14 @@ class exec(object):
         _ = wavefunction(x)
 
 
-        
-        i = 0
-        for l in wavefunction.trainable_variables:
-            n = tf.reduce_prod(l.shape)
-            vals = tf.linspace(i, i+n - 1, n) * 0.01
-            vals = tf.reshape(vals, l.shape)
-            i += n
-            l.assign(vals)
+
+        # i = 0
+        # for l in wavefunction.trainable_variables:
+        #     n = tf.reduce_prod(l.shape)
+        #     vals = tf.linspace(i, i+n - 1, n) * 0.01
+        #     vals = tf.reshape(vals, l.shape)
+        #     i += n
+        #     l.assign(vals)
 
 
         # test_x = tf.reshape(tf.linspace(0,11,12), (1,4,3))
@@ -193,7 +193,6 @@ class exec(object):
 
         n_parameters = 0
         for p in wavefunction.trainable_variables:
-            print(p)
             n_parameters += tf.reduce_prod(p.shape)
 
         logger.info(f"Number of parameters in this network: {n_parameters}")
@@ -258,7 +257,7 @@ class exec(object):
         print("dpsi_ij: ", dpsi_ij)
 
         print("flattened_jacobian: ", flattened_jacobian)
-        
+
         exit()
         """
 
