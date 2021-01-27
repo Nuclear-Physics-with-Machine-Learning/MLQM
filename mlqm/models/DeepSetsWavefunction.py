@@ -4,7 +4,9 @@ from mlqm import DEFAULT_TENSOR_TYPE
 
 #from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
 
-class ResidualBlock(tf.keras.models.Model):
+
+
+class DenseBlock(tf.keras.models.Model):
     """A dense layer with a bypass lane
 
     Computes the residual of the inputs.  Will error if n_output != n_input
@@ -12,12 +14,12 @@ class ResidualBlock(tf.keras.models.Model):
     Extends:
         tf.keras.models.Model
     """
-    def __init__(self, n_output, activation, use_bias):
+    def __init__(self, n_output, use_bias, activation):
         tf.keras.models.Model.__init__(self)
 
         self.layer = tf.keras.layers.Dense(n_output,
             activation = activation, use_bias = use_bias,
-            kernel_initializer = tf.keras.initializers.Glorut_Normal
+            kernel_initializer = tf.keras.initializers.GlorotNormal
 
             )
 
@@ -26,8 +28,26 @@ class ResidualBlock(tf.keras.models.Model):
 
         x = self.layer(inputs)
 
-        return inputs + x
+        return x
 
+
+class ResidualBlock(DenseBlock):
+    """A dense layer with a bypass lane
+
+    Computes the residual of the inputs.  Will error if n_output != n_input
+
+    Extends:
+        tf.keras.models.Model
+    """
+    def __init__(self, n_output, use_bias, activation):
+        DenseBlock.__init__(self, n_output, activation, use_bias)
+
+
+    def call(self, inputs):
+
+        x = self.layer(inputs)
+
+        return inputs + x
 
 class DeepSetsWavefunction(tf.keras.models.Model):
     """Create a neural network eave function in N dimensions
@@ -37,7 +57,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
     Extends:
         tf.keras.models.Model
     """
-    def __init__(self, ndim : int, nparticles: int, mean_subtract : bool, boundary_condition :tf.keras.layers.Layer = None):
+    def __init__(self, ndim : int, nparticles: int, configuration: dict,  boundary_condition :tf.keras.layers.Layer = None):
         '''Deep Sets wavefunction for symmetric particle wavefunctions
 
         Implements a deep set network for multiple particles in the same system
@@ -60,31 +80,38 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.nparticles = nparticles
 
-        self.mean_subtract = mean_subtract
+        self.config = configuration
+
+        self.mean_subtract = self.config.getboolean('mean_subtract')
 
 
-        n_filters_per_layer = 8
-        n_layers            = 0
-        # n_filters_per_layer = 4
-        # n_layers            = 1
-        bias                = True
-        activation          = tf.keras.activations.tanh
-        residual            = False
+        n_filters_per_layer = int(self.config['n_filters_per_layer'])
+        n_layers            = int(self.config['n_layers'])
+        bias                = self.config.getboolean('bias')
+        residual            = self.config.getboolean('residual')
+
+        try:
+            activation = tf.keras.activations.__getattribute__(self.config['activation'])
+        except e:
+            print(e)
+            print(f"Could not use the activation {self.config['activation']} - not in tf.keras.activations.")
+
 
 
         self.individual_net = tf.keras.models.Sequential()
 
         self.individual_net.add(
-            tf.keras.layers.Dense(n_filters_per_layer,
-                use_bias = bias)
+            DenseBlock(n_filters_per_layer,
+                use_bias   = bias,
+                activation = activation)
             )
 
-        for l in range(n_layers):
+        # The above layer counts as a layer!
+        for l in range(n_layers-1):
             if l == n_layers - 1:
                 _activation = None
             else:
                 _activation = activation
-            print(_activation)
             if residual:
                 self.individual_net.add(
                     ResidualBlock(n_filters_per_layer,
@@ -93,18 +120,13 @@ class DeepSetsWavefunction(tf.keras.models.Model):
                     )
             else:
                 self.individual_net.add(
-                    tf.keras.layers.Dense(n_filters_per_layer,
+                    DenseBlock(n_filters_per_layer,
                         use_bias    = bias,
                         activation = _activation)
                     )
 
 
         self.aggregate_net = tf.keras.models.Sequential()
-        #
-        # n_filters_per_layer = 64
-        # n_layers            = 3
-        # bias                = False
-        # activation          = tf.keras.activations.tanh
 
         for l in range(n_layers):
             if residual:
@@ -114,8 +136,8 @@ class DeepSetsWavefunction(tf.keras.models.Model):
                         activation = activation)
                     )
             else:
-                self.individual_net.add(
-                    tf.keras.layers.Dense(n_filters_per_layer,
+                self.aggregate_net.add(
+                    DenseBlock(n_filters_per_layer,
                         use_bias    = bias,
                         activation = activation)
                     )
@@ -137,10 +159,10 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         x = []
         for p in range(self.nparticles):
-            x.append(tf.keras.activations.tanh(self.individual_net(xinputs[:,p,:])))
+            x.append(self.individual_net(xinputs[:,p,:]))
 
         x = tf.add_n(x)
-        x = tf.keras.activations.tanh(self.aggregate_net(x))
+        x = self.aggregate_net(x)
 
         # Compute the initial boundary condition, which the network will slowly overcome
         # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
@@ -152,3 +174,36 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
     def n_parameters(self):
         return tf.reduce_sum( [ tf.reduce_prod(p.shape) for p in self.trainable_variables ])
+
+    def restore_jax(self, model_path):
+        import pickle
+
+
+        with open(model_path, 'rb') as _f:
+            weights = pickle.load(_f)
+
+        i_this_model = 0
+        i_jax = 0
+
+
+
+        for w in weights:
+            if len(w) == 0:
+                # This is an activation layer
+                continue
+            elif len(w) == 2:
+                # It's a weight and bias:
+                target = self.trainable_variables[i_this_model]
+                target.assign(w[0])
+                i_this_model += 1; i_jax += 1
+                
+                target = self.trainable_variables[i_this_model]
+                target.assign(w[1])
+                i_this_model += 1; i_jax += 1
+            else:
+                # This is probably the FINAL layer:
+                t = tf.convert_to_tensor(w)
+                if t.shape == self.trainable_variables[i_this_model].shape:
+                    self.trainable_variables[i_this_model].assign(t)
+ 
+        return

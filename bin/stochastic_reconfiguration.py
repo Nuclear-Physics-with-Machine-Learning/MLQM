@@ -37,6 +37,7 @@ import logging
 from logging import handlers
 logger = logging.getLogger()
 
+
 # Create a handler for STDOUT, but only on the root rank:
 if not MPI_AVAILABLE or hvd.rank() == 0:
     stream_handler = logging.StreamHandler()
@@ -140,8 +141,8 @@ class exec(object):
 
         self.dimension  = int(self.config['General']['dimension'])
         self.nparticles = int(self.config['General']['nparticles'])
-        self.save_path  =     self.config["General"]["save_path"]
-        self.model_name =     self.config["General"]["model_name"]
+        self.save_path  = str(self.config["General"]["save_path"]) # Cast to pathlib later
+        self.model_name = pathlib.Path(self.config["General"]["model_name"])
 
         if "profile" in self.config["General"]:
             self.profile = self.config["General"].getboolean("profile")
@@ -158,38 +159,15 @@ class exec(object):
 
         # Create a wavefunction:
         from mlqm.models import DeepSetsWavefunction
-        wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles, mean_subtract=True)
+
+        wavefunction_config = self.config['Model']
 
 
+        wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles, wavefunction_config)
 
         # Run the wave function once to initialize all its weights
         _ = wavefunction(x)
 
-
-
-        # i = 0
-        # for l in wavefunction.trainable_variables:
-        #     n = tf.reduce_prod(l.shape)
-        #     vals = tf.linspace(i, i+n - 1, n) * 0.01
-        #     vals = tf.reshape(vals, l.shape)
-        #     i += n
-        #     l.assign(vals)
-
-
-        # test_x = tf.reshape(tf.linspace(0,11,12), (1,4,3))
-        """
-        DELETE THIS EVENTUALLY
-        test_x = tf.stack(
-            [ 0.01*tf.reshape(tf.linspace(0,11,12), (4,3)),
-              -0.02*tf.reshape(tf.linspace(0,11,12), (4,3))
-            ]
-          )
-
-        n_walkers = test_x.shape[0]
-        print("n_walkers: ", n_walkers)
-        print("test_x: ", test_x)
-        print("wavefunction(test_x): ", wavefunction(test_x))
-        """
 
         n_parameters = 0
         for p in wavefunction.trainable_variables:
@@ -223,44 +201,6 @@ class exec(object):
             n_walkers_per_observation = self.n_walkers_per_observation,
             n_concurrent_obs_per_rank = self.n_concurrent_obs_per_rank
         )
-        """
-        DELETE THIS EVENTUALLY
-        energy, energy_jf, ke_jf, ke_direct, pe = hamiltonian.energy(wavefunction, test_x)
-
-        print("energy: ", energy)
-        print("energy_jf: ", energy_jf)
-        print("ke_jf: ", ke_jf)
-        print("ke_direct: ", ke_direct)
-        print("pe: ", pe)
-
-        flattened_jacobian, flat_shape = self.sr_worker.jacobian(test_x, wavefunction)
-
-        print(flattened_jacobian)
-
-        # print("test_x: ", test_x)
-        # print("wavefunction(test_x): ", wavefunction(test_x))
-
-        dpsi_i = tf.reduce_mean(flattened_jacobian, axis=0)
-        dpsi_i = tf.reshape(dpsi_i, [-1,1])
-
-        # To compute <O^m O^n>
-        dpsi_ij = tf.linalg.matmul(flattened_jacobian, flattened_jacobian, transpose_a = True) / n_walkers
-
-        # Computing <O^m H>:
-        dpsi_i_EL = tf.linalg.matmul(tf.reshape(energy, [1,n_walkers]), flattened_jacobian) / n_walkers
-        # This makes this the same shape as the other tensors
-        dpsi_i_EL = tf.reshape(dpsi_i_EL, [-1, 1])
-
-
-        print("dpsi_i: ", dpsi_i)
-        print("dpsi_i_EL: ", dpsi_i_EL)
-        print("dpsi_ij: ", dpsi_ij)
-
-        print("flattened_jacobian: ", flattened_jacobian)
-
-        exit()
-        """
-
 
 
         append_token = ""
@@ -284,14 +224,17 @@ class exec(object):
         else:
             self.save_path += append_token
 
+
         if not MPI_AVAILABLE or hvd.rank() == 0:
             self.writer = tf.summary.create_file_writer(self.save_path)
+        
 
-        self.model_path = self.save_path + self.model_name
+        # Now, cast to pathlib:
+        self.save_path = pathlib.Path(self.save_path)
 
         # We also snapshot the configuration into the log dir:
         if not MPI_AVAILABLE or hvd.rank() == 0:
-            with open(self.save_path + 'config.snapshot.ini', 'w') as cfg:
+            with open(self.save_path / pathlib.Path('config.snapshot.ini'), 'w') as cfg:
                 self.config.write(cfg)
 
 
@@ -335,14 +278,47 @@ class exec(object):
 
     def restore(self):
         if not MPI_AVAILABLE or hvd.rank() == 0:
-            print("Trying to restore model")
-            self.sr_worker.wavefunction.load_weights(self.model_path)
+            logger.info("Trying to restore model")
 
-            with open(self.save_path + "/global_step.pkl", 'rb') as _f:
-                self.global_step = pickle.load(file=_f)
-            with open(self.save_path + "/optimizer.pkl", 'rb') as _f:
-                self.sr_worker.optimizer   = pickle.load(file=_f)
+            # Inject control flow here to restore from Jax models.
 
+            # Does the model exist?
+            p = pathlib.Path(self.model_name)
+            found_path = None
+            for source_path in [self.save_path, pathlib.Path('./')]:
+                if (source_path / p).is_file(): 
+                    found_path = source_path / p
+                    break 
+
+            if found_path is None:
+                raise OSError(f"{self.model_path} not found.") 
+
+            logger.info(f"Resolved weights path is {found_path}")
+
+            # Try to restore it via keras:
+            try:
+                self.sr_worker.wavefunction.load_weights(found_path)
+                logger.info("Restored from tensorflow!")
+            except Exception as e:
+                logger.info("Failed to load weights via keras load_weights function.")
+                # Perhap its a Jax model, so try to restore this way:
+                try:
+                    self.sr_worker.wavefunction.restore_jax(found_path)
+                    logger.info("Restored from jax!")
+                except Exception as e2:
+                    logger.info("Failed to load weights via tensorflow or jax, returning")
+                    return
+                    pass
+
+            # We get here only if one method restored.
+            # Attempt to restore a global step and optimizer but it's not necessary
+            try:
+                with open(self.save_path + "/global_step.pkl", 'rb') as _f:
+                    self.global_step = pickle.load(file=_f)
+                with open(self.save_path + "/optimizer.pkl", 'rb') as _f:
+                    self.sr_worker.optimizer   = pickle.load(file=_f)
+            except:
+                logger.info("Could not restore a global_step or an optimizer state.  Starting over with restored weights only.")
 
     def set_compute_parameters(self):
         tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
@@ -370,6 +346,15 @@ class exec(object):
             logger.debug(excep)
             pass
 
+
+        # for l in self.sr_worker.wavefunction.individual_net.trainable_variables:
+        #     print("l: ", l)
+        # for l in self.sr_worker.wavefunction.aggregate_net.trainable_variables:
+        #     print("l: ", l)
+        # exit()
+
+        # If the file for the model path already exists, we don't change it until after restoring:
+        self.model_path = self.save_path / self.model_name
 
 
         if MPI_AVAILABLE and hvd.size() > 1:
@@ -399,6 +384,9 @@ class exec(object):
         logger.info("Finished compilation.")
 
         checkpoint_iteration = 500
+
+        # Before beginning the loop, manually flush the buffer:
+        logger.handlers[0].flush()
 
         while self.global_step < self.iterations:
             if not self.active: break
@@ -451,9 +439,9 @@ class exec(object):
         # Take the network and snapshot it to file:
         self.sr_worker.wavefunction.save_weights(self.model_path)
         # Save the global step:
-        with open(self.save_path + "/global_step.pkl", 'wb') as _f:
+        with open(self.save_path / pathlib.Path("global_step.pkl"), 'wb') as _f:
             pickle.dump(self.global_step, file=_f)
-        with open(self.save_path + "/optimizer.pkl", 'wb') as _f:
+        with open(self.save_path / pathlib.Path("optimizer.pkl"), 'wb') as _f:
             pickle.dump(self.sr_worker.optimizer, file=_f)
 
     def finalize(self):

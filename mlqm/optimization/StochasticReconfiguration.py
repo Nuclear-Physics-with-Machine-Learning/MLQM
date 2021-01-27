@@ -106,7 +106,7 @@ class StochasticReconfiguration(object):
         dpsi_ij = tf.linalg.matmul(flattened_jacobian, flattened_jacobian, transpose_a = True) / self.n_walkers_per_observation
 
         # Computing <O^m H>:
-        dpsi_i_EL = tf.linalg.matmul(tf.reshape(energy, [1,self.n_walkers_per_observation]), flattened_jacobian) / self.n_walkers_per_observation
+        dpsi_i_EL = tf.linalg.matmul(tf.reshape(energy, [1,self.n_walkers_per_observation]), flattened_jacobian)
         # This makes this the same shape as the other tensors
         dpsi_i_EL = tf.reshape(dpsi_i_EL, [-1, 1])
 
@@ -168,12 +168,32 @@ class StochasticReconfiguration(object):
 
             # First do a void walk to thermalize after a new configuration.
             # By default, this will use the previous walkers as a starting configurations.
-            #   This one does all the kicks in a compiled function.
+            # #   This one does all the kicks in a compiled function.
+            
+            # UNCOMMENT STARTING HERE
             acceptance = _sampler.kick(_wavefunction, _kicker, _kicker_params, nkicks=self.n_void_steps)
 
 
             # Get the current walker locations:
             x_current  = _sampler.sample()
+            # UNCOMMENT ENDING HERE
+
+            # # test_x = tf.reshape(tf.linspace(0,11,12), (1,4,3))
+            # # """
+            # # DELETE THIS EVENTUALLY
+            # x_current = tf.stack(
+            #     [ 0.01*tf.reshape(tf.linspace(0,11,12), (4,3)),
+            #       -0.02*tf.reshape(tf.linspace(0,11,12), (4,3))
+            #     ]
+            #   )
+            # acceptance = tf.reduce_mean(x_current)
+
+            # n_walkers = x_current.shape[0]
+            # print("n_walkers: ", n_walkers)
+            # print("x_current: ", x_current)
+            # print("wavefunction(x_current): ", _wavefunction(x_current))
+            # # """
+
 
 
             # Compute the observables:
@@ -215,8 +235,21 @@ class StochasticReconfiguration(object):
                 obs_ke_direct   = ke_direct[i_obs]  / self.n_walkers_per_observation
                 obs_pe          = pe[i_obs]         / self.n_walkers_per_observation
 
+                # print("obs_energy: ",    obs_energy)
+                # print("obs_energy_jf: ", obs_energy_jf)
+                # print("obs_ke_jf: ",     obs_ke_jf)
+                # print("obs_ke_direct: ", obs_ke_direct)
+                # print("obs_pe: ",        obs_pe)
+
 
                 dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(flattened_jacobian[i_obs], obs_energy)
+
+                # print("dpsi_i: ", dpsi_i)
+                # print("dpsi_i_EL: ", dpsi_i_EL)
+                # print("dpsi_ij: ", dpsi_ij)
+
+                # print("flattened_jacobian: ", flattened_jacobian)
+
 
                 self.estimator.accumulate(
                     tf.reduce_sum(obs_energy),
@@ -299,7 +332,6 @@ class StochasticReconfiguration(object):
 
         n_loops_total = int(self.n_observable_measurements / self.n_concurrent_obs_per_rank)
 
-
         if MPI_AVAILABLE:
             n_loops_total = int(n_loops_total / self.size)
         # logger.debug(" -- Coordinating loop length")
@@ -339,6 +371,7 @@ class StochasticReconfiguration(object):
             self.estimator.tensor_dict["dpsi_i_EL"],
             self.estimator.tensor_dict["dpsi_ij"])
 
+
         metrics.update(opt_metrics)
 
         # Here, we recover the shape of the parameters of the network:
@@ -358,6 +391,11 @@ class StochasticReconfiguration(object):
         metrics['energy/error_jf']   = error_jf
         metrics['metropolis/acceptance'] = self.estimator.tensor_dict["acceptance"]
         metrics['metropolis/r']      = self.estimator.tensor_dict['r']
+        metrics['energy/ke_jf']      = self.estimator.tensor_dict["ke_jf"]
+        metrics['energy/ke_direct']  = self.estimator.tensor_dict["ke_direct"]
+        metrics['energy/pe']         = self.estimator.tensor_dict["pe"]
+
+
         self.latest_gradients = delta_p
 
         return  metrics
