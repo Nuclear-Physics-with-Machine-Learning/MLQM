@@ -75,6 +75,7 @@ class StochasticReconfiguration(object):
 
 
         jac = tape.jacobian(log_wpsi, wavefunction.trainable_variables)
+        # jac = tape.jacobian(log_wpsi, wavefunction.trainable_variables, parallel_iterations = MAX_PARALLEL_ITERATIONS)
 
 
         # Grab the original shapes ([1:] means everything except first dim):
@@ -169,7 +170,7 @@ class StochasticReconfiguration(object):
             # First do a void walk to thermalize after a new configuration.
             # By default, this will use the previous walkers as a starting configurations.
             # #   This one does all the kicks in a compiled function.
-            
+
             # UNCOMMENT STARTING HERE
             acceptance = _sampler.kick(_wavefunction, _kicker, _kicker_params, nkicks=self.n_void_steps)
 
