@@ -84,7 +84,6 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.mean_subtract = self.config.getboolean('mean_subtract')
 
-
         n_filters_per_layer = int(self.config['n_filters_per_layer'])
         n_layers            = int(self.config['n_layers'])
         bias                = self.config.getboolean('bias')
@@ -108,7 +107,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         # The above layer counts as a layer!
         for l in range(n_layers-1):
-            if l == n_layers - 1:
+            if l == n_layers - 2:
                 _activation = None
             else:
                 _activation = activation
@@ -148,7 +147,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         # self.normalization_exponent = tf.Variable(2.0, dtype=DEFAULT_TENSOR_TYPE)
         # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
 
-    @tf.function(experimental_compile=False)
+    @tf.function()
     def call(self, inputs, trainable=None):
         # Mean subtract for all particles:
         if self.nparticles > 1 and self.mean_subtract:
@@ -160,6 +159,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         x = []
         for p in range(self.nparticles):
             x.append(self.individual_net(xinputs[:,p,:]))
+
 
         x = tf.add_n(x)
         x = self.aggregate_net(x)
@@ -196,7 +196,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
                 target = self.trainable_variables[i_this_model]
                 target.assign(w[0])
                 i_this_model += 1; i_jax += 1
-                
+
                 target = self.trainable_variables[i_this_model]
                 target.assign(w[1])
                 i_this_model += 1; i_jax += 1
@@ -205,5 +205,5 @@ class DeepSetsWavefunction(tf.keras.models.Model):
                 t = tf.convert_to_tensor(w)
                 if t.shape == self.trainable_variables[i_this_model].shape:
                     self.trainable_variables[i_this_model].assign(t)
- 
+
         return
