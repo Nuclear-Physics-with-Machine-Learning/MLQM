@@ -23,7 +23,11 @@ try:
     if (hvd.size() != 1 ):
         # Only set this if there is more than one GPU.  Otherwise, its probably
         # Set elsewhere
-        os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
+        gpus = tf.config.list_physical_devices('GPU')
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        if hvd and len(gpus) > 0:
+            tf.config.set_visible_devices(gpus[hvd.local_rank() % len(gpus)],'GPU')
     MPI_AVAILABLE=True
 except:
     MPI_AVAILABLE=False
@@ -227,7 +231,7 @@ class exec(object):
 
         if not MPI_AVAILABLE or hvd.rank() == 0:
             self.writer = tf.summary.create_file_writer(self.save_path)
-        
+
 
         # Now, cast to pathlib:
         self.save_path = pathlib.Path(self.save_path)
@@ -283,39 +287,58 @@ class exec(object):
             # Inject control flow here to restore from Jax models.
 
             # Does the model exist?
-            p = pathlib.Path(self.model_name)
-            found_path = None
+            # Note that tensorflow adds '.index' and '.data-...' to the name
+            tf_p = pathlib.Path(str(self.model_name) + ".index")
+
+            # Check for tensorflow first:
+
+            model_restored = False
+            tf_found_path = None
             for source_path in [self.save_path, pathlib.Path('./')]:
-                if (source_path / p).is_file(): 
-                    found_path = source_path / p
-                    break 
+                if (source_path / tf_p).is_file():
+                    # Note: we use the original path without the '.index' added
+                    tf_found_path = source_path / pathlib.Path(self.model_name)
+                    logger.info(f"Resolved weights path is {tf_found_path}")
+                    break
 
-            if found_path is None:
-                raise OSError(f"{self.model_path} not found.") 
-
-            logger.info(f"Resolved weights path is {found_path}")
-
-            # Try to restore it via keras:
-            try:
-                self.sr_worker.wavefunction.load_weights(found_path)
-                logger.info("Restored from tensorflow!")
-            except Exception as e:
-                logger.info("Failed to load weights via keras load_weights function.")
-                # Perhap its a Jax model, so try to restore this way:
+            if tf_found_path is None:
+                raise OSError(f"{self.model_name} not found.")
+            else:
                 try:
-                    self.sr_worker.wavefunction.restore_jax(found_path)
-                    logger.info("Restored from jax!")
-                except Exception as e2:
-                    logger.info("Failed to load weights via tensorflow or jax, returning")
-                    return
-                    pass
+                    self.sr_worker.wavefunction.load_weights(tf_found_path)
+                    model_restored = True
+                    logger.info("Restored from tensorflow!")
+                except Exception as e:
+                    logger.info("Failed to load weights via keras load_weights function.")
+
+            # Now, check for JAX only if tf failed:
+            if not model_restored:
+                jax_p = pathlib.Path(self.model_name)
+                jax_found_path = None
+                for source_path in [self.save_path, pathlib.Path('./')]:
+                    if (source_path / jax_p).is_file():
+                        # Note: we use the original path without the '.index' added
+                        jax_found_path = source_path / jax_p
+                        logger.info(f"Resolved weights path is {jax_found_path}")
+                        break
+
+                if jax_found_path is None:
+                    raise OSError(f"{self.model_name} not found.")
+                else:
+                    try:
+                        self.sr_worker.wavefunction.restore_jax(jax_found_path)
+                        logger.info("Restored from jax!")
+                    except Exception as e:
+                        logger.info("Failed to load weights via tensorflow or jax, returning")
+                        return
+
 
             # We get here only if one method restored.
             # Attempt to restore a global step and optimizer but it's not necessary
             try:
-                with open(self.save_path + "/global_step.pkl", 'rb') as _f:
+                with open(self.save_path / pathlib.Path("global_step.pkl"), 'rb') as _f:
                     self.global_step = pickle.load(file=_f)
-                with open(self.save_path + "/optimizer.pkl", 'rb') as _f:
+                with open(self.save_path / pathlib.Path("optimizer.pkl"), 'rb') as _f:
                     self.sr_worker.optimizer   = pickle.load(file=_f)
             except:
                 logger.info("Could not restore a global_step or an optimizer state.  Starting over with restored weights only.")
@@ -347,11 +370,20 @@ class exec(object):
             pass
 
 
-        # for l in self.sr_worker.wavefunction.individual_net.trainable_variables:
-        #     print("l: ", l)
-        # for l in self.sr_worker.wavefunction.aggregate_net.trainable_variables:
-        #     print("l: ", l)
+        #
+        # x_test = tf.stack([
+        #     0.01*tf.reshape(tf.linspace(0,11,12), (4,3)),
+        #     -0.02*tf.reshape(tf.linspace(0,11,12), (4,3))
+        # ])
+        #
+        # # Compute the energy with this test:
+        # energy, energy_jf, ke_jf, ke_direct, pe = self.sr_worker.hamiltonian.energy(self.sr_worker.wavefunction, x_test)
+        #
+        # print(energy)
+        # print(energy_jf)
+        #
         # exit()
+
 
         # If the file for the model path already exists, we don't change it until after restoring:
         self.model_path = self.save_path / self.model_name
@@ -392,8 +424,9 @@ class exec(object):
             if not self.active: break
 
             if self.profile:
-                tf.profiler.experimental.start(self.save_path)
-                tf.summary.trace_on(graph=True)
+                if not MPI_AVAILABLE or hvd.rank() == 0:
+                    tf.profiler.experimental.start(self.save_path)
+                    tf.summary.trace_on(graph=True)
 
 
             start = time.time()
@@ -424,8 +457,9 @@ class exec(object):
                     pass
 
             if self.profile:
-                tf.profiler.experimental.stop()
-                tf.summary.trace_off()
+                if not MPI_AVAILABLE or hvd.rank() == 0:
+                    tf.profiler.experimental.stop()
+                    tf.summary.trace_off()
 
 
     # @tf.function

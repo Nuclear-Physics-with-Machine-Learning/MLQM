@@ -40,7 +40,7 @@ class ResidualBlock(DenseBlock):
         tf.keras.models.Model
     """
     def __init__(self, n_output, use_bias, activation):
-        DenseBlock.__init__(self, n_output, activation, use_bias)
+        DenseBlock.__init__(self, n_output, use_bias, activation)
 
 
     def call(self, inputs):
@@ -88,6 +88,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         n_layers            = int(self.config['n_layers'])
         bias                = self.config.getboolean('bias')
         residual            = self.config.getboolean('residual')
+
 
         try:
             activation = tf.keras.activations.__getattribute__(self.config['activation'])
@@ -166,7 +167,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         # Compute the initial boundary condition, which the network will slowly overcome
         # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
-        boundary_condition = -0.2 * tf.reduce_sum(xinputs**2, axis=(1,2))
+        boundary_condition = -0.1 * tf.reduce_sum(xinputs**2, axis=(1,2))
         boundary_condition = tf.reshape(boundary_condition, [-1,1])
 
 

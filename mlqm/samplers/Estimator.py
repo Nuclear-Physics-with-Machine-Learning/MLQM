@@ -41,7 +41,7 @@ class Estimator(object):
     def allreduce(self):
 
         for key in self.tensor_dict.keys():
-            self.tensor_dict[key] = hvd.allreduce(self.tensor_dict[key], op=hvd.Sum)
+            self.tensor_dict[key] = hvd.allreduce(self.tensor_dict[key], op=hvd.Sum, device_dense="GPU")
         return
 
     def accumulate(self,energy, energy_jf, ke_jf, ke_direct, pe, acceptance,weight,r,dpsi_i,dpsi_i_EL,dpsi_ij,estim_wgt) :
