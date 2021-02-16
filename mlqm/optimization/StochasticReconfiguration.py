@@ -315,7 +315,7 @@ class StochasticReconfiguration(object):
 
 
     # @tf.function
-    def sr_step(self):
+    def sr_step(self, n_thermalize):
 
         metrics = {}
         self.latest_gradients = None
@@ -347,7 +347,8 @@ class StochasticReconfiguration(object):
             exception_str += f")*({self.size}) != {self.n_observable_measurements}\n"
             raise Exception(exception_str)
 
-
+        # We do a thermalization step again:
+        self.equilibrate(n_thermalize)
 
         # Now, actually apply the loop and compute the observables:
         flat_shape = self.walk_and_accumulate_observables(

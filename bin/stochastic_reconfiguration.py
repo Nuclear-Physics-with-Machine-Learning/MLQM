@@ -415,7 +415,7 @@ class exec(object):
         self.sr_worker.compile()
         logger.info("Finished compilation.")
 
-        checkpoint_iteration = 500
+        checkpoint_iteration = 2000
 
         # Before beginning the loop, manually flush the buffer:
         logger.handlers[0].flush()
@@ -431,7 +431,7 @@ class exec(object):
 
             start = time.time()
 
-            metrics  = self.sr_worker.sr_step()
+            metrics  = self.sr_worker.sr_step(n_thermalize = 1000)
 
             self.sr_worker.adapt_learning_rate(self.optimizer_type)
 
@@ -453,13 +453,17 @@ class exec(object):
 
             if checkpoint_iteration % self.global_step == 0:
                 if not MPI_AVAILABLE or hvd.rank() == 0:
-                    # self.save_weights()
+                    self.save_weights()
                     pass
 
             if self.profile:
                 if not MPI_AVAILABLE or hvd.rank() == 0:
                     tf.profiler.experimental.stop()
                     tf.summary.trace_off()
+
+        # Save the weights at the very end:
+        self.save_weights()
+
 
 
     # @tf.function
