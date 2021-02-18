@@ -1,15 +1,20 @@
-import tensorflow as tf
-import numpy
-
+import copy
 import logging
 # Set up logging:
 logger = logging.getLogger()
 
+
+
+import tensorflow as tf
+import numpy
+
+
 from mlqm.hamiltonians import Hamiltonian
-from mlqm.optimization import FlatOptimizer, GradientCalculator
+from mlqm.optimization import GradientCalculator
 from mlqm.samplers     import Estimator, MetropolisSampler
 
 from mlqm import MPI_AVAILABLE, MAX_PARALLEL_ITERATIONS
+
 
 if MPI_AVAILABLE:
     import horovod.tensorflow as hvd
@@ -20,8 +25,8 @@ class StochasticReconfiguration(object):
             sampler                   : MetropolisSampler,
             wavefunction              : callable,
             hamiltonian               : Hamiltonian,
-            optimizer                 : FlatOptimizer,
             gradient_calc             : GradientCalculator,
+            delta                     : float,
             n_observable_measurements : int,
             n_void_steps              : int,
             n_walkers_per_observation : int,
@@ -32,8 +37,9 @@ class StochasticReconfiguration(object):
         self.sampler       = sampler
         self.wavefunction  = wavefunction
         self.hamiltonian   = hamiltonian
-        self.optimizer     = optimizer
         self.gradient_calc = gradient_calc
+
+        self.delta         = delta
 
         # Store the measurement configurations:
         self.n_observable_measurements = n_observable_measurements
@@ -51,6 +57,12 @@ class StochasticReconfiguration(object):
 
         self.estimator = Estimator()
 
+        # We use a "disposable" estimator to parallelize the adaptive estimator:
+        self.adaptive_estimator = Estimator()
+        # Use a "disposable" wavefunction too:
+        self.adaptive_wavefunction = copy.copy(self.wavefunction)
+
+        self.correct_shape = [ p.shape for p in self.wavefunction.trainable_variables ]
 
 
 
@@ -113,10 +125,17 @@ class StochasticReconfiguration(object):
 
         return dpsi_i, dpsi_ij, dpsi_i_EL
 
-    def update_model(self):
 
-        if self.latest_gradients is not None:
-            self.optimizer.apply_gradients(zip(self.latest_gradients, self.wavefunction.trainable_variables))
+
+
+    @tf.function
+    def apply_gradients(self, gradients):
+
+        # Update the parameters:
+        for grad, var in zip(gradients, self.wavefunction.trainable_variables):
+           var.assign_add(self.delta * grad)
+
+        return
 
 
     def equilibrate(self, n_equilibrations):
@@ -136,7 +155,113 @@ class StochasticReconfiguration(object):
         kicker_params = {"mean": 0.0, "stddev" : 0.2}
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=1)
         x_current  = self.sampler.sample()
-        energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(self.wavefunction, x_current)
+        energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = self.hamiltonian.energy(self.wavefunction, x_current)
+
+
+
+
+    # @tf.function
+    def optimize_eps(self, current_psi):
+
+        f_i = self.gradient_calc.f_i(
+                self.estimator.tensor_dict['dpsi_i'], 
+                self.estimator.tensor_dict["energy"], 
+                self.estimator.tensor_dict["dpsi_i_EL"]
+                )
+
+        S_ij = self.gradient_calc.S_ij(
+                self.estimator.tensor_dict['dpsi_ij'], 
+                self.estimator.tensor_dict['dpsi_i']
+               )
+
+
+        # We do a search over eps ranges to compute the optimal value:
+
+        eps_max = tf.constant(0.001, dtype=S_ij.dtype)
+        eps_min = tf.constant(0.00001, dtype=S_ij.dtype)
+
+        # take the current energy as the starting miniumum:
+
+        energy_min = self.estimator.tensor_dict['energy'] + 1
+        delta_p_min = None
+
+        # Snapshot the current weights: 
+        original_weights = copy.copy(self.wavefunction.trainable_variables)
+
+
+        for n in range(10):
+            eps = tf.sqrt(eps_max * eps_min)
+            try:
+                dp_i = self.gradient_calc.pd_solve(S_ij, eps, f_i)
+            except tf.errors.InvalidArgumentError:
+                eps_min = eps
+                print("Cholesky solve failed, continuing with higher regularization")
+                continue
+
+            delta_p = self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i)
+
+
+            # We have the original energy, and gradient updates.
+            # Apply the updates:
+            loop_items = zip(self.adaptive_wavefunction.trainable_variables, original_weights, delta_p)
+            for weight, original_weight, gradient in loop_items:
+                weight.assign(original_weight + self.delta*gradient)
+
+            # Compute the new energy:
+
+            self.adaptive_estimator.reset()
+
+
+            for next_x, this_current_psi in zip(self.sampler.get_all_walkers(), current_psi):
+
+                # Compute the observables:
+                energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = \
+                    self.hamiltonian.energy(self.adaptive_wavefunction, next_x)
+
+                # Here, we split the energy and other objects into sizes of nwalkers_per_observation
+                # if self.n_concurrent_obs_per_rank != 1:
+                next_x     = tf.split(next_x,    self.n_concurrent_obs_per_rank, axis=0)
+                energy     = tf.split(energy,    self.n_concurrent_obs_per_rank, axis=0)
+                logw_of_x  = tf.split(logw_of_x, self.n_concurrent_obs_per_rank, axis=0)
+
+                probability_ratio = [ tf.math.exp(2*(next_psi - curr_psi)) for next_psi, curr_psi in zip(logw_of_x, this_current_psi) ]
+
+
+                for i_obs in range(self.n_concurrent_obs_per_rank):
+                    obs_energy      = energy[i_obs]     / self.n_walkers_per_observation
+
+
+                    self.adaptive_estimator.accumulate(
+                        energy = tf.reduce_sum(obs_energy),
+                        weight = tf.reduce_sum(probability_ratio[i_obs]))
+                
+
+            # INTERCEPT HERE with MPI to allreduce the estimator objects.
+            if MPI_AVAILABLE:
+                self.adaptive_estimator.allreduce()
+
+            # Finalize the estimator:
+            error, error_jf = self.adaptive_estimator.finalize(self.n_observable_measurements)
+
+            energy_curr = self.adaptive_estimator.tensor_dict['energy']
+
+            # This is the 
+
+            if energy_curr < energy_min :
+               energy_min = energy_curr
+               delta_p_min = delta_p
+               converged = True
+               eps_max = eps
+            else:
+               eps_min = eps
+
+
+        if delta_p_min is None:
+            delta_p_min = delta_p
+
+        return delta_p_min, {"eps" : eps}
+
+
 
     def walk_and_accumulate_observables(self,
             estimator,
@@ -164,6 +289,8 @@ class StochasticReconfiguration(object):
 
         estimator.reset()
 
+        current_psi = []
+
         for i_loop in range(_n_loops_total):
             # logger.debug(f" -- evaluating loop {i_loop} of {n_loops_total}")
 
@@ -177,28 +304,11 @@ class StochasticReconfiguration(object):
 
             # Get the current walker locations:
             x_current  = _sampler.sample()
-            # UNCOMMENT ENDING HERE
-
-            # # test_x = tf.reshape(tf.linspace(0,11,12), (1,4,3))
-            # # """
-            # # DELETE THIS EVENTUALLY
-            # x_current = tf.stack(
-            #     [ 0.01*tf.reshape(tf.linspace(0,11,12), (4,3)),
-            #       -0.02*tf.reshape(tf.linspace(0,11,12), (4,3))
-            #     ]
-            #   )
-            # acceptance = tf.reduce_mean(x_current)
-
-            # n_walkers = x_current.shape[0]
-            # print("n_walkers: ", n_walkers)
-            # print("x_current: ", x_current)
-            # print("wavefunction(x_current): ", _wavefunction(x_current))
-            # # """
-
 
 
             # Compute the observables:
-            energy, energy_jf, ke_jf, ke_direct, pe = self.hamiltonian.energy(_wavefunction, x_current)
+            energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = self.hamiltonian.energy(_wavefunction, x_current)
+
 
             # R is computed but it needs to be WRT the center of mass of all particles
             # So, mean subtract if needed:
@@ -219,6 +329,10 @@ class StochasticReconfiguration(object):
             ke_jf      = tf.split(ke_jf,     self.n_concurrent_obs_per_rank, axis=0)
             ke_direct  = tf.split(ke_direct, self.n_concurrent_obs_per_rank, axis=0)
             pe         = tf.split(pe,        self.n_concurrent_obs_per_rank, axis=0)
+            logw_of_x  = tf.split(logw_of_x, self.n_concurrent_obs_per_rank, axis=0)
+
+            current_psi.append(logw_of_x)
+
 
             # For each observation, we compute the jacobian.
             # flattened_jacobian is a list, flat_shape is just one instance
@@ -253,18 +367,17 @@ class StochasticReconfiguration(object):
 
 
                 self.estimator.accumulate(
-                    tf.reduce_sum(obs_energy),
-                    tf.reduce_sum(obs_energy_jf),
-                    tf.reduce_sum(obs_ke_jf),
-                    tf.reduce_sum(obs_ke_direct),
-                    tf.reduce_sum(obs_pe),
-                    acceptance,
-                    1.,
-                    r,
-                    dpsi_i,
-                    dpsi_i_EL,
-                    dpsi_ij,
-                    1.)
+                    energy     = tf.reduce_sum(obs_energy),
+                    energy_jf  = tf.reduce_sum(obs_energy_jf),
+                    ke_jf      = tf.reduce_sum(obs_ke_jf),
+                    ke_direct  = tf.reduce_sum(obs_ke_direct),
+                    pe         = tf.reduce_sum(obs_pe),
+                    acceptance = acceptance,
+                    r          = r,
+                    dpsi_i     = dpsi_i,
+                    dpsi_i_EL  = dpsi_i_EL,
+                    dpsi_ij    = dpsi_ij,
+                )
 
 
 
@@ -272,46 +385,7 @@ class StochasticReconfiguration(object):
         if MPI_AVAILABLE:
             self.estimator.allreduce()
 
-        # Returning "by reference" since estimator is updated on the fly
-        return flat_shape
-
-    def adapt_learning_rate(self, optimizer_type):
-        # Most of these are no-ops:
-        if optimizer_type == "flat":
-            return
-        if optimizer_type == "adam":
-            return
-        if optimizer_type == "energy_search":
-            self.optimize_energy()
-
-    def optimize_energy(self):
-        pass
-        # The energy optimization is fixed for a particular gradient.  We optimize the update length
-# def energy_dist(self, delta_p, params, x_s):
-#         log_wpsi_o = self.wavefunction.vmap_psi(params,x_s)
-#         energy_o, energy_jf_o = self.hamiltonian.energy(params, x_s)
-#         energy_o_sum = jnp.mean(energy_o)
-#         energy2_o_sum = jnp.mean(energy_o**2)
-#         energy_o_err = jnp.sqrt((energy2_o_sum - energy_o_sum**2) / x_s.shape[0])
-#         params = jax.tree_multimap(self.wavefunction.update_add, params, delta_p)
-#         log_wpsi_n = self.wavefunction.vmap_psi(params,x_s)
-#         psi_norm = jnp.exp( ( log_wpsi_n - log_wpsi_o) )
-#         psi2_norm = psi_norm**2
-#         psi2_norm_sum = jnp.mean(psi2_norm)
-# # Compute the energy reweighting the stored walk
-#         energy_n, energy_jf_n = self.hamiltonian.energy(params, x_s)
-#         energy_n *= psi2_norm
-#         energy_n_sum = jnp.mean(energy_n) / psi2_norm_sum
-#         energy2_n_sum = jnp.mean(energy_n**2) / psi2_norm_sum
-#         energy_n_err=jnp.sqrt((energy2_n_sum - energy_n_sum**2) / x_s.shape[0] )
-# # Correlated energy difference
-#         energy_d = energy_n / psi2_norm_sum - energy_o
-#         energy_d_sum= jnp.mean(energy_d)
-#         energy2_d_sum= jnp.mean(energy_d**2)
-#         energy_d_err=jnp.sqrt((energy2_d_sum - energy_d_sum**2) / x_s.shape[0] )
-# # Set back the old parameters
-#         params = jax.tree_multimap(self.wavefunction.update_subtract, params, delta_p)
-#         return energy_d_sum, energy_d_err
+        return flat_shape, current_psi
 
 
     # @tf.function
@@ -350,8 +424,11 @@ class StochasticReconfiguration(object):
         # We do a thermalization step again:
         self.equilibrate(n_thermalize)
 
+        # Clear the walker history:
+        self.sampler.reset_history()
+
         # Now, actually apply the loop and compute the observables:
-        flat_shape = self.walk_and_accumulate_observables(
+        self.flat_shape, current_psi = self.walk_and_accumulate_observables(
                     self.estimator,
                     self.wavefunction,
                     self.sampler,
@@ -363,29 +440,10 @@ class StochasticReconfiguration(object):
         # At this point, we need to average the observables that feed into the optimizer:
         error, error_jf = self.estimator.finalize(self.n_observable_measurements)
 
+
         # for key in self.estimator.tensor_dict:
         #     print(f"{key}: {self.estimator.tensor_dict[key]}")
 
-
-        dp_i, opt_metrics = self.gradient_calc.sr(
-            self.estimator.tensor_dict["energy"],
-            self.estimator.tensor_dict["dpsi_i"],
-            self.estimator.tensor_dict["dpsi_i_EL"],
-            self.estimator.tensor_dict["dpsi_ij"])
-
-
-        metrics.update(opt_metrics)
-
-        # Here, we recover the shape of the parameters of the network:
-        running_index = 0
-        gradient = []
-        for length in flat_shape:
-            l = length[-1]
-            end_index = running_index + l
-            gradient.append(dp_i[running_index:end_index])
-            running_index += l
-        shapes = [ p.shape for p in self.wavefunction.trainable_variables ]
-        delta_p = [ tf.reshape(g, s) for g, s in zip(gradient, shapes)]
 
         metrics['energy/energy']     = self.estimator.tensor_dict["energy"]
         metrics['energy/error']      = error
@@ -397,7 +455,38 @@ class StochasticReconfiguration(object):
         metrics['energy/ke_direct']  = self.estimator.tensor_dict["ke_direct"]
         metrics['energy/pe']         = self.estimator.tensor_dict["pe"]
 
+        # Here, we call the function to optimize eps and compute the gradients:
 
-        self.latest_gradients = delta_p
+        delta_p, opt_metrics = self.optimize_eps(current_psi)
+
+        # dp_i, opt_metrics = self.gradient_calc.sr(
+        #     self.estimator.tensor_dict["energy"],
+        #     self.estimator.tensor_dict["dpsi_i"],
+        #     self.estimator.tensor_dict["dpsi_i_EL"],
+        #     self.estimator.tensor_dict["dpsi_ij"])
+
+
+        metrics.update(opt_metrics)
+
+
+        # And apply them to the wave function:
+        self.apply_gradients(delta_p)
+
+
+
 
         return  metrics
+
+    # @tf.function
+    def unflatten_weights_or_gradients(self, flat_shape, correct_shape, weights_or_gradients):
+
+        running_index = 0
+        gradient = []
+        for length in self.flat_shape:
+            l = length[-1]
+            end_index = running_index + l
+            gradient.append(weights_or_gradients[running_index:end_index])
+            running_index += l
+        delta_p = [ tf.reshape(g, s) for g, s in zip(gradient, correct_shape)]
+
+        return delta_p

@@ -114,7 +114,7 @@ class exec(object):
                 raise Exception(f"Configuration for Optimization missing key {key}")
 
         self.iterations      = int(  optimization['iterations'])
-        self.delta           = float(optimization['delta'])
+        delta                = float(optimization['delta'])
         self.eps             = float(optimization['eps'])
         self.optimizer_type  = optimization['optimizer']
 
@@ -180,26 +180,15 @@ class exec(object):
         logger.info(f"Number of parameters in this network: {n_parameters}")
 
 
-        from mlqm.optimization import Optimizer
-
         gradient_calc = GradientCalculator(self.eps, dtype = tf.float64)
-
-        # Switch on the type of optimizer:
-        if self.optimizer_type == "flat":
-            from mlqm.optimization import FlatOptimizer
-            optimizer = FlatOptimizer(delta = self.delta)
-        elif self.optimizer_type == "adam":
-            optimizer = tf.keras.optimizers.Adam(learning_rate = self.delta)
-        else:
-            raise Exception(f"Cannot create optimizer of type {self.optimizer_type}")
 
 
         self.sr_worker   = StochasticReconfiguration(
             sampler                   = sampler,
             wavefunction              = wavefunction,
             hamiltonian               = hamiltonian,
-            optimizer                 = optimizer,
             gradient_calc             = gradient_calc,
+            delta                     = delta,
             n_observable_measurements = self.n_observable_measurements,
             n_void_steps              = self.n_void_steps,
             n_walkers_per_observation = self.n_walkers_per_observation,
@@ -433,10 +422,6 @@ class exec(object):
 
             metrics  = self.sr_worker.sr_step(n_thermalize = 1000)
 
-            self.sr_worker.adapt_learning_rate(self.optimizer_type)
-
-
-            self.sr_worker.update_model()
 
             metrics['time'] = time.time() - start
 
@@ -479,8 +464,6 @@ class exec(object):
         # Save the global step:
         with open(self.save_path / pathlib.Path("global_step.pkl"), 'wb') as _f:
             pickle.dump(self.global_step, file=_f)
-        with open(self.save_path / pathlib.Path("optimizer.pkl"), 'wb') as _f:
-            pickle.dump(self.sr_worker.optimizer, file=_f)
 
     def finalize(self):
         if not MPI_AVAILABLE or hvd.rank() == 0:
