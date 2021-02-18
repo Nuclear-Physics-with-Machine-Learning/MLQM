@@ -25,7 +25,7 @@ class Estimator(object):
             "energy"     : 0,
             "energy2"    : 0,
             "energy_jf"  : 0,
-            "energy2_jf" : 0,
+            "energy_jf2" : 0,
             "ke_jf"      : 0,
             "ke_direct"  : 0,
             "pe"         : 0,
@@ -44,34 +44,46 @@ class Estimator(object):
             self.tensor_dict[key] = hvd.allreduce(self.tensor_dict[key], op=hvd.Sum, device_dense="GPU")
         return
 
-    def accumulate(self,energy, energy_jf, ke_jf, ke_direct, pe, acceptance,weight,r,dpsi_i,dpsi_i_EL,dpsi_ij,estim_wgt) :
-        self.tensor_dict["energy"]     += energy/estim_wgt
-        self.tensor_dict["energy2"]    += (energy/estim_wgt)**2
-        self.tensor_dict["energy_jf"]  += energy_jf/estim_wgt
-        self.tensor_dict["energy2_jf"] += (energy_jf/estim_wgt)**2
-        self.tensor_dict["ke_jf"]      += ke_jf/estim_wgt
-        self.tensor_dict["ke_direct"]  += ke_direct/estim_wgt
-        self.tensor_dict["pe"]         += pe/estim_wgt
-        self.tensor_dict["acceptance"] += acceptance/estim_wgt
-        self.tensor_dict["weight"]     += weight/estim_wgt
-        self.tensor_dict["r"]          += r/estim_wgt
-        self.tensor_dict["dpsi_i"]     += dpsi_i/estim_wgt
-        self.tensor_dict["dpsi_i_EL"]  += dpsi_i_EL/estim_wgt
-        self.tensor_dict["dpsi_ij"]    += dpsi_ij/estim_wgt
+    def accumulate(self, weight=1, ** kwargs):
+        # energy, energy_jf, ke_jf, ke_direct, pe, acceptance,weight,r,dpsi_i,dpsi_i_EL,dpsi_ij,estim_wgt) :
+        for key in kwargs:
+            self.tensor_dict[key]      += kwargs[key] * weight
+            if key == "energy" or key == "energy_jf":
+                self.tensor_dict[key+"2"]  += (kwargs[key]* weight)**2
+
+        self.tensor_dict['weight'] += weight
+        # self.tensor_dict["energy"]     += energy/estim_wgt
+        # self.tensor_dict["energy2"]    += (energy/estim_wgt)**2
+        # self.tensor_dict["energy_jf"]  += energy_jf/estim_wgt
+        # self.tensor_dict["energy2_jf"] += (energy_jf/estim_wgt)**2
+        # self.tensor_dict["ke_jf"]      += ke_jf/estim_wgt
+        # self.tensor_dict["ke_direct"]  += ke_direct/estim_wgt
+        # self.tensor_dict["pe"]         += pe/estim_wgt
+        # self.tensor_dict["acceptance"] += acceptance/estim_wgt
+        # self.tensor_dict["weight"]     += weight/estim_wgt
+        # self.tensor_dict["r"]          += r/estim_wgt
+        # self.tensor_dict["dpsi_i"]     += dpsi_i/estim_wgt
+        # self.tensor_dict["dpsi_i_EL"]  += dpsi_i_EL/estim_wgt
+        # self.tensor_dict["dpsi_ij"]    += dpsi_ij/estim_wgt
 
     def finalize(self,nav):
-        self.tensor_dict["energy"]     /= nav
-        self.tensor_dict["energy2"]    /= nav
-        self.tensor_dict["energy_jf"]  /= nav
-        self.tensor_dict["energy2_jf"] /= nav
-        self.tensor_dict["ke_jf"]      /= nav
-        self.tensor_dict["ke_direct"]  /= nav
-        self.tensor_dict["pe"]         /= nav
-        self.tensor_dict["acceptance"] /= nav
-        self.tensor_dict["r"]          /= nav
-        self.tensor_dict["dpsi_i"]     /= nav
-        self.tensor_dict["dpsi_i_EL"]  /= nav
-        self.tensor_dict["dpsi_ij"]    /= nav
+
+        for key in self.tensor_dict.keys():
+            if key == 'weight': continue
+            self.tensor_dict[key] /= self.tensor_dict['weight']
+
+        # self.tensor_dict["energy"]     /= nav
+        # self.tensor_dict["energy2"]    /= nav
+        # self.tensor_dict["energy_jf"]  /= nav
+        # self.tensor_dict["energy2_jf"] /= nav
+        # self.tensor_dict["ke_jf"]      /= nav
+        # self.tensor_dict["ke_direct"]  /= nav
+        # self.tensor_dict["pe"]         /= nav
+        # self.tensor_dict["acceptance"] /= nav
+        # self.tensor_dict["r"]          /= nav
+        # self.tensor_dict["dpsi_i"]     /= nav
+        # self.tensor_dict["dpsi_i_EL"]  /= nav
+        # self.tensor_dict["dpsi_ij"]    /= nav
         error= tf.sqrt((self.tensor_dict["energy2"] - self.tensor_dict["energy"]**2) / (nav-1))
-        error_jf = tf.sqrt((self.tensor_dict["energy2_jf"] - self.tensor_dict["energy_jf"]**2) / (nav-1))
+        error_jf = tf.sqrt((self.tensor_dict["energy_jf2"] - self.tensor_dict["energy_jf"]**2) / (nav-1))
         return error, error_jf

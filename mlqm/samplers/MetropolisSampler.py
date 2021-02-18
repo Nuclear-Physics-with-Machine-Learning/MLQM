@@ -53,6 +53,12 @@ class MetropolisSampler(object):
         # Make sure to wrap in tf.Variable for back prop calculations
         return  self.walkers
 
+    def get_all_walkers(self):
+        return self.walker_history
+
+    def reset_history(self):
+        self.walker_history = []
+
     def kick(self,
         wavefunction : tf.keras.models.Model,
         kicker : callable,
@@ -69,6 +75,7 @@ class MetropolisSampler(object):
         '''
 
         # Before kicking, append the current walkers to the walker history:
+        self.walker_history.append(self.walkers)
 
         # for i in range(nkicks):
         walkers, acceptance = self.internal_kicker(
