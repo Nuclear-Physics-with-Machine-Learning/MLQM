@@ -8,6 +8,7 @@ logger = logging.getLogger()
 from mlqm import DEFAULT_TENSOR_TYPE
 from mlqm.hamiltonians import Hamiltonian
 
+
 class NuclearPotential(Hamiltonian):
     """Nuclear Physics Potential
     """
@@ -25,26 +26,46 @@ class NuclearPotential(Hamiltonian):
             if parameter not in self.parameters:
                 raise KeyError(f"Parameter {parameter} not suppliled as keyword arg to HarmonicOscillator")
 
+        if 'vkr' in self.parameters:
+            if self.parameters['vkr'] not in [2, 4, 6]:
+                raise KeyError(f"Parameter vkr set to {self.parameters['vkr']} but must be 2, 4 or 6")
+            self.vkr = tf.constant(self.parameters['vkr'], dtype = DEFAULT_TENSOR_TYPE)
+        else:
+            logger.info("Setting vkr to 4 in the nuclear potential by default.")
+            self.vkr = tf.constant(4, dtype = DEFAULT_TENSOR_TYPE)
+
+        if self.vkr == 2.0:
+            self.v0r  = tf.constant(-133.3431, dtype=DEFAULT_TENSOR_TYPE)
+            self.v0s  = tf.constant(-9.0212, dtype = DEFAULT_TENSOR_TYPE)
+            self.ar3b = tf.constant(8.2757658256, dtype = DEFAULT_TENSOR_TYPE)
+            logger.info(f"Using vkr = {self.vkr}")
+        elif self.vkr == 4.0:
+            self.v0r  = tf.constant(-487.6128, dtype=DEFAULT_TENSOR_TYPE)
+            self.v0s  = tf.constant(-17.5515, dtype = DEFAULT_TENSOR_TYPE)
+            self.ar3b = tf.constant(26.0345712467, dtype = DEFAULT_TENSOR_TYPE)
+            logger.info(f"Using vkr = {self.vkr}")
+        elif self.vkr == 6.0:
+            self.v0r  = tf.constant(-1064.5010, dtype=DEFAULT_TENSOR_TYPE)
+            self.v0s  = tf.constant(-26.0830, dtype = DEFAULT_TENSOR_TYPE)
+            self.ar3b = tf.constant(51.5038930567, dtype = DEFAULT_TENSOR_TYPE)
+            logger.info(f"Using vkr = {self.vkr}")
+
+
         self.HBAR = tf.constant(197.327, dtype = DEFAULT_TENSOR_TYPE)
 
     @tf.function
     def pionless_2b(self, *, r_ij):
-        vkr = 4.0
-        v0r = -487.6128
-        v0s = -17.5515
-        x = vkr * r_ij
+        x = self.vkr * r_ij
         vr = tf.exp(-x**2/4.0)
 
-        return v0r*vr, v0s*vr
+        return self.v0r*vr, self.v0s*vr
 
     @tf.function
     def pionless_3b(self, *,  r_ij, nwalkers):
-        pot_3b = tf.zeros(shape=(nwalkers), dtype=DEFAULT_TENSOR_TYPE)
-        vkr = 4.0
-        ar3b = tf.constant(26.0345712467, dtype=DEFAULT_TENSOR_TYPE)
-        x = vkr * r_ij
+        # pot_3b = tf.zeros(shape=(nwalkers), dtype=DEFAULT_TENSOR_TYPE)
+        x = self.vkr * r_ij
         vr = tf.exp(-x**2/4.0)
-        pot_3b = vr * ar3b
+        pot_3b = vr * self.ar3b
         return pot_3b
 
     # @tf.function

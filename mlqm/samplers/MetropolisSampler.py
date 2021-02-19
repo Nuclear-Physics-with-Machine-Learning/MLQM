@@ -44,12 +44,20 @@ class MetropolisSampler(object):
         #  Run the initalize to get the first locations:
         self.walkers = initializer(shape=self.size, **init_params, dtype=dtype)
 
+        self.walker_history = []
+
     def sample(self):
         '''Just return the current locations
 
         '''
         # Make sure to wrap in tf.Variable for back prop calculations
         return  self.walkers
+
+    def get_all_walkers(self):
+        return self.walker_history
+
+    def reset_history(self):
+        self.walker_history = []
 
     def kick(self,
         wavefunction : tf.keras.models.Model,
@@ -65,6 +73,10 @@ class MetropolisSampler(object):
             kicker {callable} -- A callable function for generating kicks
             kicker_params {iter} -- Arguments to the kicker function.
         '''
+
+        # Before kicking, append the current walkers to the walker history:
+        self.walker_history.append(self.walkers)
+
         # for i in range(nkicks):
         walkers, acceptance = self.internal_kicker(
             self.size, self.walkers, wavefunction, kicker, kicker_params, tf.constant(nkicks), dtype=self.dtype)

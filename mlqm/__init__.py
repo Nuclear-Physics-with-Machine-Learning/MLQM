@@ -6,8 +6,9 @@
 # H_BAR = 197.327
 ELECTRON_CHARGE = 1.0
 
-DEFAULT_TENSOR_TYPE="float64"
 
+DEFAULT_TENSOR_TYPE="float64"
+MAX_PARALLEL_ITERATIONS=4000
 
 try:
     import horovod.tensorflow as hvd

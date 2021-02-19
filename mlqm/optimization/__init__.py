@@ -1,3 +1,3 @@
-from .Optimizer import Optimizer
+from .GradientCalculator import GradientCalculator
 from .StochasticReconfiguration import StochasticReconfiguration
 

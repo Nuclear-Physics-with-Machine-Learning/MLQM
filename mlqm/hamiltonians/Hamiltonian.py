@@ -220,4 +220,4 @@ class Hamiltonian(object):
         energy = tf.squeeze(pe+ke_direct)
         energy_jf = tf.squeeze(pe+ke_jf)
 
-        return energy, energy_jf, ke_jf, ke_direct, pe
+        return energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x

@@ -23,7 +23,11 @@ try:
     if (hvd.size() != 1 ):
         # Only set this if there is more than one GPU.  Otherwise, its probably
         # Set elsewhere
-        os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
+        gpus = tf.config.list_physical_devices('GPU')
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        if hvd and len(gpus) > 0:
+            tf.config.set_visible_devices(gpus[hvd.local_rank() % len(gpus)],'GPU')
     MPI_AVAILABLE=True
 except:
     MPI_AVAILABLE=False
@@ -36,6 +40,7 @@ except:
 import logging
 from logging import handlers
 logger = logging.getLogger()
+
 
 # Create a handler for STDOUT, but only on the root rank:
 if not MPI_AVAILABLE or hvd.rank() == 0:
@@ -59,7 +64,7 @@ mlqm_dir = os.path.dirname(mlqm_dir)
 sys.path.insert(0,mlqm_dir)
 from mlqm import hamiltonians
 from mlqm.samplers     import Estimator
-from mlqm.optimization import Optimizer, StochasticReconfiguration
+from mlqm.optimization import GradientCalculator, StochasticReconfiguration
 from mlqm import DEFAULT_TENSOR_TYPE
 
 
@@ -96,15 +101,12 @@ class exec(object):
         self.active = True
 
 
-
         optimization = self.config['Optimization']
-        sampler      = self.config['Sampler']
-
         opt_parameters = [
             "iterations",
             "delta",
             "eps",
-            "gamma",
+            "optimizer",
         ]
 
         for key in opt_parameters:
@@ -112,11 +114,12 @@ class exec(object):
                 raise Exception(f"Configuration for Optimization missing key {key}")
 
         self.iterations      = int(  optimization['iterations'])
-        self.delta           = float(optimization['delta'])
+        delta                = float(optimization['delta'])
         self.eps             = float(optimization['eps'])
-        self.gamma           = float(optimization['gamma'])
+        self.optimizer_type  = optimization['optimizer']
 
 
+        sampler      = self.config['Sampler']
         sampler_parameters = [
             "n_thermalize",
             "n_void_steps",
@@ -142,8 +145,8 @@ class exec(object):
 
         self.dimension  = int(self.config['General']['dimension'])
         self.nparticles = int(self.config['General']['nparticles'])
-        self.save_path  =     self.config["General"]["save_path"]
-        self.model_name =     self.config["General"]["model_name"]
+        self.save_path  = str(self.config["General"]["save_path"]) # Cast to pathlib later
+        self.model_name = pathlib.Path(self.config["General"]["model_name"])
 
         if "profile" in self.config["General"]:
             self.profile = self.config["General"].getboolean("profile")
@@ -160,11 +163,18 @@ class exec(object):
 
         # Create a wavefunction:
         from mlqm.models import DeepSetsWavefunction
-        wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles, mean_subtract=True)
 
+        wavefunction_config = self.config['Model']
+
+
+        wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles, wavefunction_config)
 
         # Run the wave function once to initialize all its weights
+        tf.summary.trace_on(graph=True, profiler=False)
         _ = wavefunction(x)
+        tf.summary.trace_export("graph")
+        tf.summary.trace_off()
+
 
 
         n_parameters = 0
@@ -174,31 +184,20 @@ class exec(object):
         logger.info(f"Number of parameters in this network: {n_parameters}")
 
 
-        from mlqm.optimization import Optimizer
-
-
-        # Create an optimizer
-        optimizer = Optimizer(
-            delta   = self.delta,
-            eps     = self.eps,
-            npt     = wavefunction.n_parameters(),
-            gamma   = self.gamma,
-            dtype   = DEFAULT_TENSOR_TYPE)
+        gradient_calc = GradientCalculator(self.eps, dtype = tf.float64)
 
 
         self.sr_worker   = StochasticReconfiguration(
             sampler                   = sampler,
             wavefunction              = wavefunction,
             hamiltonian               = hamiltonian,
-            optimizer                 = optimizer,
+            gradient_calc             = gradient_calc,
+            delta                     = delta,
             n_observable_measurements = self.n_observable_measurements,
             n_void_steps              = self.n_void_steps,
             n_walkers_per_observation = self.n_walkers_per_observation,
             n_concurrent_obs_per_rank = self.n_concurrent_obs_per_rank
         )
-
-
-
 
 
         append_token = ""
@@ -222,22 +221,20 @@ class exec(object):
         else:
             self.save_path += append_token
 
+
         if not MPI_AVAILABLE or hvd.rank() == 0:
             self.writer = tf.summary.create_file_writer(self.save_path)
 
-        self.model_path = self.save_path + self.model_name
+
+        # Now, cast to pathlib:
+        self.save_path = pathlib.Path(self.save_path)
 
         # We also snapshot the configuration into the log dir:
         if not MPI_AVAILABLE or hvd.rank() == 0:
-            with open(self.save_path + 'config.snapshot.ini', 'w') as cfg:
+            with open(self.save_path / pathlib.Path('config.snapshot.ini'), 'w') as cfg:
                 self.config.write(cfg)
 
 
-    # def build_sr_worker(self, sampler, wavefunction, hamiltonian, optimizer):
-
-    #     sr_worker = StochasticReconfiguration(sampler, wavefunction, hamiltonian, optimizer)
-
-    #     return sr_worker
 
     def build_sampler(self):
 
@@ -278,14 +275,64 @@ class exec(object):
 
     def restore(self):
         if not MPI_AVAILABLE or hvd.rank() == 0:
-            print("Restoring on rank 0")
-            self.sr_worker.wavefunction.load_weights(self.model_path)
+            logger.info("Trying to restore model")
 
-            with open(self.save_path + "/global_step.pkl", 'rb') as _f:
-                self.global_step = pickle.load(file=_f)
-            with open(self.save_path + "/optimizer.pkl", 'rb') as _f:
-                self.sr_worker.optimizer   = pickle.load(file=_f)
+            # Inject control flow here to restore from Jax models.
 
+            # Does the model exist?
+            # Note that tensorflow adds '.index' and '.data-...' to the name
+            tf_p = pathlib.Path(str(self.model_name) + ".index")
+
+            # Check for tensorflow first:
+
+            model_restored = False
+            tf_found_path = None
+            for source_path in [self.save_path, pathlib.Path('./')]:
+                if (source_path / tf_p).is_file():
+                    # Note: we use the original path without the '.index' added
+                    tf_found_path = source_path / pathlib.Path(self.model_name)
+                    logger.info(f"Resolved weights path is {tf_found_path}")
+                    break
+
+            if tf_found_path is None:
+                raise OSError(f"{self.model_name} not found.")
+            else:
+                try:
+                    self.sr_worker.wavefunction.load_weights(tf_found_path)
+                    model_restored = True
+                    logger.info("Restored from tensorflow!")
+                except Exception as e:
+                    logger.info("Failed to load weights via keras load_weights function.")
+
+            # Now, check for JAX only if tf failed:
+            if not model_restored:
+                jax_p = pathlib.Path(self.model_name)
+                jax_found_path = None
+                for source_path in [self.save_path, pathlib.Path('./')]:
+                    if (source_path / jax_p).is_file():
+                        # Note: we use the original path without the '.index' added
+                        jax_found_path = source_path / jax_p
+                        logger.info(f"Resolved weights path is {jax_found_path}")
+                        break
+
+                if jax_found_path is None:
+                    raise OSError(f"{self.model_name} not found.")
+                else:
+                    try:
+                        self.sr_worker.wavefunction.restore_jax(jax_found_path)
+                        logger.info("Restored from jax!")
+                    except Exception as e:
+                        logger.info("Failed to load weights via tensorflow or jax, returning")
+                        return
+
+
+            # We get here only if one method restored.
+            # Attempt to restore a global step and optimizer but it's not necessary
+            try:
+                with open(self.save_path / pathlib.Path("global_step.pkl"), 'rb') as _f:
+                    self.global_step = pickle.load(file=_f)
+            except:
+                logger.info("Could not restore a global_step or an optimizer state.  Starting over with restored weights only.")
 
     def set_compute_parameters(self):
         tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
@@ -314,15 +361,30 @@ class exec(object):
             pass
 
 
+        #
+        # x_test = tf.stack([
+        #     0.01*tf.reshape(tf.linspace(0,11,12), (4,3)),
+        #     -0.02*tf.reshape(tf.linspace(0,11,12), (4,3))
+        # ])
+        #
+        # # Compute the energy with this test:
+        # energy, energy_jf, ke_jf, ke_direct, pe = self.sr_worker.hamiltonian.energy(self.sr_worker.wavefunction, x_test)
+        #
+        # print(energy)
+        # print(energy_jf)
+        #
+        # exit()
+
+
+        # If the file for the model path already exists, we don't change it until after restoring:
+        self.model_path = self.save_path / self.model_name
+
 
         if MPI_AVAILABLE and hvd.size() > 1:
             logger.info("Broadcasting initial model and optimizer state.")
             # We have to broadcast the wavefunction parameter here:
             hvd.broadcast_variables(self.sr_worker.wavefunction.variables, 0)
 
-            # Also ned to broadcast the optimizer state:
-            self.sr_worker.optimizer = hvd.broadcast_object(
-                self.sr_worker.optimizer, root_rank=0)
             # And the global step:
             self.global_step = hvd.broadcast_object(
                 self.global_step, root_rank=0)
@@ -341,26 +403,37 @@ class exec(object):
         self.sr_worker.compile()
         logger.info("Finished compilation.")
 
-        checkpoint_iteration = 500
+        checkpoint_iteration = 2000
+
+        # Before beginning the loop, manually flush the buffer:
+        logger.handlers[0].flush()
 
         while self.global_step < self.iterations:
             if not self.active: break
 
             if self.profile:
-                tf.profiler.experimental.start(self.save_path)
-                tf.summary.trace_on(graph=True)
+                if not MPI_AVAILABLE or hvd.rank() == 0:
+                    tf.profiler.experimental.start(self.save_path)
+                    tf.summary.trace_on(graph=True)
 
 
             start = time.time()
 
-            metrics  = self.sr_worker.sr_step()
+            metrics  = self.sr_worker.sr_step(n_thermalize = 1000)
 
-
-            self.sr_worker.update_model()
 
             metrics['time'] = time.time() - start
 
             self.summary(metrics, self.global_step)
+
+            # Add the gradients and model weights to the summary every 25 iterations:
+            if self.global_step % 25 == 0:
+                if not MPI_AVAILABLE or hvd.rank() == 0:
+                    weights = self.sr_worker.wavefunction.trainable_variables
+                    gradients = self.sr_worker.latest_gradients
+                    self.model_summary(weights, gradients, self.global_step)
+                    self.wavefunction_summary(self.sr_worker.latest_psi, self.global_step)
+
 
             if self.global_step % 1 == 0:
                 logger.info(f"step = {self.global_step}, energy = {metrics['energy/energy'].numpy():.3f}, err = {metrics['energy/error'].numpy():.3f}")
@@ -373,12 +446,27 @@ class exec(object):
 
             if checkpoint_iteration % self.global_step == 0:
                 if not MPI_AVAILABLE or hvd.rank() == 0:
-                    # self.save_weights()
+                    self.save_weights()
                     pass
 
             if self.profile:
-                tf.profiler.experimental.stop()
-                tf.summary.trace_off()
+                if not MPI_AVAILABLE or hvd.rank() == 0:
+                    tf.profiler.experimental.stop()
+                    tf.summary.trace_off()
+
+        # Save the weights at the very end:
+        self.save_weights()
+
+
+    def model_summary(self, weights, gradients, step):
+        with self.writer.as_default():
+            for w, g in zip(weights, gradients):
+                tf.summary.histogram("weights/"   + w.name, w, step=step)
+                tf.summary.histogram("gradients/" + w.name, g, step=step)
+
+    def wavefunction_summary(self, latest_psi, step):
+        with self.writer.as_default():
+            tf.summary.histogram("psi", latest_psi, step=step)
 
 
     # @tf.function
@@ -392,10 +480,8 @@ class exec(object):
         # Take the network and snapshot it to file:
         self.sr_worker.wavefunction.save_weights(self.model_path)
         # Save the global step:
-        with open(self.save_path + "/global_step.pkl", 'wb') as _f:
+        with open(self.save_path / pathlib.Path("global_step.pkl"), 'wb') as _f:
             pickle.dump(self.global_step, file=_f)
-        with open(self.save_path + "/optimizer.pkl", 'wb') as _f:
-            pickle.dump(self.sr_worker.optimizer, file=_f)
 
     def finalize(self):
         if not MPI_AVAILABLE or hvd.rank() == 0:
