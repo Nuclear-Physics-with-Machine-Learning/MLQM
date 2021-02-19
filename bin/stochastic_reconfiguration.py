@@ -331,8 +331,6 @@ class exec(object):
             try:
                 with open(self.save_path / pathlib.Path("global_step.pkl"), 'rb') as _f:
                     self.global_step = pickle.load(file=_f)
-                with open(self.save_path / pathlib.Path("optimizer.pkl"), 'rb') as _f:
-                    self.sr_worker.optimizer   = pickle.load(file=_f)
             except:
                 logger.info("Could not restore a global_step or an optimizer state.  Starting over with restored weights only.")
 
@@ -387,9 +385,6 @@ class exec(object):
             # We have to broadcast the wavefunction parameter here:
             hvd.broadcast_variables(self.sr_worker.wavefunction.variables, 0)
 
-            # Also ned to broadcast the optimizer state:
-            self.sr_worker.optimizer = hvd.broadcast_object(
-                self.sr_worker.optimizer, root_rank=0)
             # And the global step:
             self.global_step = hvd.broadcast_object(
                 self.global_step, root_rank=0)

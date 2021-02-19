@@ -22,19 +22,19 @@ class Estimator(object):
 
     def reset(self):
         self.tensor_dict = {
-            "energy"     : 0,
-            "energy2"    : 0,
-            "energy_jf"  : 0,
-            "energy_jf2" : 0,
-            "ke_jf"      : 0,
-            "ke_direct"  : 0,
-            "pe"         : 0,
-            "acceptance" : 0,
+            "energy"     : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
+            "energy2"    : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
+            "energy_jf"  : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
+            "energy_jf2" : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
+            "ke_jf"      : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
+            "ke_direct"  : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
+            "pe"         : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
+            "acceptance" : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
             "weight"     : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
-            "r"          : 0,
-            "dpsi_i"     : 0,
-            "dpsi_i_EL"  : 0,
-            "dpsi_ij"    : 0,
+            "r"          : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
+            "dpsi_i"     : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
+            "dpsi_i_EL"  : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
+            "dpsi_ij"    : tf.convert_to_tensor(0., dtype=DEFAULT_TENSOR_TYPE),
         }
 
     # @tf.function
