@@ -9,13 +9,10 @@ from mlqm.hamiltonians import Hamiltonian
 from mlqm.optimization import Optimizer
 from mlqm.samplers     import Estimator, MetropolisSampler
 
+from mlqm import MPI_AVAILABLE
 
-try:
+if MPI_AVAILABLE:
     import horovod.tensorflow as hvd
-    hvd.init()
-    MPI_AVAILABLE=True
-except:
-    MPI_AVAILABLE=False
 
 class StochasticReconfiguration(object):
 
@@ -148,7 +145,7 @@ class StochasticReconfiguration(object):
 
 
         kicker = tf.random.normal
-        kicker_params = {"mean": 0.0, "stddev" : 0.4}
+        kicker_params = {"mean": 0.0, "stddev" : 0.2}
 
         self.estimator.reset()
 

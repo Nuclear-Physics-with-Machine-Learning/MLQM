@@ -63,8 +63,8 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         self.mean_subtract = mean_subtract
 
 
-        n_filters_per_layer = 32
-        n_layers            = 4
+        n_filters_per_layer = 48
+        n_layers            = 3
         bias                = False
         activation          = tf.keras.activations.softplus
         residual            = True
@@ -95,7 +95,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         self.aggregate_net = tf.keras.models.Sequential()
         #
         # n_filters_per_layer = 64
-        # n_layers            = 4
+        # n_layers            = 3
         # bias                = False
         # activation          = tf.keras.activations.tanh
 
