@@ -319,13 +319,15 @@ class StochasticReconfiguration(object):
                delta_p_min = delta_p
                converged = True
                delta_max = this_delta
+               best_delta = this_delta
             else:
-               delta_min = delta
+               delta_min = this_delta
 
 
         if delta_p_min is None:
             delta_p_min = delta_p
 
+        self.delta = best_delta
         return delta_p_min, {"delta" : this_delta}
 
 
@@ -527,7 +529,8 @@ class StochasticReconfiguration(object):
 
 
 
-        delta_p, opt_metrics = self.optimize_eps(current_psi)
+        # delta_p, opt_metrics = self.optimize_eps(current_psi)
+        delta_p, opt_metrics = self.optimize_delta(current_psi)
 
         # dp_i, opt_metrics = self.gradient_calc.sr(
         #     self.estimator.tensor_dict["energy"],
