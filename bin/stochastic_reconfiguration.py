@@ -170,7 +170,11 @@ class exec(object):
         wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles, wavefunction_config)
 
         # Run the wave function once to initialize all its weights
+        tf.summary.trace_on(graph=True, profiler=False)
         _ = wavefunction(x)
+        tf.summary.trace_export("graph")
+        tf.summary.trace_off()
+
 
 
         n_parameters = 0
@@ -427,6 +431,15 @@ class exec(object):
 
             self.summary(metrics, self.global_step)
 
+            # Add the gradients and model weights to the summary every 25 iterations:
+            if self.global_step % 25 == 0:
+                if not MPI_AVAILABLE or hvd.rank() == 0:
+                    weights = self.sr_worker.wavefunction.trainable_variables
+                    gradients = self.sr_worker.latest_gradients
+                    self.model_summary(weights, gradients, self.global_step)
+                    self.wavefunction_summary(self.sr_worker.latest_psi, self.global_step)
+
+
             if self.global_step % 1 == 0:
                 logger.info(f"step = {self.global_step}, energy = {metrics['energy/energy'].numpy():.3f}, err = {metrics['energy/error'].numpy():.3f}")
                 logger.info(f"step = {self.global_step}, energy_jf = {metrics['energy/energy_jf'].numpy():.3f}, err = {metrics['energy/error_jf'].numpy():.3f}")
@@ -449,6 +462,16 @@ class exec(object):
         # Save the weights at the very end:
         self.save_weights()
 
+
+    def model_summary(self, weights, gradients, step):
+        with self.writer.as_default():
+            for w, g in zip(weights, gradients):
+                tf.summary.histogram("weights/"   + w.name, w, step=step)
+                tf.summary.histogram("gradients/" + w.name, g, step=step)
+
+    def wavefunction_summary(self, latest_psi, step):
+        with self.writer.as_default():
+            tf.summary.histogram("psi", latest_psi, step=step)
 
 
     # @tf.function

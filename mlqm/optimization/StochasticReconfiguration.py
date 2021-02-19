@@ -393,6 +393,7 @@ class StochasticReconfiguration(object):
 
         metrics = {}
         self.latest_gradients = None
+        self.latest_psi       = None
 
 
         kicker = tf.random.normal
@@ -471,7 +472,8 @@ class StochasticReconfiguration(object):
 
         # And apply them to the wave function:
         self.apply_gradients(delta_p)
-
+        self.latest_gradients = delta_p
+        self.latest_psi = current_psi
 
 
 
