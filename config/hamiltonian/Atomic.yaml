@@ -1,0 +1,4 @@
+# @package _group_
+mass : 1.
+Z    : 1.
+form : "AtomicPotential"

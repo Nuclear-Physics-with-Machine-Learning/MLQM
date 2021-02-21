@@ -1,0 +1,7 @@
+# @package _group_
+n_filters_per_layer: 32
+n_layers: 4
+bias: True
+activation: tanh
+residual: False
+mean_subtract: True

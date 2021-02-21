@@ -1,0 +1,4 @@
+# @package _group_
+mass: 1.
+omega: 1.
+form: "HarmonicOscillator"

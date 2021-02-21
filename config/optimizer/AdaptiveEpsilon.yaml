@@ -1,0 +1,3 @@
+# @package _group_
+delta_min: 0.00001
+delta_max: 0.01

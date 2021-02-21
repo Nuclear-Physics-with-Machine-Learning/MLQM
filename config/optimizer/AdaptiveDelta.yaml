@@ -1,0 +1,3 @@
+# @package _group_
+epsilon_min: 0.00001
+epsilon_max: 0.01

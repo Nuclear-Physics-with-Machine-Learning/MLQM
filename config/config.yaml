@@ -1,0 +1,11 @@
+defaults:
+  - hamiltonian: Nuclear
+  - optimizer: Flat
+  - wavefunction: DeepSets
+iterations: 1000
+sampler: 
+    - n_thermalize: 5000
+    - n_void_steps: 200
+    - n_observable_measurements: 160
+    - n_walkers_per_observation: 2000
+    - n_concurrent_obs_per_rank: 1
