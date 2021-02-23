@@ -159,6 +159,7 @@ class StochasticReconfiguration(object):
         energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = self.hamiltonian.energy(self.wavefunction, x_current)
 
 
+    @tf.function
     def recompute_energy(self, test_wavefunction, current_psi, ):
 
         self.adaptive_estimator.reset()
@@ -186,6 +187,8 @@ class StochasticReconfiguration(object):
                     energy = tf.reduce_sum(obs_energy),
                     weight = tf.reduce_sum(probability_ratio[i_obs]))
 
+
+        # Return the restimator, here, instead of finalizing now.  Allows parallel iterations more easily
 
         # INTERCEPT HERE with MPI to allreduce the estimator objects.
         if MPI_AVAILABLE:
