@@ -240,7 +240,7 @@ class StochasticReconfiguration(object):
             e = Estimator()
             # Compute the new energy:
             e = self.recompute_energy(e, self.adaptive_wavefunction, current_psi)
-            
+
             if MPI_AVAILABLE:
                 e.allreduce()
 
@@ -297,6 +297,9 @@ class StochasticReconfiguration(object):
         delta_max = tf.constant(self.optimizer_config.delta_max, dtype=S_ij.dtype)
         delta_min = tf.constant(self.optimizer_config.delta_min, dtype=S_ij.dtype)
 
+        print(delta_max)
+        print(delta_min)
+
         # take the current energy as the starting miniumum:
         energy_min = self.estimator.tensor_dict['energy'] + 1
         delta_p_min = None
@@ -309,7 +312,7 @@ class StochasticReconfiguration(object):
 
         # Select the delta options:
 
-        n_delta_iterations = 20
+        n_delta_iterations = 10
 
         delta_options = tf.linspace(tf.math.log(delta_max), tf.math.log(delta_min), n_delta_iterations)
         delta_options = tf.math.exp(delta_options)
@@ -324,6 +327,9 @@ class StochasticReconfiguration(object):
             for weight, original_weight, gradient in loop_items:
                 weight.assign(original_weight + this_delta * gradient)
 
+            # print("Grad: ", gradient[0][0])
+            # print("Weight: ", self.adaptive_wavefunction.trainable_variables[0][0])
+
             # Compute the new energy:
             self.recompute_energy(estimators[i], self.adaptive_wavefunction, current_psi)
 
@@ -336,7 +342,7 @@ class StochasticReconfiguration(object):
         # Finalize the estimator:
         errors = [ e.finalize(self.n_observable_measurements) for e in estimators ]
 
-        energies = [ e.tensor_dict['energy'] for e in estimators ]
+        energies = [ e.tensor_dict['energy'].numpy() for e in estimators ]
 
         print(energies)
         # What's the smallest energy?

@@ -3,12 +3,12 @@ defaults:
   - optimizer: Flat
   - wavefunction: DeepSets
 iterations: 5
-sampler: 
+sampler:
   n_thermalize: 5000
   n_void_steps: 200
-  n_observable_measurements: 40
-  n_walkers_per_observation: 20
-  n_concurrent_obs_per_rank: 4
+  n_observable_measurements: 80
+  n_walkers_per_observation: 500
+  n_concurrent_obs_per_rank: 40
 nparticles: 2
 dimension: 3
 run_id: ???
