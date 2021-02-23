@@ -82,13 +82,13 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.config = configuration
 
-        self.mean_subtract = self.config.getboolean('mean_subtract')
+        self.mean_subtract = self.config.mean_subtract
+        self.confinement   = tf.constant(self.config.confinement, dtype = DEFAULT_TENSOR_TYPE)
 
-        n_filters_per_layer = int(self.config['n_filters_per_layer'])
-        n_layers            = int(self.config['n_layers'])
-        bias                = self.config.getboolean('bias')
-        residual            = self.config.getboolean('residual')
-
+        n_filters_per_layer = self.config.n_filters_per_layer
+        n_layers            = self.config.n_layers
+        bias                = self.config.bias
+        residual            = self.config.residual
 
         try:
             activation = tf.keras.activations.__getattribute__(self.config['activation'])
@@ -167,7 +167,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         # Compute the initial boundary condition, which the network will slowly overcome
         # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
-        boundary_condition = -0.1 * tf.reduce_sum(xinputs**2, axis=(1,2))
+        boundary_condition = -self.confinement * tf.reduce_sum(xinputs**2, axis=(1,2))
         boundary_condition = tf.reshape(boundary_condition, [-1,1])
 
 

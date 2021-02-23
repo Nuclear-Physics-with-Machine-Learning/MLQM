@@ -2,7 +2,7 @@ import tensorflow as tf
 
 class GradientCalculator(object):
 
-    def __init__(self, eps, dtype=tf.float64):
+    def __init__(self, dtype=tf.float64):
         self.dtype  = dtype
 
     @tf.function

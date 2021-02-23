@@ -3,7 +3,7 @@ import logging
 # Set up logging:
 logger = logging.getLogger()
 
-
+from omegaconf import DictConfig
 
 import tensorflow as tf
 import numpy
@@ -16,6 +16,7 @@ from mlqm.samplers     import Estimator, MetropolisSampler
 from mlqm import MPI_AVAILABLE, MAX_PARALLEL_ITERATIONS
 
 
+
 if MPI_AVAILABLE:
     import horovod.tensorflow as hvd
 
@@ -25,27 +26,27 @@ class StochasticReconfiguration(object):
             sampler                   : MetropolisSampler,
             wavefunction              : callable,
             hamiltonian               : Hamiltonian,
-            gradient_calc             : GradientCalculator,
-            delta                     : float,
-            n_observable_measurements : int,
-            n_void_steps              : int,
-            n_walkers_per_observation : int,
-            n_concurrent_obs_per_rank : int,
+            optimizer_config          : DictConfig,
+            sampler_config            : DictConfig,
         ):
 
         # Store the objects:
         self.sampler       = sampler
         self.wavefunction  = wavefunction
         self.hamiltonian   = hamiltonian
-        self.gradient_calc = gradient_calc
+        # Initialize a Gradiant Calculator:
+        self.gradient_calc = GradientCalculator()
 
-        self.delta         = delta
+        self.current_delta = None
+        self.current_eps   = None
+
+        self.optimizer_config = optimizer_config
 
         # Store the measurement configurations:
-        self.n_observable_measurements = n_observable_measurements
-        self.n_void_steps              = n_void_steps
-        self.n_walkers_per_observation = n_walkers_per_observation
-        self.n_concurrent_obs_per_rank = n_concurrent_obs_per_rank
+        self.n_observable_measurements = sampler_config.n_observable_measurements
+        self.n_void_steps              = sampler_config.n_void_steps
+        self.n_walkers_per_observation = sampler_config.n_walkers_per_observation
+        self.n_concurrent_obs_per_rank = sampler_config.n_concurrent_obs_per_rank
 
         # MPI Enabled?
         if MPI_AVAILABLE:
@@ -133,7 +134,7 @@ class StochasticReconfiguration(object):
 
         # Update the parameters:
         for grad, var in zip(gradients, self.wavefunction.trainable_variables):
-           var.assign_add(self.delta * grad)
+           var.assign_add(grad)
 
         return
 
@@ -198,7 +199,7 @@ class StochasticReconfiguration(object):
         return energy_curr, (error, error_jf)
 
     # @tf.function
-    def optimize_eps(self, current_psi):
+    def optimize_eps(self, current_psi, delta):
 
         f_i = self.gradient_calc.f_i(
                 self.estimator.tensor_dict['dpsi_i'],
@@ -214,8 +215,8 @@ class StochasticReconfiguration(object):
 
         # We do a search over eps ranges to compute the optimal value:
 
-        eps_max = tf.constant(0.001, dtype=S_ij.dtype)
-        eps_min = tf.constant(0.00001, dtype=S_ij.dtype)
+        eps_max = tf.constant(self.optimizer_config.epsilon_max, dtype=S_ij.dtype)
+        eps_min = tf.constant(self.optimizer_config.epsilon_min, dtype=S_ij.dtype)
 
         # take the current energy as the starting miniumum:
 
@@ -229,7 +230,7 @@ class StochasticReconfiguration(object):
         for n in range(10):
             eps = tf.sqrt(eps_max * eps_min)
             try:
-                dp_i = self.gradient_calc.pd_solve(S_ij, eps, f_i)
+                dp_i = delta * self.gradient_calc.pd_solve(S_ij, eps, f_i)
             except tf.errors.InvalidArgumentError:
                 eps_min = eps
                 print("Cholesky solve failed, continuing with higher regularization")
@@ -242,7 +243,7 @@ class StochasticReconfiguration(object):
             # Apply the updates:
             loop_items = zip(self.adaptive_wavefunction.trainable_variables, original_weights, delta_p)
             for weight, original_weight, gradient in loop_items:
-                weight.assign(original_weight + self.delta*gradient)
+                weight.assign(original_weight + gradient)
 
             # Compute the new energy:
             energy_curr, _ = self.recompute_energy(self.adaptive_wavefunction, current_psi)
@@ -261,9 +262,10 @@ class StochasticReconfiguration(object):
         if delta_p_min is None:
             delta_p_min = delta_p
 
-        return delta_p_min, {"eps" : eps}
+        return delta_p_min, {"optimizer/eps" : eps}
 
-    def optimize_delta(self, current_psi):
+    @profile
+    def optimize_delta(self, current_psi, eps):
 
         # Get the natural gradients and S_ij
         f_i = self.gradient_calc.f_i(
@@ -278,8 +280,6 @@ class StochasticReconfiguration(object):
                )
 
         # Regularize S_ij with as small and eps as possible:
-        eps = 0.00001
-
         for n in range(5):
             try:
                 dp_i = self.gradient_calc.pd_solve(S_ij, eps, f_i)
@@ -300,6 +300,7 @@ class StochasticReconfiguration(object):
         original_weights = copy.copy(self.wavefunction.trainable_variables)
         delta_p = self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i)
 
+
         for n in range(10):
             this_delta = tf.sqrt(delta_min * delta_max)
 
@@ -307,7 +308,7 @@ class StochasticReconfiguration(object):
             # Apply the updates:
             loop_items = zip(self.adaptive_wavefunction.trainable_variables, original_weights, delta_p)
             for weight, original_weight, gradient in loop_items:
-                weight.assign(original_weight + this_delta*gradient)
+                weight.assign(original_weight + this_delta * gradient)
 
             # Compute the new energy:
             energy_curr, _ = self.recompute_energy(self.adaptive_wavefunction, current_psi)
@@ -327,11 +328,38 @@ class StochasticReconfiguration(object):
         if delta_p_min is None:
             delta_p_min = delta_p
 
-        self.delta = best_delta
-        return delta_p_min, {"delta" : this_delta}
+        gradients = [ best_delta * g for g in delta_p_min ]
+        return gradients, {"optimizer/delta" : best_delta}
 
+    @tf.function
+    def compute_gradients(self, eps, delta):
 
+        # Get the natural gradients and S_ij
+        f_i = self.gradient_calc.f_i(
+                self.estimator.tensor_dict['dpsi_i'],
+                self.estimator.tensor_dict["energy"],
+                self.estimator.tensor_dict["dpsi_i_EL"]
+                )
 
+        S_ij = self.gradient_calc.S_ij(
+                self.estimator.tensor_dict['dpsi_ij'],
+                self.estimator.tensor_dict['dpsi_i']
+               )
+
+        # Regularize S_ij with as small and eps as possible:
+
+        for n in range(5):
+            try:
+                dp_i = delta * self.gradient_calc.pd_solve(S_ij, eps, f_i)
+                break
+            except tf.errors.InvalidArgumentError:
+                print("Cholesky solve failed, continuing with higher regularization")
+                eps *= 2.
+            continue
+
+        return self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i), {}
+
+    @profile
     def walk_and_accumulate_observables(self,
             estimator,
             _wavefunction,
@@ -458,6 +486,7 @@ class StochasticReconfiguration(object):
 
 
     # @tf.function
+    @profile
     def sr_step(self, n_thermalize):
 
         metrics = {}
@@ -527,10 +556,16 @@ class StochasticReconfiguration(object):
 
         # Here, we call the function to optimize eps and compute the gradients:
 
-
-
-        # delta_p, opt_metrics = self.optimize_eps(current_psi)
-        delta_p, opt_metrics = self.optimize_delta(current_psi)
+        if self.optimizer_config.form == "AdaptiveDelta":
+            eps = self.optimizer_config.epsilon
+            delta_p, opt_metrics = self.optimize_delta(current_psi, eps)
+        elif self.optimizer_config.form == "AdaptiveEpsilon":
+            delta = self.optimizer_config.delta
+            delta_p, opt_metrics = self.optimize_eps(current_psi, delta)
+        else:
+            eps = self.optimizer_config.epsilon
+            delta = self.optimizer_config.delta
+            delta_p, opt_metrics = self.compute_gradients(eps, delta)
 
         # dp_i, opt_metrics = self.gradient_calc.sr(
         #     self.estimator.tensor_dict["energy"],

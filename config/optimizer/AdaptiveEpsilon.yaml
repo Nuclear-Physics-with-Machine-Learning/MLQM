@@ -1,3 +1,5 @@
 # @package _group_
-delta_min: 0.00001
-delta_max: 0.01
+delta: 0.00001
+epsilon_max: 0.01
+epsilon_min: 0.00001
+form: AdaptiveEpsilon

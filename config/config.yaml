@@ -2,10 +2,22 @@ defaults:
   - hamiltonian: Nuclear
   - optimizer: Flat
   - wavefunction: DeepSets
-iterations: 1000
+iterations: 5
 sampler: 
-    - n_thermalize: 5000
-    - n_void_steps: 200
-    - n_observable_measurements: 160
-    - n_walkers_per_observation: 2000
-    - n_concurrent_obs_per_rank: 1
+  n_thermalize: 5000
+  n_void_steps: 200
+  n_observable_measurements: 40
+  n_walkers_per_observation: 20
+  n_concurrent_obs_per_rank: 4
+nparticles: 2
+dimension: 3
+run_id: ???
+save_path: log/.../${hamiltonian.form}/${run_id}
+model_name: ${hamiltonian.form}_${nparticles}part_${dimension}D.model
+
+hydra:
+  job:
+    override_dirname: /
+  run:
+    dir: output/${hamiltonian.form}/${nparticles}particles/${dimension}D/${hydra.job.override_dirname}
+hydra/hydra_logging: disabled

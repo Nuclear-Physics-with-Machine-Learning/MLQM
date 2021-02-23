@@ -24,7 +24,7 @@ class AtomicPotential(Hamiltonian):
         # Check the parameters have everything needed:
         for parameter in ["mass", "z"]:
             if parameter not in self.parameters:
-                raise KeyError(f"Parameter {parameter} not suppliled as keyword arg to HarmonicOscillator")
+                raise KeyError(f"Parameter {parameter} not suppliled as keyword arg to Atomic Potential")
 
 
     def potential_energy(self, *, inputs, Z):

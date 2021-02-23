@@ -1,12 +1,14 @@
 import sys, os
 import pathlib
-import configparser
 import time
 
-import argparse
 import signal
 import pickle
 
+# For configuration:
+from omegaconf import DictConfig, OmegaConf
+import hydra
+hydra.output_subdir = None
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
@@ -66,23 +68,16 @@ from mlqm import hamiltonians
 from mlqm.samplers     import Estimator
 from mlqm.optimization import GradientCalculator, StochasticReconfiguration
 from mlqm import DEFAULT_TENSOR_TYPE
+from mlqm.models import DeepSetsWavefunction
+
+
 
 
 class exec(object):
 
-    def __init__(self):
+    def __init__(self, config):
 
-        # This technique is taken from: https://chase-seibert.github.io/blog/2014/03/21/python-multilevel-argparse.html
-        parser = argparse.ArgumentParser(
-            description='Run ML Based QMC Calculations',
-            usage='python exec.py config.ini [<args>]')
 
-        parser.add_argument("-c", "--config-file",
-            type        = pathlib.Path,
-            required    = True,
-            help        = "Python configuration file to describe this run.")
-
-        self.args = parser.parse_args()
         #
         if MPI_AVAILABLE:
             self.rank = hvd.rank()
@@ -94,64 +89,21 @@ class exec(object):
             self.local_rank = 1
 
         # Open the config file:
-        self.config = configparser.ConfigParser()
-        self.config.read(self.args.config_file)
+        self.config = config
 
         # Use this flag to catch interrupts, stop the next step and write output.
         self.active = True
 
-
-        optimization = self.config['Optimization']
-        opt_parameters = [
-            "iterations",
-            "delta",
-            "eps",
-            "optimizer",
-        ]
-
-        for key in opt_parameters:
-            if key not in optimization:
-                raise Exception(f"Configuration for Optimization missing key {key}")
-
-        self.iterations      = int(  optimization['iterations'])
-        delta                = float(optimization['delta'])
-        self.eps             = float(optimization['eps'])
-        self.optimizer_type  = optimization['optimizer']
-
-
-        sampler      = self.config['Sampler']
-        sampler_parameters = [
-            "n_thermalize",
-            "n_void_steps",
-            "n_observable_measurements",
-            "n_walkers_per_observation",
-        ]
-        for key in sampler_parameters:
-            if key not in sampler:
-                raise Exception(f"Configuration for Sampler missing key {key}")
-
-
-        self.n_thermalize               = int(sampler['n_thermalize'])
-        self.n_observable_measurements  = int(sampler['n_observable_measurements'])
-        self.n_void_steps               = int(sampler['n_void_steps'])
-        self.n_walkers_per_observation  = int(sampler['n_walkers_per_observation'])
-
-        if "n_concurrent_obs_per_rank" in sampler:
-            self.n_concurrent_obs_per_rank = int(sampler['n_concurrent_obs_per_rank'])
-        else:
-            self.n_concurrent_obs_per_rank = 1
-
         self.global_step     = 0
 
-        self.dimension  = int(self.config['General']['dimension'])
-        self.nparticles = int(self.config['General']['nparticles'])
-        self.save_path  = str(self.config["General"]["save_path"]) # Cast to pathlib later
-        self.model_name = pathlib.Path(self.config["General"]["model_name"])
+        self.save_path  = self.config["save_path"] # Cast to pathlib later
+        self.model_name = pathlib.Path(self.config["model_name"])
 
-        if "profile" in self.config["General"]:
-            self.profile = self.config["General"].getboolean("profile")
+        if "profile" in self.config:
+            self.profile = bool(self.config["profile"])
         else:
             self.profile = False
+
 
         self.set_compute_parameters()
 
@@ -161,13 +113,11 @@ class exec(object):
 
         x = sampler.sample()
 
+
+        wavefunction_config = self.config['wavefunction']
+
         # Create a wavefunction:
-        from mlqm.models import DeepSetsWavefunction
-
-        wavefunction_config = self.config['Model']
-
-
-        wavefunction = DeepSetsWavefunction(self.dimension, self.nparticles, wavefunction_config)
+        wavefunction = DeepSetsWavefunction(self.config.dimension, self.config.nparticles, wavefunction_config)
 
         # Run the wave function once to initialize all its weights
         tf.summary.trace_on(graph=True, profiler=False)
@@ -184,32 +134,24 @@ class exec(object):
         logger.info(f"Number of parameters in this network: {n_parameters}")
 
 
-        gradient_calc = GradientCalculator(self.eps, dtype = tf.float64)
-
-
         self.sr_worker   = StochasticReconfiguration(
-            sampler                   = sampler,
-            wavefunction              = wavefunction,
-            hamiltonian               = hamiltonian,
-            gradient_calc             = gradient_calc,
-            delta                     = delta,
-            n_observable_measurements = self.n_observable_measurements,
-            n_void_steps              = self.n_void_steps,
-            n_walkers_per_observation = self.n_walkers_per_observation,
-            n_concurrent_obs_per_rank = self.n_concurrent_obs_per_rank
+            sampler          = sampler,
+            wavefunction     = wavefunction,
+            hamiltonian      = hamiltonian,
+            optimizer_config = self.config.optimizer,
+            sampler_config   = self.config.sampler,
         )
-
 
         append_token = ""
 
         if self.hamiltonian_form not in self.save_path:
             append_token += f"/{self.hamiltonian_form}/"
 
-        dimension = f"{self.dimension}D"
+        dimension = f"{self.config.dimension}D"
         if dimension not in self.save_path:
             append_token += f"/{dimension}/"
 
-        n_part = f"{self.nparticles}particles"
+        n_part = f"{self.config.nparticles}particles"
         if n_part not in self.save_path:
             append_token += f"/{n_part}/"
 
@@ -221,18 +163,21 @@ class exec(object):
         else:
             self.save_path += append_token
 
+        print(self.save_path)
 
         if not MPI_AVAILABLE or hvd.rank() == 0:
-            self.writer = tf.summary.create_file_writer(self.save_path)
+            # self.writer = tf.summary.create_file_writer(self.save_path)
+            self.writer = tf.summary.create_file_writer("log/")
 
 
         # Now, cast to pathlib:
         self.save_path = pathlib.Path(self.save_path)
 
+
         # We also snapshot the configuration into the log dir:
         if not MPI_AVAILABLE or hvd.rank() == 0:
-            with open(self.save_path / pathlib.Path('config.snapshot.ini'), 'w') as cfg:
-                self.config.write(cfg)
+            with open(pathlib.Path('config.snapshot.yaml'), 'w') as cfg:
+                OmegaConf.save(config=self.config, f=cfg)
 
 
 
@@ -241,10 +186,13 @@ class exec(object):
         from mlqm.samplers import MetropolisSampler
 
         # As an optimization, we increase the number of walkers by n_concurrent_obs_per_rank
+        n_walkers = self.config.sampler["n_walkers_per_observation"] * \
+            self.config.sampler["n_concurrent_obs_per_rank"]
+
         sampler = MetropolisSampler(
-            n           = self.dimension,
-            nparticles  = self.nparticles,
-            nwalkers    = self.n_walkers_per_observation * self.n_concurrent_obs_per_rank,
+            n           = self.config.dimension,
+            nparticles  = self.config.nparticles,
+            nwalkers    = n_walkers,
             initializer = tf.random.normal,
             init_params = {"mean": 0.0, "stddev" : 0.2},
             dtype       = DEFAULT_TENSOR_TYPE)
@@ -260,14 +208,14 @@ class exec(object):
     def build_hamiltonian(self):
 
         # First, ask for the type of hamiltonian
-        self.hamiltonian_form = self.config["Hamiltonian"]["form"]
+        self.hamiltonian_form = self.config["hamiltonian"]["form"]
 
         # Is this hamiltonian in the options?
         if self.hamiltonian_form not in hamiltonians.__dict__:
-            raise NotImplementedError(f"Hamiltonian {self.hamiltonian_form} is not found.")
+            raise NotImplementedError(f"hamiltonian {self.hamiltonian_form} is not found.")
 
-        parameters = self.config["Hamiltonian"]
-        parameters.pop("form")
+        parameters = self.config["hamiltonian"]
+        parameters = { p : parameters[p] for p in parameters.keys() if p != "form"}
 
         hamiltonian = hamiltonians.__dict__[self.hamiltonian_form](**parameters)
 
@@ -395,7 +343,7 @@ class exec(object):
 
         # First step - thermalize:
         logger.info("About to thermalize.")
-        self.sr_worker.equilibrate(self.n_thermalize)
+        self.sr_worker.equilibrate(self.config.sampler.n_thermalize)
         logger.info("Finished thermalization.")
 
         # Now, call once to compile:
@@ -408,12 +356,12 @@ class exec(object):
         # Before beginning the loop, manually flush the buffer:
         logger.handlers[0].flush()
 
-        while self.global_step < self.iterations:
+        while self.global_step < self.config["iterations"]:
             if not self.active: break
 
             if self.profile:
                 if not MPI_AVAILABLE or hvd.rank() == 0:
-                    tf.profiler.experimental.start(self.save_path)
+                    tf.profiler.experimental.start(str(self.save_path))
                     tf.summary.trace_on(graph=True)
 
 
@@ -491,10 +439,12 @@ class exec(object):
         logger.info("Snapshoting weights...")
         self.active = False
 
-if __name__ == "__main__":
-    e = exec()
+@hydra.main(config_path="../config", config_name="config")
+def main(cfg: DictConfig) -> None:
+    e = exec(cfg)
     signal.signal(signal.SIGINT, e.interupt_handler)
-
-    # with tf.profiler.experimental.Profile('logdir'):
     e.run()
     e.finalize()
+
+if __name__ == "__main__":
+    main()
