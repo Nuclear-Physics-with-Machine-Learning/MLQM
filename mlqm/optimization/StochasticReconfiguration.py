@@ -267,7 +267,6 @@ class StochasticReconfiguration(object):
 
         return delta_p_min, {"optimizer/eps" : eps}
 
-    @profile
     def optimize_delta(self, current_psi, eps):
 
         # Get the natural gradients and S_ij
@@ -362,7 +361,6 @@ class StochasticReconfiguration(object):
 
         return self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i), {}
 
-    @profile
     def walk_and_accumulate_observables(self,
             estimator,
             _wavefunction,
@@ -489,7 +487,6 @@ class StochasticReconfiguration(object):
 
 
     # @tf.function
-    @profile
     def sr_step(self, n_thermalize):
 
         metrics = {}
