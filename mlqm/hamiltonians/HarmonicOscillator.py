@@ -21,7 +21,6 @@ class HarmonicOscillator(Hamiltonian):
             if parameter not in self.parameters:
                 raise KeyError(f"Parameter {parameter} not suppliled as keyword arg to HarmonicOscillator")
 
-        print(self.parameters)
 
     @tf.function
     def potential_energy(self, *, inputs, M, omega):

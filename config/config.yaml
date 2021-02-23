@@ -19,5 +19,5 @@ hydra:
   job:
     override_dirname: /
   run:
-    dir: output/${hamiltonian.form}/${nparticles}particles/${dimension}D/${hydra.job.override_dirname}
+    dir: output/${hamiltonian.form}/${nparticles}particles/${dimension}D/${optimizer.form}.${run_id}
 hydra/hydra_logging: disabled
