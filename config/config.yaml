@@ -6,9 +6,9 @@ iterations: 5
 sampler:
   n_thermalize: 5000
   n_void_steps: 200
-  n_observable_measurements: 80
-  n_walkers_per_observation: 500
-  n_concurrent_obs_per_rank: 40
+  n_observable_measurements: 20
+  n_walkers_per_observation: 200
+  n_concurrent_obs_per_rank: 20
 nparticles: 2
 dimension: 3
 run_id: ???

@@ -14,11 +14,17 @@ class GradientCalculator(object):
         return dpsi_ij - dpsi_i * tf.transpose(dpsi_i)
 
 
+    # @tf.function
+    # def par_dist(self, dp_i, S_ij):
+    #     D_ij = S_ij * (dp_i * tf.transpose(dp_i))
+    #     dist = tf.reduce_sum(D_ij)
+    #     return dist
+
     @tf.function
     def par_dist(self, dp_i, S_ij):
-        D_ij = S_ij * (dp_i * tf.transpose(dp_i))
-        dist = tf.reduce_sum(D_ij)
+        dist = tf.reduce_sum(dp_i*tf.linalg.matmul(S_ij, dp_i))
         return dist
+
 
     @tf.function
     def regularize_S_ij(self, S_ij, eps):
