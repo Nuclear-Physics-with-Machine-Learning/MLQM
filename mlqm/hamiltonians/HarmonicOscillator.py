@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy
 
 import logging
-logger = logging.getLogger()
+logger = logging.getLogger("mlqm")
 
 from mlqm.hamiltonians import Hamiltonian
 

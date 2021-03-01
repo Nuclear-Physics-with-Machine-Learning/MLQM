@@ -33,8 +33,8 @@ class Estimator(dict):
     # @tf.function
     def allreduce(self):
 
-        for key in self.tensor_dict.keys():
-            self.tensor_dict[key] = hvd.allreduce(self.tensor_dict[key], op=hvd.Sum, device_dense="GPU")
+        for key in self.keys():
+            self[key] = hvd.allreduce(self[key], op=hvd.Sum, device_dense="GPU")
         return
 
     # def accumulate(self, weight=1, ** kwargs):

@@ -1,7 +1,7 @@
 import copy
 import logging
 # Set up logging:
-logger = logging.getLogger()
+logger = logging.getLogger("mlqm")
 
 from omegaconf import DictConfig
 
@@ -179,10 +179,13 @@ class StochasticReconfiguration(object):
 
             # overlap of wavefunctions:
             wavefunction_ratio = [ tf.math.exp((next_psi - curr_psi)) for next_psi, curr_psi in zip(logw_of_x, this_current_psi) ]
-            probability_ratio  = [ wf_ratio**2 for wf_ratio in wavefunction_ratio ]
+            probability_ratio  = [ tf.reshape(wf_ratio**2, energy[i].shape) for i, wf_ratio in enumerate(wavefunction_ratio) ]
 
             for i_obs in range(self.n_concurrent_obs_per_rank):
                 obs_energy = probability_ratio[i_obs] * energy[i_obs] / self.n_walkers_per_observation
+
+                print(tf.reduce_sum(obs_energy))
+                print(tf.reduce_sum(obs_energy) / tf.reduce_sum(probability_ratio[i_obs]))
 
                 estimator.accumulate("energy", tf.reduce_sum(obs_energy))
                 estimator.accumulate("weight", tf.reduce_sum(probability_ratio[i_obs]))
@@ -314,7 +317,7 @@ class StochasticReconfiguration(object):
 
         # Select the delta options:
 
-        n_delta_iterations = 10
+        n_delta_iterations = 2
 
         delta_options = tf.linspace(tf.math.log(delta_max), tf.math.log(delta_min), n_delta_iterations)
         delta_options = tf.math.exp(delta_options)
@@ -334,21 +337,19 @@ class StochasticReconfiguration(object):
             for weight, original_weight, gradient in loop_items:
                 weight.assign(original_weight + this_delta * gradient)
 
-
-            # print("Grad: ", gradient[0][0])
-            # print("Weight: ", self.adaptive_wavefunction.trainable_variables[0][0])
-
             # Compute the new energy:
             self.recompute_energy(estimators[i], self.adaptive_wavefunction, current_psi)
 
         # outside of the loop, all reduce the estimators:
 
         if MPI_AVAILABLE:
-            estimators = [ e.allreduce() for e in estimators ]
+            _ = [ e.allreduce() for e in estimators ]
 
 
         # What's the total weight?  Use that for the finalization:
         total_weights = [ e['weight'] for e in estimators ]
+
+        print("total_weights: ", total_weights)
 
         # Get the overlap
 
@@ -370,6 +371,10 @@ class StochasticReconfiguration(object):
         # errors = [ e.finalize(self.n_observable_measurements) for e in estimators ]
 
         energies = [ e['energy'].numpy() for e in estimators ]
+        delta_options = [ d.numpy() for d in delta_options ]
+
+        print(energies)
+        print(delta_options)
 
         # We find the best delta, with the constraint that overlap > 0.8 and par_dis < 0.4
         found = False
@@ -383,15 +388,21 @@ class StochasticReconfiguration(object):
             par_dist = self.gradient_calc.par_dist(delta_options[i_e_min]*dp_i, S_ij)
             acos     = tf.math.acos(overlap[i_e_min])**2
 
-            ratio = tf.abs(par_dist - acos) / tf.abs(par_dist + acos)
+            ratio = tf.abs(par_dist - acos) / tf.abs(par_dist + acos+ 1e-8)
 
-            if ratio < 0.4 and overlap[i_e_min] > 0.9:
+            #
+            print("i_e_min: ", i_e_min, ", Delta: ", delta_options[i_e_min], ", ratio: ", ratio, ", overlap: ", overlap[i_e_min], ", par_dist: ", par_dist, ", acos: ", acos)
+            # print(hvd.rank(), " Delta: ", delta_options[i_e_min], ", par_dist: ", par_dist)
+            # print(hvd.rank(), " Delta: ", delta_options[i_e_min], ", acos: ", acos)
+
+            if par_dist < 0.1 and acos < 0.1  and overlap[i_e_min] > 0.9:
                 found = True
                 final_overlap = overlap[i_e_min]
                 break
             else:
                 energies.pop(i_e_min)
                 overlap.pop(i_e_min)
+                delta_options.pop(i_e_min)
                 final_overlap = 2.0
 
 
@@ -401,13 +412,13 @@ class StochasticReconfiguration(object):
         else:
             # Apply no update.  Rewalk and recompute.
             best_delta = 0.0
-            ratio = 1.0
+            ratio = 10.0
             acos = 10.
             overlap = 2.0
 
 
         gradients = [ best_delta * g for g in delta_p ]
-        return gradients, {
+        delta_metrics = {
             "optimizer/delta"   : best_delta,
             "optimizer/overlap" : final_overlap,
             "optimizer/par_dist": par_dist,
@@ -415,6 +426,8 @@ class StochasticReconfiguration(object):
             "optimizer/energy_rms": energy_rms,
             "optimizer/ratio"   : ratio
         }
+        print(delta_metrics)
+        return gradients, delta_metrics
 
     @tf.function
     def compute_gradients(self, eps, delta):
