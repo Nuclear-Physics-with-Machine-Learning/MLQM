@@ -53,14 +53,14 @@ class NuclearPotential(Hamiltonian):
 
         self.HBAR = tf.constant(197.327, dtype = DEFAULT_TENSOR_TYPE)
 
-    @tf.function
+    @tf.function(experimental_compile=True)
     def pionless_2b(self, *, r_ij):
         x = self.vkr * r_ij
         vr = tf.exp(-x**2/4.0)
 
         return self.v0r*vr, self.v0s*vr
 
-    @tf.function
+    @tf.function(experimental_compile=True)
     def pionless_3b(self, *,  r_ij, nwalkers):
         # pot_3b = tf.zeros(shape=(nwalkers), dtype=DEFAULT_TENSOR_TYPE)
         x = self.vkr * r_ij
@@ -68,7 +68,7 @@ class NuclearPotential(Hamiltonian):
         pot_3b = vr * self.ar3b
         return pot_3b
 
-    # @tf.function
+    @tf.function(experimental_compile=True)
     def potential_energy(self, *, inputs):
         """Return potential energy
 
@@ -103,32 +103,26 @@ class NuclearPotential(Hamiltonian):
                 #
                 x_ij = inputs[:,i,:]-inputs[:,j,:]
                 r_ij = tf.sqrt(tf.reduce_sum(x_ij**2,axis=1))
-                # print(r_ij)
                 vrr, vrs = self.pionless_2b(r_ij=r_ij)
-                # print("vrr: ", vrr)
-                # print("vrs: ", vrs)
                 # v_ij += self.pionless_2b(r_ij=r_ij, nwalkers=nwalkers)
                 v_ij += vrr + alpha * vrs
                 if (nparticles > 2 ):
                    t_ij = self.pionless_3b(r_ij=r_ij, nwalkers=nwalkers)
-                   # print(f"t_ij for {i}_{j}: ", t_ij)
                    gr3b[i] += t_ij
                    gr3b[j] += t_ij
                    # gr3b[i] = gr3b[:,i].assign(gr3b[:,i] + t_ij)
                    # gr3b = gr3b[:,j].assign(gr3b[:,j] + t_ij)
                    V_ijk -= t_ij**2
         # stack up gr3b:
-        # print("v_ij: ", v_ij)
         gr3b = tf.stack(gr3b, axis=1)
         V_ijk += 0.5 * tf.reduce_sum(gr3b**2, axis = 1)
-        # print("V_ijk: ", V_ijk)
-        # print("2body E:", v_ij)
         pe = v_ij + V_ijk
 
 
         return pe
 
-    # @tf.function
+    # @tf.function()
+    @tf.function(experimental_compile=True)
     def compute_energies(self, inputs, logw_of_x, dlogw_dx, d2logw_dx2):
         '''Compute PE, KE_JF, and KE_direct
 

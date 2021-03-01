@@ -80,7 +80,7 @@ class MetropolisSampler(object):
         # for i in range(nkicks):
         walkers, acceptance = self.internal_kicker(
             self.size, self.walkers, wavefunction, kicker, kicker_params, tf.constant(nkicks), dtype=self.dtype)
-        
+
 
         # Update the walkers:
         self.walkers = walkers
@@ -88,7 +88,7 @@ class MetropolisSampler(object):
         # Send back the acceptance:
         return acceptance
 
-    @tf.function
+    @tf.function(experimental_compile=True)
     # @profile
     def internal_kicker(self,
         shape,

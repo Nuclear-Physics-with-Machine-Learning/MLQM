@@ -148,6 +148,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         # self.normalization_exponent = tf.Variable(2.0, dtype=DEFAULT_TENSOR_TYPE)
         # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
 
+    # @tf.function(experimental_compile=True)
     @tf.function()
     def call(self, inputs, trainable=None):
         # Mean subtract for all particles:

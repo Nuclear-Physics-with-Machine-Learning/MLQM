@@ -159,31 +159,8 @@ class StochasticReconfiguration(object):
         energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = self.hamiltonian.energy(self.wavefunction, x_current)
 
 
-# @partial(jit, static_argnums=(0,))
-#     def par_dist_full(self, delta_p, params, x_s):
-#         log_wpsi_o = self.wavefunction.vmap_psi(params,x_s)
-#         energy_o, energy_jf_o = self.hamiltonian.energy(params, x_s)
-#         energy_o_sum = jnp.mean(energy_o) 
-#         energy2_o_sum = jnp.mean(energy_o**2)
-#         energy_o_err = jnp.sqrt((energy2_o_sum - energy_o_sum**2) / x_s.shape[0])
-#         params = jax.tree_multimap(self.wavefunction.update_add, params, delta_p)
-#         log_wpsi_n = self.wavefunction.vmap_psi(params,x_s)
-#         psi_norm = jnp.exp( ( log_wpsi_n - log_wpsi_o) )
-#         psi2_norm = psi_norm**2
-#         psi2_norm_sum = jnp.mean(psi2_norm)
-# # Compute the energy re-weighting the stored walk
-#         energy_n, energy_jf_n = self.hamiltonian.energy(params, x_s)
-#         energy_n *= psi2_norm
-#         energy_n_sum = jnp.mean(energy_n) / psi2_norm_sum
-#         energy2_n_sum = jnp.mean(energy_n**2) / psi2_norm_sum
-#         energy_n_err=jnp.sqrt((energy2_n_sum - energy_n_sum**2) / x_s.shape[0] )
-# # Correlated energy difference
-#         energy_d = energy_n / psi2_norm_sum - energy_o
-#         energy_d_sum= jnp.mean(energy_d)
-#         energy2_d_sum= jnp.mean(energy_d**2)
-#         energy_d_err=jnp.sqrt((energy2_d_sum - energy_d_sum**2) / x_s.shape[0] )
-#         return psi_d_sum, psi_d_err, energy_d_sum, energy_d_err
-
+    #
+    # @tf.function
     def recompute_energy(self, estimator, test_wavefunction, current_psi, ):
 
         estimator.clear()
@@ -270,7 +247,6 @@ class StochasticReconfiguration(object):
 
             # What's the total weight?  Use that for the finalization:
             total_weight = e['weight']
-            print("total_weight:" , total_weight)
             e.finalize(total_weight)
 
             energy_curr = e['energy']
@@ -290,6 +266,7 @@ class StochasticReconfiguration(object):
             delta_p_min = delta_p
 
         return delta_p_min, {"optimizer/eps" : eps}
+
 
     def optimize_delta(self, current_psi, eps):
 
@@ -384,30 +361,59 @@ class StochasticReconfiguration(object):
         overlap2 = [ (w / n)**2 / (p / n) for w, p, n in zip(wavefunction_ratio, probability_ratio, N)]
 
         overlap = tf.sqrt(overlap2)
+        overlap = [ o.numpy() for o in overlap ]
 
         _ = [ e.finalize(w) for e, w in zip(estimators, total_weights) ]
+
 
         # # Finalize the estimator:
         # errors = [ e.finalize(self.n_observable_measurements) for e in estimators ]
 
         energies = [ e['energy'].numpy() for e in estimators ]
 
-        # What's the smallest energy?
-        i_e_min = numpy.argmin(energies)
+        # We find the best delta, with the constraint that overlap > 0.8 and par_dis < 0.4
+        found = False
 
-        par_dist = self.gradient_calc.par_dist(delta_options[i_e_min]*dp_i, S_ij)
-        acos     = tf.math.acos(overlap[i_e_min])**2
+        energy_rms = tf.math.reduce_std(energies)
+
+        while len(energies) > 0:
+            # What's the smallest energy?
+            i_e_min = numpy.argmin(energies)
+
+            par_dist = self.gradient_calc.par_dist(delta_options[i_e_min]*dp_i, S_ij)
+            acos     = tf.math.acos(overlap[i_e_min])**2
+
+            ratio = tf.abs(par_dist - acos) / tf.abs(par_dist + acos)
+
+            if ratio < 0.4 and overlap[i_e_min] > 0.9:
+                found = True
+                final_overlap = overlap[i_e_min]
+                break
+            else:
+                energies.pop(i_e_min)
+                overlap.pop(i_e_min)
+                final_overlap = 2.0
+
 
         # print("i_e_min: ", i_e_min)
-        best_delta = delta_options[i_e_min]
+        if found:
+            best_delta = delta_options[i_e_min]
+        else:
+            # Apply no update.  Rewalk and recompute.
+            best_delta = 0.0
+            ratio = 1.0
+            acos = 10.
+            overlap = 2.0
+
 
         gradients = [ best_delta * g for g in delta_p ]
         return gradients, {
             "optimizer/delta"   : best_delta,
-            "optimizer/overlap" : overlap[i_e_min],
+            "optimizer/overlap" : final_overlap,
             "optimizer/par_dist": par_dist,
             "optimizer/acos"    : acos,
-            "optimizer/par_dist-acos"    : par_dist - acos,
+            "optimizer/energy_rms": energy_rms,
+            "optimizer/ratio"   : ratio
         }
 
     @tf.function
@@ -437,6 +443,7 @@ class StochasticReconfiguration(object):
             continue
 
         return self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i), {}
+
 
     def walk_and_accumulate_observables(self,
             estimator,
@@ -540,7 +547,7 @@ class StochasticReconfiguration(object):
                 # print("flattened_jacobian: ", flattened_jacobian)
 
                 # Accumulate variables:
-                
+
                 self.estimator.accumulate('energy',  tf.reduce_sum(obs_energy))
                 self.estimator.accumulate('energy2',  tf.reduce_sum(obs_energy)**2)
                 self.estimator.accumulate('energy_jf',  tf.reduce_sum(obs_energy_jf))
@@ -579,6 +586,7 @@ class StochasticReconfiguration(object):
 
 
     # @tf.function
+
     def sr_step(self, n_thermalize):
 
         metrics = {}

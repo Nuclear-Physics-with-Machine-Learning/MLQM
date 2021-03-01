@@ -23,6 +23,7 @@ class Estimator(dict):
         else:
             raise KeyError(f"Estimator only accepts tf tensors!  Received {type(value)}")
 
+    # @tf.function
     def accumulate(self, key, value):
         if key in self.keys():
             self.__setitem__(key, value + self[key])

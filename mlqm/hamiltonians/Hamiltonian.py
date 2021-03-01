@@ -27,6 +27,7 @@ class Hamiltonian(object):
 
         self.HBAR = tf.constant(1.0, dtype = DEFAULT_TENSOR_TYPE)
 
+    @tf.function
     def potential_energy(self, *, inputs):
         """Return potential energy
 
@@ -163,7 +164,7 @@ class Hamiltonian(object):
         return logw_of_x, dlogw_dx, d2logw_dx2
     '''
 
-    # @tf.function
+    @tf.function
     def compute_energies(self, inputs, logw_of_x, dlogw_dx, d2logw_dx2):
         '''Compute PE, KE_JF, and KE_direct
 
@@ -190,7 +191,7 @@ class Hamiltonian(object):
         return pe, ke_jf, ke_direct
         # return None
 
-    # @tf.function
+    @tf.function
     def energy(self, wavefunction : tf.keras.models.Model, inputs : tf.Tensor):
         """Compute the expectation value of energy of the supplied wavefunction.
 
