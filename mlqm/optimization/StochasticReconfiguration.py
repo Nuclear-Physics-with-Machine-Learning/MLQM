@@ -177,15 +177,21 @@ class StochasticReconfiguration(object):
             energy     = tf.split(energy,    self.n_concurrent_obs_per_rank, axis=0)
             logw_of_x  = tf.split(logw_of_x, self.n_concurrent_obs_per_rank, axis=0)
 
+            # print("New energy: ", energy)
+            # print("New psi: ", logw_of_x)
+
             # overlap of wavefunctions:
             wavefunction_ratio = [ tf.math.exp((next_psi - curr_psi)) for next_psi, curr_psi in zip(logw_of_x, this_current_psi) ]
             probability_ratio  = [ tf.reshape(wf_ratio**2, energy[i].shape) for i, wf_ratio in enumerate(wavefunction_ratio) ]
 
-            for i_obs in range(self.n_concurrent_obs_per_rank):
-                obs_energy = probability_ratio[i_obs] * energy[i_obs] / self.n_walkers_per_observation
+            # print("wavefunction_ratio: ", wavefunction_ratio)
+            # print("probability_ratio: ", probability_ratio)
 
-                print(tf.reduce_sum(obs_energy))
-                print(tf.reduce_sum(obs_energy) / tf.reduce_sum(probability_ratio[i_obs]))
+            for i_obs in range(self.n_concurrent_obs_per_rank):
+                obs_energy = probability_ratio[i_obs] * energy[i_obs]
+
+                # print(tf.reduce_sum(obs_energy))
+                # print(tf.reduce_sum(obs_energy) / tf.reduce_sum(probability_ratio[i_obs]))
 
                 estimator.accumulate("energy", tf.reduce_sum(obs_energy))
                 estimator.accumulate("weight", tf.reduce_sum(probability_ratio[i_obs]))
@@ -250,6 +256,7 @@ class StochasticReconfiguration(object):
 
             # What's the total weight?  Use that for the finalization:
             total_weight = e['weight']
+            # print("Total Weight: ", total_weight)
             e.finalize(total_weight)
 
             energy_curr = e['energy']
@@ -317,7 +324,7 @@ class StochasticReconfiguration(object):
 
         # Select the delta options:
 
-        n_delta_iterations = 2
+        n_delta_iterations = 10
 
         delta_options = tf.linspace(tf.math.log(delta_max), tf.math.log(delta_min), n_delta_iterations)
         delta_options = tf.math.exp(delta_options)
@@ -349,7 +356,7 @@ class StochasticReconfiguration(object):
         # What's the total weight?  Use that for the finalization:
         total_weights = [ e['weight'] for e in estimators ]
 
-        print("total_weights: ", total_weights)
+        # print("total_weights: ", total_weights)
 
         # Get the overlap
 
@@ -373,9 +380,6 @@ class StochasticReconfiguration(object):
         energies = [ e['energy'].numpy() for e in estimators ]
         delta_options = [ d.numpy() for d in delta_options ]
 
-        print(energies)
-        print(delta_options)
-
         # We find the best delta, with the constraint that overlap > 0.8 and par_dis < 0.4
         found = False
 
@@ -391,19 +395,21 @@ class StochasticReconfiguration(object):
             ratio = tf.abs(par_dist - acos) / tf.abs(par_dist + acos+ 1e-8)
 
             #
-            print("i_e_min: ", i_e_min, ", Delta: ", delta_options[i_e_min], ", ratio: ", ratio, ", overlap: ", overlap[i_e_min], ", par_dist: ", par_dist, ", acos: ", acos)
+            # print("i_e_min: ", i_e_min, ", Delta: ", delta_options[i_e_min], ", ratio: ", ratio, ", overlap: ", overlap[i_e_min], ", par_dist: ", par_dist, ", acos: ", acos)
             # print(hvd.rank(), " Delta: ", delta_options[i_e_min], ", par_dist: ", par_dist)
             # print(hvd.rank(), " Delta: ", delta_options[i_e_min], ", acos: ", acos)
 
             if par_dist < 0.1 and acos < 0.1  and overlap[i_e_min] > 0.9:
                 found = True
                 final_overlap = overlap[i_e_min]
+                next_energy = energies[i_e_min]
                 break
             else:
                 energies.pop(i_e_min)
                 overlap.pop(i_e_min)
                 delta_options.pop(i_e_min)
                 final_overlap = 2.0
+                next_energy = None
 
 
         # print("i_e_min: ", i_e_min)
@@ -426,7 +432,6 @@ class StochasticReconfiguration(object):
             "optimizer/energy_rms": energy_rms,
             "optimizer/ratio"   : ratio
         }
-        print(delta_metrics)
         return gradients, delta_metrics
 
     @tf.function
@@ -525,6 +530,9 @@ class StochasticReconfiguration(object):
             pe         = tf.split(pe,        self.n_concurrent_obs_per_rank, axis=0)
             logw_of_x  = tf.split(logw_of_x, self.n_concurrent_obs_per_rank, axis=0)
 
+            # print("Original logw_of_x: ", logw_of_x)
+            # print("Original energy: ", energy)
+
             current_psi.append(logw_of_x)
 
 
@@ -544,6 +552,9 @@ class StochasticReconfiguration(object):
                 obs_ke_direct   = ke_direct[i_obs]  / self.n_walkers_per_observation
                 obs_pe          = pe[i_obs]         / self.n_walkers_per_observation
 
+                obs_energy2     = tf.reduce_sum(energy[i_obs]**2)    / self.n_walkers_per_observation
+                obs_energy_jf2  = tf.reduce_sum(energy_jf[i_obs]**2) / self.n_walkers_per_observation
+
                 # print("obs_energy: ",    obs_energy)
                 # print("obs_energy_jf: ", obs_energy_jf)
                 # print("obs_ke_jf: ",     obs_ke_jf)
@@ -562,9 +573,9 @@ class StochasticReconfiguration(object):
                 # Accumulate variables:
 
                 self.estimator.accumulate('energy',  tf.reduce_sum(obs_energy))
-                self.estimator.accumulate('energy2',  tf.reduce_sum(obs_energy)**2)
+                self.estimator.accumulate('energy2',  tf.reduce_sum(obs_energy2))
                 self.estimator.accumulate('energy_jf',  tf.reduce_sum(obs_energy_jf))
-                self.estimator.accumulate('energy2_jf',  tf.reduce_sum(obs_energy_jf)**2)
+                self.estimator.accumulate('energy2_jf',  tf.reduce_sum(obs_energy_jf2))
                 self.estimator.accumulate('ke_jf',  tf.reduce_sum(obs_ke_jf))
                 self.estimator.accumulate('ke_direct',  tf.reduce_sum(obs_ke_direct))
                 self.estimator.accumulate('pe',  tf.reduce_sum(obs_pe))
@@ -684,6 +695,9 @@ class StochasticReconfiguration(object):
             eps = self.optimizer_config.epsilon
             delta = self.optimizer_config.delta
             delta_p, opt_metrics = self.compute_gradients(eps, delta)
+
+
+
 
         # dp_i, opt_metrics = self.gradient_calc.sr(
         #     self.estimator["energy"],
