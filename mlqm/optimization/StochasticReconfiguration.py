@@ -130,10 +130,10 @@ class StochasticReconfiguration(object):
 
 
     @tf.function
-    def apply_gradients(self, gradients):
+    def apply_gradients(self, gradients, variables):
 
         # Update the parameters:
-        for grad, var in zip(gradients, self.wavefunction.trainable_variables):
+        for grad, var in zip(gradients, variables):
            var.assign_add(grad)
 
         return
@@ -291,6 +291,7 @@ class StochasticReconfiguration(object):
                 self.estimator['dpsi_ij'],
                 self.estimator['dpsi_i']
                )
+
         dp_i = None
         # Regularize S_ij with as small and eps as possible:
         for n in range(5):
@@ -305,10 +306,17 @@ class StochasticReconfiguration(object):
 
         if dp_i is None:
             raise Exception("Could not invert S_ij for any epsilon tried.")
+        #
+        # grad_max = tf.reduce_max(tf.abs(dp_i))
+        # grad_mean = tf.reduce_mean(tf.abs(dp_i))
+        #
+        # # print("Max dp_i: ", grad_max)
+        # # print("Mean dp_i: ", grad_mean)
 
         # Get the unscaled gradients:
+        # print("dp_i: ", dp_i)
         delta_p = self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i)
-
+        # print("delta_p: ", delta_p)
         # Now iterate over delta values to optimize the step size:
         delta_max = tf.constant(self.optimizer_config.delta_max, dtype=S_ij.dtype)
         delta_min = tf.constant(self.optimizer_config.delta_min, dtype=S_ij.dtype)
@@ -321,6 +329,17 @@ class StochasticReconfiguration(object):
 
         # Snapshot the current weights:
         original_weights = copy.copy(self.wavefunction.trainable_variables)
+        #
+        # weight_max = tf.reduce_max([ tf.reduce_max(tf.abs(w)) for w in original_weights])
+        # weight_mean = tf.reduce_mean([ tf.reduce_mean(tf.abs(w)) for w in original_weights])
+        #
+        # # print("Max original weight: ", weight_max)
+        # # print("Mean original weight: ", weight_mean)
+        # #
+        # # print("ratio of mean gradient to mean weight:", grad_mean / weight_mean)
+        #
+        # delta_min = 0.001*(weight_mean / grad_mean)
+        # delta_max = 1*(weight_mean / grad_mean)
 
         # Select the delta options:
 
@@ -332,18 +351,26 @@ class StochasticReconfiguration(object):
 
         # print("f_i[0]: ", f_i[-1])
         # print("delta_p[0]: ", delta_p[-1])
-        # print("original_weights[0]: ", original_weights[-1])
-
         # print("delta_options: ", delta_options)
 
         for i,this_delta in enumerate(delta_options):
 
+
             # We have the original energy, and gradient updates.
             # Apply the updates:
+
             loop_items = zip(self.adaptive_wavefunction.trainable_variables, original_weights, delta_p)
             for weight, original_weight, gradient in loop_items:
+                # print("  original_weight: ", original_weight)
+                # print("  gradient: ", gradient)
                 weight.assign(original_weight + this_delta * gradient)
+                # print("  weight: ", weight)
 
+                # weight_ratio += tf.reduce_sum( tf.abs(weight - original_weight) / tf.abs(weight + original_weight) )
+
+            # print("this_delta * delta_p[0]", this_delta * delta_p[0])
+            #
+            # print(f"For delta {this_delta}, weight_ratio is {weight_ratio}" )
             # Compute the new energy:
             self.recompute_energy(estimators[i], self.adaptive_wavefunction, current_psi)
 
@@ -366,10 +393,11 @@ class StochasticReconfiguration(object):
 
         N = [ e['N'] for e in estimators ]
 
-        overlap2 = [ (w / n)**2 / (p / n) for w, p, n in zip(wavefunction_ratio, probability_ratio, N)]
+        overlap2 = [ (w / n)**2 / (1e-6 + p / n) for w, p, n in zip(wavefunction_ratio, probability_ratio, N)]
 
         overlap = tf.sqrt(overlap2)
         overlap = [ o.numpy() for o in overlap ]
+        print("Overlap: ", overlap)
 
         _ = [ e.finalize(w) for e, w in zip(estimators, total_weights) ]
 
@@ -379,6 +407,8 @@ class StochasticReconfiguration(object):
 
         energies = [ e['energy'].numpy() for e in estimators ]
         delta_options = [ d.numpy() for d in delta_options ]
+
+        print("Energies: ",  energies)
 
         # We find the best delta, with the constraint that overlap > 0.8 and par_dis < 0.4
         found = False
@@ -399,12 +429,13 @@ class StochasticReconfiguration(object):
             # print(hvd.rank(), " Delta: ", delta_options[i_e_min], ", par_dist: ", par_dist)
             # print(hvd.rank(), " Delta: ", delta_options[i_e_min], ", acos: ", acos)
 
-            if par_dist < 0.1 and acos < 0.1  and overlap[i_e_min] > 0.9:
+            if par_dist < 0.1 and acos < 0.1  and overlap[i_e_min] > 0.9 and ratio < 0.4:
                 found = True
                 final_overlap = overlap[i_e_min]
                 next_energy = energies[i_e_min]
                 break
             else:
+                print(f"Skipping this energy (acos: {acos}, overlap: {overlap[i_e_min]}, par_dist: {par_dist}, ratio: {ratio})")
                 energies.pop(i_e_min)
                 overlap.pop(i_e_min)
                 delta_options.pop(i_e_min)
@@ -434,7 +465,7 @@ class StochasticReconfiguration(object):
         }
         return gradients, delta_metrics
 
-    @tf.function
+    # @tf.function
     def compute_gradients(self, eps, delta):
 
         # Get the natural gradients and S_ij
@@ -552,9 +583,6 @@ class StochasticReconfiguration(object):
                 obs_ke_direct   = ke_direct[i_obs]  / self.n_walkers_per_observation
                 obs_pe          = pe[i_obs]         / self.n_walkers_per_observation
 
-                obs_energy2     = tf.reduce_sum(energy[i_obs]**2)    / self.n_walkers_per_observation
-                obs_energy_jf2  = tf.reduce_sum(energy_jf[i_obs]**2) / self.n_walkers_per_observation
-
                 # print("obs_energy: ",    obs_energy)
                 # print("obs_energy_jf: ", obs_energy_jf)
                 # print("obs_ke_jf: ",     obs_ke_jf)
@@ -573,9 +601,9 @@ class StochasticReconfiguration(object):
                 # Accumulate variables:
 
                 self.estimator.accumulate('energy',  tf.reduce_sum(obs_energy))
-                self.estimator.accumulate('energy2',  tf.reduce_sum(obs_energy2))
+                self.estimator.accumulate('energy2',  tf.reduce_sum(obs_energy)**2)
                 self.estimator.accumulate('energy_jf',  tf.reduce_sum(obs_energy_jf))
-                self.estimator.accumulate('energy2_jf',  tf.reduce_sum(obs_energy_jf2))
+                self.estimator.accumulate('energy2_jf',  tf.reduce_sum(obs_energy_jf)**2)
                 self.estimator.accumulate('ke_jf',  tf.reduce_sum(obs_ke_jf))
                 self.estimator.accumulate('ke_direct',  tf.reduce_sum(obs_ke_direct))
                 self.estimator.accumulate('pe',  tf.reduce_sum(obs_pe))
@@ -698,7 +726,6 @@ class StochasticReconfiguration(object):
 
 
 
-
         # dp_i, opt_metrics = self.gradient_calc.sr(
         #     self.estimator["energy"],
         #     self.estimator["dpsi_i"],
@@ -710,7 +737,7 @@ class StochasticReconfiguration(object):
 
 
         # And apply them to the wave function:
-        self.apply_gradients(delta_p)
+        self.apply_gradients(delta_p, self.wavefunction.trainable_variables)
         self.latest_gradients = delta_p
         self.latest_psi = current_psi
 

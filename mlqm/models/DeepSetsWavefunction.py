@@ -19,8 +19,8 @@ class DenseBlock(tf.keras.models.Model):
 
         self.layer = tf.keras.layers.Dense(n_output,
             activation = activation, use_bias = use_bias,
-            kernel_initializer = tf.keras.initializers.GlorotNormal
-
+            kernel_initializer = tf.keras.initializers.GlorotNormal,
+            bias_initializer   = tf.keras.initializers.RandomNormal,
             )
 
 
@@ -83,7 +83,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         self.config = configuration
 
         self.mean_subtract = self.config.mean_subtract
-        self.confinement   = tf.constant(self.config.confinement, dtype = DEFAULT_TENSOR_TYPE)
+
 
         n_filters_per_layer = self.config.n_filters_per_layer
         n_layers            = self.config.n_layers
@@ -144,12 +144,16 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         self.aggregate_net.add(tf.keras.layers.Dense(1,
             use_bias = False))
 
+        # Represent the confinement as a function of r only, which is represented as a neural netowrk
+        # self.confinement = DenseBlock(n_filters_per_layer)
+
+        self.confinement   = tf.constant(self.config.confinement, dtype = DEFAULT_TENSOR_TYPE)
 
         # self.normalization_exponent = tf.Variable(2.0, dtype=DEFAULT_TENSOR_TYPE)
         # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
 
     # @tf.function(experimental_compile=True)
-    @tf.function()
+    # @tf.function
     def call(self, inputs, trainable=None):
         # Mean subtract for all particles:
         if self.nparticles > 1 and self.mean_subtract:

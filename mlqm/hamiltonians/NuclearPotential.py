@@ -53,14 +53,14 @@ class NuclearPotential(Hamiltonian):
 
         self.HBAR = tf.constant(197.327, dtype = DEFAULT_TENSOR_TYPE)
 
-    @tf.function(experimental_compile=True)
+    @tf.function(experimental_compile=False)
     def pionless_2b(self, *, r_ij):
         x = self.vkr * r_ij
         vr = tf.exp(-x**2/4.0)
 
         return self.v0r*vr, self.v0s*vr
 
-    @tf.function(experimental_compile=True)
+    @tf.function(experimental_compile=False)
     def pionless_3b(self, *,  r_ij, nwalkers):
         # pot_3b = tf.zeros(shape=(nwalkers), dtype=DEFAULT_TENSOR_TYPE)
         x = self.vkr * r_ij
@@ -68,7 +68,7 @@ class NuclearPotential(Hamiltonian):
         pot_3b = vr * self.ar3b
         return pot_3b
 
-    @tf.function(experimental_compile=True)
+    @tf.function(experimental_compile=False)
     def potential_energy(self, *, inputs):
         """Return potential energy
 
@@ -122,7 +122,7 @@ class NuclearPotential(Hamiltonian):
         return pe
 
     # @tf.function()
-    @tf.function(experimental_compile=True)
+    @tf.function(experimental_compile=False)
     def compute_energies(self, inputs, logw_of_x, dlogw_dx, d2logw_dx2):
         '''Compute PE, KE_JF, and KE_direct
 

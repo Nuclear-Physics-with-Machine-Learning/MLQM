@@ -88,7 +88,7 @@ class MetropolisSampler(object):
         # Send back the acceptance:
         return acceptance
 
-    @tf.function(experimental_compile=True)
+    @tf.function(experimental_compile=False)
     # @profile
     def internal_kicker(self,
         shape,
