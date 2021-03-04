@@ -8,6 +8,10 @@ import pickle
 # For configuration:
 from omegaconf import DictConfig, OmegaConf
 import hydra
+from hydra.experimental import compose, initialize
+from hydra.core.hydra_config import HydraConfig
+from hydra.core.utils import configure_log
+
 hydra.output_subdir = None
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -34,6 +38,7 @@ try:
 except:
     MPI_AVAILABLE=False
 
+
 # Use mixed precision for inference (metropolis walk)
 # from tensorflow.keras.mixed_precision import experimental as mixed_precision
 # policy = mixed_precision.Policy('mixed_float16')
@@ -41,7 +46,9 @@ except:
 
 import logging
 from logging import handlers
-logger = logging.getLogger()
+
+
+logger = logging.getLogger("mlqm")
 
 
 # Create a handler for STDOUT, but only on the root rank:
@@ -51,13 +58,19 @@ if not MPI_AVAILABLE or hvd.rank() == 0:
     stream_handler.setFormatter(formatter)
     handler = handlers.MemoryHandler(capacity = 100, target=stream_handler)
     logger.addHandler(handler)
+    # Add a file handler:
     logger.setLevel(logging.DEBUG)
+    # fh = logging.FileHandler('run.log')
+    # fh.setLevel(logging.DEBUG)
+    # logger.addHandler(fh)
 else:
     # in this case, MPI is available but it's not rank 0
     # create a null handler
     handler = logging.NullHandler()
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)
+
+
 
 
 # Add the local folder to the import path:
@@ -132,6 +145,20 @@ class exec(object):
             n_parameters += tf.reduce_prod(p.shape)
 
         logger.info(f"Number of parameters in this network: {n_parameters}")
+        #
+        # x_test = tf.convert_to_tensor([[ 1.25291274, 1.15427136, -1.57162947],
+        #                               [ 1.76117854, 0.26708064, -0.90399369]], dtype = DEFAULT_TENSOR_TYPE)
+        # x_test = tf.reshape(x_test, (1,2,3))
+        # print(x_test)
+        #
+        # print("Original: ", wavefunction.trainable_variables)
+        #
+        # # wavefunction.restore_jax("/home/cadams/ThetaGPU/AI-for-QM/full.model")
+        # # print("Restored: ", wavefunction.trainable_variables)
+        #
+        # print(wavefunction(x_test))
+        #
+        # exit()
 
 
         self.sr_worker   = StochasticReconfiguration(
@@ -163,7 +190,6 @@ class exec(object):
         else:
             self.save_path += append_token
 
-        print(self.save_path)
 
         if not MPI_AVAILABLE or hvd.rank() == 0:
             # self.writer = tf.summary.create_file_writer(self.save_path)
@@ -338,6 +364,7 @@ class exec(object):
                 self.global_step, root_rank=0)
             logger.info("Done broadcasting initial model and optimizer state.")
 
+        # self.sr_worker.wavefunction.restore_jax("/home/cadams/ThetaGPU/AI-for-QM/full.model")
 
 
 
@@ -439,8 +466,35 @@ class exec(object):
         logger.info("Snapshoting weights...")
         self.active = False
 
-@hydra.main(config_path="../config", config_name="config")
-def main(cfg: DictConfig) -> None:
+
+# @hydra.main(config_path="../config", config_name="config")
+def main() -> None:
+
+    overrides = sys.argv[1:]
+
+    initialize(config_path="../config", job_name="stochastic_reconfiguration")
+    cfg = compose(config_name="config", return_hydra_config=True, overrides=overrides)
+    # help(compose)
+    # print(OmegaConf.to_yaml(cfg))
+    #
+    # manager = logging.root.manager
+    # logger_dict = manager.loggerDict
+    # replacement_dict = {}
+    # for key in logger_dict.keys():
+    #     print(key)
+    #     if "hydra" in key:
+    #         continue
+    #     else:
+    #         replacement_dict[key] = logger_dict[key]
+    # manager.loggerDict = replacement_dict
+    #
+    # loggers = [name for name in logging.root.manager.loggerDict]
+
+    work_dir = pathlib.Path(cfg.hydra.run.dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    # cd in to the job directory since we disabled that with hydra:
+    os.chdir(cfg.hydra.run.dir)
     e = exec(cfg)
     signal.signal(signal.SIGINT, e.interupt_handler)
     e.run()
