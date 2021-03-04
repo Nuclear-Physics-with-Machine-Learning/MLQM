@@ -289,9 +289,12 @@ class StochasticReconfiguration(object):
         delta_p_min = None
 
         # Snapshot the current weights:
-        original_weights = copy.copy(self.wavefunction.trainable_variables)
+        original_weights = self.wavefunction.trainable_variables
 
-
+        final_acos = 2
+        final_ratio = 1
+        final_par_dist = 10
+        final_overlap = 10
         for n in range(10):
             eps = tf.sqrt(eps_max * eps_min)
             try:
@@ -309,25 +312,22 @@ class StochasticReconfiguration(object):
             for weight, original_weight, gradient in loop_items:
                 weight.assign(original_weight + gradient)
 
-            e = Estimator()
             # Compute the new energy:
-            e = self.recompute_energy(e, self.adaptive_wavefunction, current_psi)
+            next_energy, overlap, acos = self.recompute_energy(self.adaptive_wavefunction, current_psi)
 
-            if MPI_AVAILABLE:
-                e.allreduce()
+            par_dist = self.gradient_calc.par_dist(dp_i, S_ij)
 
-            # What's the total weight?  Use that for the finalization:
-            total_weight = e['weight']
-            # print("Total Weight: ", total_weight)
-            e.finalize(total_weight)
-
-            energy_curr = e['energy']
+            ratio = tf.abs(par_dist - acos) / tf.abs(par_dist + acos)
 
             # This is the
 
-            if energy_curr < energy_min :
-               energy_min = energy_curr
+            if next_energy < energy_min and ratio < 0.4 and par_dist < 0.1 and overlap > 0.9:
+               energy_min = next_energy
                delta_p_min = delta_p
+               final_overlap = overlap
+               final_par_dist = par_dist
+               final_ratio = ratio
+               final_acos = acos
                converged = True
                eps_max = eps
             else:
@@ -337,7 +337,15 @@ class StochasticReconfiguration(object):
         if delta_p_min is None:
             delta_p_min = delta_p
 
-        return delta_p_min, {"optimizer/eps" : eps}
+        delta_metrics = {
+            "optimizer/delta"   : delta,
+            "optimizer/eps"     : eps,
+            "optimizer/overlap" : final_overlap,
+            "optimizer/par_dist": final_par_dist,
+            "optimizer/acos"    : acos,
+            "optimizer/ratio"   : ratio
+        }
+        return delta_p, delta_metrics, energy_min
 
 
     def optimize_delta(self, current_psi, eps):
@@ -466,6 +474,7 @@ class StochasticReconfiguration(object):
         gradients = [ best_delta * g for g in delta_p ]
         delta_metrics = {
             "optimizer/delta"   : best_delta,
+            "optimizer/eps"     : eps,
             "optimizer/overlap" : final_overlap,
             "optimizer/par_dist": par_dist,
             "optimizer/acos"    : acos,
