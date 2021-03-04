@@ -2,6 +2,8 @@ import numpy
 import tensorflow as tf
 from mlqm import DEFAULT_TENSOR_TYPE
 
+
+import copy
 #from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
 
 
@@ -151,6 +153,15 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         # self.normalization_exponent = tf.Variable(2.0, dtype=DEFAULT_TENSOR_TYPE)
         # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
+
+    def clone(self):
+
+        new_ob = copy.deepcopy(self)
+
+        new_ob.aggregate_net  = tf.keras.models.clone_model(self.aggregate_net)
+        new_ob.individual_net = tf.keras.models.clone_model(self.individual_net)
+
+        return new_ob
 
     # @tf.function(experimental_compile=True)
     # @tf.function

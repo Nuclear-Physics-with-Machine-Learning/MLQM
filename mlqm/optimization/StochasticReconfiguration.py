@@ -25,6 +25,7 @@ class StochasticReconfiguration(object):
     def __init__(self,
             sampler                   : MetropolisSampler,
             wavefunction              : callable,
+            adaptive_wfn              : callable,
             hamiltonian               : Hamiltonian,
             optimizer_config          : DictConfig,
             sampler_config            : DictConfig,
@@ -58,14 +59,12 @@ class StochasticReconfiguration(object):
 
         self.estimator = Estimator()
 
-        # We use a "disposable" estimator to parallelize the adaptive estimator:
-        self.adaptive_estimator = Estimator()
         # Use a "disposable" wavefunction too:
-        self.adaptive_wavefunction = copy.copy(self.wavefunction)
+        self.adaptive_wavefunction = adaptive_wfn
 
         self.correct_shape = [ p.shape for p in self.wavefunction.trainable_variables ]
 
-
+        self.predicted_energy = None
 
     @tf.function
     def batched_jacobian(self, nobs, x_current_arr, wavefunction, jac_fnc):
@@ -161,8 +160,9 @@ class StochasticReconfiguration(object):
 
     #
     # @tf.function
-    def recompute_energy(self, estimator, test_wavefunction, current_psi, ):
+    def recompute_energy(self, test_wavefunction, current_psi, ):
 
+        estimator = Estimator()
         estimator.clear()
 
         for next_x, this_current_psi in zip(self.sampler.get_all_walkers(), current_psi):
@@ -198,8 +198,70 @@ class StochasticReconfiguration(object):
                 estimator.accumulate("wavefunction_ratio", tf.reduce_sum(wavefunction_ratio[i_obs]))
                 estimator.accumulate("N", tf.convert_to_tensor(self.n_walkers_per_observation, dtype=DEFAULT_TENSOR_TYPE))
 
-        # Return the restimator, here, instead of finalizing now.  Allows parallel iterations more easily
-        return estimator
+
+        if MPI_AVAILABLE:
+            estimator.allreduce()
+
+
+        # What's the total weight?  Use that for the finalization:
+        total_weight = estimator['weight']
+
+        # Get the overlap
+        wavefunction_ratio = estimator['wavefunction_ratio']
+        probability_ratio = estimator['weight']
+
+        N = estimator['N']
+
+        overlap2 = (wavefunction_ratio / N)**2 / (probability_ratio / N)
+
+
+        estimator.finalize(total_weight)
+        overlap  = tf.sqrt(overlap2)
+        acos     = tf.math.acos(overlap)**2
+
+        energy = estimator['energy'].numpy()
+
+        return energy, overlap, acos
+
+    def flat_optimizer(self, current_psi, eps, delta):
+        
+        dpsi_i    = self.estimator['dpsi_i']
+        energy    = self.estimator["energy"]
+        dpsi_i_EL = self.estimator["dpsi_i_EL"]
+        dpsi_ij   = self.estimator["dpsi_ij"]
+
+        dp_i, S_ij =  self.compute_gradients(dpsi_i, energy, dpsi_i_EL, dpsi_ij, eps)
+
+        dp_i = delta * dp_i
+
+        # Unpack the gradients 
+        gradients = self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i)
+
+        original_weights = self.wavefunction.trainable_variables
+
+        # Even though it's a flat optimization, we recompute the energy to get the overlap too:
+        loop_items = zip(self.adaptive_wavefunction.trainable_variables, original_weights, gradients)
+        for weight, original_weight, gradient in loop_items:
+            weight.assign(original_weight + gradient)
+
+        # Compute the new energy:
+        next_energy, overlap, acos = self.recompute_energy(self.adaptive_wavefunction, current_psi)
+
+        # Compute the parameter distance:
+        par_dist = self.gradient_calc.par_dist(dp_i, S_ij)
+        ratio    = tf.abs(par_dist - acos) / tf.abs(par_dist + acos+ 1e-8)
+
+
+        delta_metrics = {
+            "optimizer/delta"   : delta,
+            "optimizer/eps"     : eps,
+            "optimizer/overlap" : overlap,
+            "optimizer/par_dist": par_dist,
+            "optimizer/acos"    : acos,
+            "optimizer/ratio"   : ratio
+        }
+
+        return gradients,  delta_metrics, next_energy
 
     # @tf.function
     def optimize_eps(self, current_psi, delta):
@@ -306,40 +368,19 @@ class StochasticReconfiguration(object):
 
         if dp_i is None:
             raise Exception("Could not invert S_ij for any epsilon tried.")
-        #
-        # grad_max = tf.reduce_max(tf.abs(dp_i))
-        # grad_mean = tf.reduce_mean(tf.abs(dp_i))
-        #
-        # # print("Max dp_i: ", grad_max)
-        # # print("Mean dp_i: ", grad_mean)
 
         # Get the unscaled gradients:
-        # print("dp_i: ", dp_i)
         delta_p = self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i)
-        # print("delta_p: ", delta_p)
         # Now iterate over delta values to optimize the step size:
         delta_max = tf.constant(self.optimizer_config.delta_max, dtype=S_ij.dtype)
         delta_min = tf.constant(self.optimizer_config.delta_min, dtype=S_ij.dtype)
-
-        # print(delta_max)
-        # print(delta_min)
 
         # take the current energy as the starting miniumum:
         energy_min = self.estimator['energy'] + 1
 
         # Snapshot the current weights:
-        original_weights = copy.copy(self.wavefunction.trainable_variables)
-        #
-        # weight_max = tf.reduce_max([ tf.reduce_max(tf.abs(w)) for w in original_weights])
-        # weight_mean = tf.reduce_mean([ tf.reduce_mean(tf.abs(w)) for w in original_weights])
-        #
-        # # print("Max original weight: ", weight_max)
-        # # print("Mean original weight: ", weight_mean)
-        # #
-        # # print("ratio of mean gradient to mean weight:", grad_mean / weight_mean)
-        #
-        # delta_min = 0.001*(weight_mean / grad_mean)
-        # delta_max = 1*(weight_mean / grad_mean)
+        original_weights = self.wavefunction.trainable_variables
+     
 
         # Select the delta options:
 
@@ -347,98 +388,66 @@ class StochasticReconfiguration(object):
 
         delta_options = tf.linspace(tf.math.log(delta_max), tf.math.log(delta_min), n_delta_iterations)
         delta_options = tf.math.exp(delta_options)
-        estimators = [ Estimator() for i in range(n_delta_iterations) ]
 
-        # print("f_i[0]: ", f_i[-1])
-        # print("delta_p[0]: ", delta_p[-1])
-        # print("delta_options: ", delta_options)
+        energies = []
+        overlaps = []
+        acoses   = []
 
         for i,this_delta in enumerate(delta_options):
 
 
             # We have the original energy, and gradient updates.
             # Apply the updates:
-
             loop_items = zip(self.adaptive_wavefunction.trainable_variables, original_weights, delta_p)
             for weight, original_weight, gradient in loop_items:
-                # print("  original_weight: ", original_weight)
-                # print("  gradient: ", gradient)
                 weight.assign(original_weight + this_delta * gradient)
-                # print("  weight: ", weight)
 
-                # weight_ratio += tf.reduce_sum( tf.abs(weight - original_weight) / tf.abs(weight + original_weight) )
-
-            # print("this_delta * delta_p[0]", this_delta * delta_p[0])
-            #
-            # print(f"For delta {this_delta}, weight_ratio is {weight_ratio}" )
             # Compute the new energy:
-            self.recompute_energy(estimators[i], self.adaptive_wavefunction, current_psi)
+            energy, overlap, acos = self.recompute_energy(self.adaptive_wavefunction, current_psi)
+            energies.append(energy)
+            overlaps.append(overlap)
+            acoses.append(acos)
 
-        # outside of the loop, all reduce the estimators:
-
-        if MPI_AVAILABLE:
-            _ = [ e.allreduce() for e in estimators ]
-
-
-        # What's the total weight?  Use that for the finalization:
-        total_weights = [ e['weight'] for e in estimators ]
-
-        # print("total_weights: ", total_weights)
-
-        # Get the overlap
-
-        wavefunction_ratio = [ e['wavefunction_ratio'] for e in estimators ]
-
-        probability_ratio = [ e['weight'] for e in estimators]
-
-        N = [ e['N'] for e in estimators ]
-
-        overlap2 = [ (w / n)**2 / (1e-6 + p / n) for w, p, n in zip(wavefunction_ratio, probability_ratio, N)]
-
-        overlap = tf.sqrt(overlap2)
-        overlap = [ o.numpy() for o in overlap ]
-        print("Overlap: ", overlap)
-
-        _ = [ e.finalize(w) for e, w in zip(estimators, total_weights) ]
-
-
-        # # Finalize the estimator:
-        # errors = [ e.finalize(self.n_observable_measurements) for e in estimators ]
-
-        energies = [ e['energy'].numpy() for e in estimators ]
         delta_options = [ d.numpy() for d in delta_options ]
 
-        print("Energies: ",  energies)
+        # print("Energies: ",  energies)
+        # print("Deltas: ", delta_options)
+        # print("acoses: ", acoses)
+        # print("overlaps: ", overlaps)
 
         # We find the best delta, with the constraint that overlap > 0.8 and par_dis < 0.4
         found = False
 
         energy_rms = tf.math.reduce_std(energies)
 
+
         while len(energies) > 0:
             # What's the smallest energy?
             i_e_min = numpy.argmin(energies)
 
             par_dist = self.gradient_calc.par_dist(delta_options[i_e_min]*dp_i, S_ij)
-            acos     = tf.math.acos(overlap[i_e_min])**2
 
-            ratio = tf.abs(par_dist - acos) / tf.abs(par_dist + acos+ 1e-8)
+            ratio = tf.abs(par_dist - acoses[i_e_min]) / tf.abs(par_dist + acoses[i_e_min])
 
             #
             # print("i_e_min: ", i_e_min, ", Delta: ", delta_options[i_e_min], ", ratio: ", ratio, ", overlap: ", overlap[i_e_min], ", par_dist: ", par_dist, ", acos: ", acos)
             # print(hvd.rank(), " Delta: ", delta_options[i_e_min], ", par_dist: ", par_dist)
             # print(hvd.rank(), " Delta: ", delta_options[i_e_min], ", acos: ", acos)
 
-            if par_dist < 0.1 and acos < 0.1  and overlap[i_e_min] > 0.9 and ratio < 0.4:
+            if par_dist < 0.1 and acoses[i_e_min] < 0.1  and overlaps[i_e_min] > 0.9 and ratio < 0.4:
                 found = True
-                final_overlap = overlap[i_e_min]
+                final_overlap = overlaps[i_e_min]
                 next_energy = energies[i_e_min]
                 break
             else:
-                print(f"Skipping this energy (acos: {acos}, overlap: {overlap[i_e_min]}, par_dist: {par_dist}, ratio: {ratio})")
+                logger.debug(f"Skipping this energy (acos: {acoses[i_e_min]}, overlap: {overlaps[i_e_min]}, par_dist: {par_dist}, ratio: {ratio})")
+                
+                # Remove these options
                 energies.pop(i_e_min)
-                overlap.pop(i_e_min)
+                overlaps.pop(i_e_min)
+                acoses.pop(i_e_min)
                 delta_options.pop(i_e_min)
+                
                 final_overlap = 2.0
                 next_energy = None
 
@@ -463,35 +472,28 @@ class StochasticReconfiguration(object):
             "optimizer/energy_rms": energy_rms,
             "optimizer/ratio"   : ratio
         }
-        return gradients, delta_metrics
+        return gradients, delta_metrics, next_energy
 
     # @tf.function
-    def compute_gradients(self, eps, delta):
+    def compute_gradients(self, dpsi_i, energy, dpsi_i_EL, dpsi_ij, eps):
 
         # Get the natural gradients and S_ij
-        f_i = self.gradient_calc.f_i(
-                self.estimator['dpsi_i'],
-                self.estimator["energy"],
-                self.estimator["dpsi_i_EL"]
-                )
+        f_i = self.gradient_calc.f_i(dpsi_i, energy, dpsi_i_EL)
 
-        S_ij = self.gradient_calc.S_ij(
-                self.estimator['dpsi_ij'],
-                self.estimator['dpsi_i']
-               )
+        S_ij = self.gradient_calc.S_ij(dpsi_ij, dpsi_i)
 
         # Regularize S_ij with as small and eps as possible:
 
         for n in range(5):
             try:
-                dp_i = delta * self.gradient_calc.pd_solve(S_ij, eps, f_i)
+                dp_i = self.gradient_calc.pd_solve(S_ij, eps, f_i)
                 break
             except tf.errors.InvalidArgumentError:
                 print("Cholesky solve failed, continuing with higher regularization")
                 eps *= 2.
             continue
 
-        return self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i), {}
+        return dp_i, S_ij
 
 
     def walk_and_accumulate_observables(self,
@@ -715,17 +717,24 @@ class StochasticReconfiguration(object):
 
         if self.optimizer_config.form == "AdaptiveDelta":
             eps = self.optimizer_config.epsilon
-            delta_p, opt_metrics = self.optimize_delta(current_psi, eps)
+            delta_p, opt_metrics, next_energy = self.optimize_delta(current_psi, eps)
         elif self.optimizer_config.form == "AdaptiveEpsilon":
             delta = self.optimizer_config.delta
-            delta_p, opt_metrics = self.optimize_eps(current_psi, delta)
+            delta_p, opt_metrics, next_energy = self.optimize_eps(current_psi, delta)
         else:
             eps = self.optimizer_config.epsilon
             delta = self.optimizer_config.delta
-            delta_p, opt_metrics = self.compute_gradients(eps, delta)
+            delta_p, opt_metrics, next_energy = self.flat_optimizer(current_psi, eps, delta)
 
+        metrics.update(opt_metrics)
 
+        # Compute the ratio of the previous energy and the current energy, if possible.
+        if self.predicted_energy is not None:
+            energy_diff = self.predicted_energy - self.estimator['energy']
+        else:
+            energy_diff = 0
 
+        metrics['energy/energy_diff'] = energy_diff
         # dp_i, opt_metrics = self.gradient_calc.sr(
         #     self.estimator["energy"],
         #     self.estimator["dpsi_i"],
@@ -733,7 +742,6 @@ class StochasticReconfiguration(object):
         #     self.estimator["dpsi_ij"])
 
 
-        metrics.update(opt_metrics)
 
 
         # And apply them to the wave function:
@@ -741,6 +749,8 @@ class StochasticReconfiguration(object):
         self.latest_gradients = delta_p
         self.latest_psi = current_psi
 
+        # Before moving on, set the predicted_energy:
+        self.predicted_energy = next_energy
 
 
         return  metrics

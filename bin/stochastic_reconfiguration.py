@@ -56,7 +56,7 @@ if not MPI_AVAILABLE or hvd.rank() == 0:
     stream_handler = logging.StreamHandler()
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     stream_handler.setFormatter(formatter)
-    handler = handlers.MemoryHandler(capacity = 100, target=stream_handler)
+    handler = handlers.MemoryHandler(capacity = 10, target=stream_handler)
     logger.addHandler(handler)
     # Add a file handler:
     logger.setLevel(logging.DEBUG)
@@ -131,14 +131,17 @@ class exec(object):
 
         # Create a wavefunction:
         wavefunction = DeepSetsWavefunction(self.config.dimension, self.config.nparticles, wavefunction_config)
+        adaptive_wavefunction = DeepSetsWavefunction(self.config.dimension, self.config.nparticles, wavefunction_config)
 
         # Run the wave function once to initialize all its weights
         tf.summary.trace_on(graph=True, profiler=False)
         _ = wavefunction(x)
+        _ = adaptive_wavefunction(x)
         tf.summary.trace_export("graph")
         tf.summary.trace_off()
 
-
+        for w in adaptive_wavefunction.trainable_variables:
+            w.assign(0. * w)
 
         n_parameters = 0
         for p in wavefunction.trainable_variables:
@@ -164,6 +167,7 @@ class exec(object):
         self.sr_worker   = StochasticReconfiguration(
             sampler          = sampler,
             wavefunction     = wavefunction,
+            adaptive_wfn     = adaptive_wavefunction,
             hamiltonian      = hamiltonian,
             optimizer_config = self.config.optimizer,
             sampler_config   = self.config.sampler,
@@ -475,7 +479,8 @@ def main() -> None:
     initialize(config_path="../config", job_name="stochastic_reconfiguration")
     cfg = compose(config_name="config", return_hydra_config=True, overrides=overrides)
     # help(compose)
-    # print(OmegaConf.to_yaml(cfg))
+
+    # logger.info(OmegaConf.to_yaml(cfg))
     #
     # manager = logging.root.manager
     # logger_dict = manager.loggerDict
