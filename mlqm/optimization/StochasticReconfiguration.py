@@ -278,74 +278,138 @@ class StochasticReconfiguration(object):
                )
 
 
+
         # We do a search over eps ranges to compute the optimal value:
 
         eps_max = tf.constant(self.optimizer_config.epsilon_max, dtype=S_ij.dtype)
         eps_min = tf.constant(self.optimizer_config.epsilon_min, dtype=S_ij.dtype)
 
-        # take the current energy as the starting miniumum:
 
-        energy_min = self.estimator['energy'] + 1
-        delta_p_min = None
+        def evaluate(_s_ij, _f_i, current_psi, delta, _eps):
 
-        # Snapshot the current weights:
-        original_weights = self.wavefunction.trainable_variables
+            # First, set metrics to null values:
+            _metrics = {
+                "optimizer/delta"   : delta,
+                "optimizer/eps"     : _eps,
+                "optimizer/overlap" : 2.0,
+                "optimizer/par_dist": 2.0,
+                "optimizer/acos"    : 10,
+                "optimizer/ratio"   : 10,
+            }
 
-        final_acos = 2
-        final_ratio = 1
-        final_par_dist = 10
-        final_overlap = 10
-        for n in range(10):
-            eps = tf.sqrt(eps_max * eps_min)
             try:
-                dp_i = delta * self.gradient_calc.pd_solve(S_ij, eps, f_i)
+                dp_i = self.gradient_calc.pd_solve(_s_ij, _eps, _f_i)
             except tf.errors.InvalidArgumentError:
-                eps_min = eps
                 print("Cholesky solve failed, continuing with higher regularization")
-                continue
+                return None, _metrics, 99999
 
-            delta_p = self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i)
+            # print(dp_i)
+            # Scale by the learning rate:
+            dp_i = delta * dp_i
 
-            # We have the original energy, and gradient updates.
-            # Apply the updates:
-            loop_items = zip(self.adaptive_wavefunction.trainable_variables, original_weights, delta_p)
+            # Unpack the gradients 
+            gradients = self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i)
+
+
+            original_weights = self.wavefunction.trainable_variables
+
+            loop_items = zip(self.adaptive_wavefunction.trainable_variables, original_weights, gradients)
             for weight, original_weight, gradient in loop_items:
                 weight.assign(original_weight + gradient)
 
+
             # Compute the new energy:
             next_energy, overlap, acos = self.recompute_energy(self.adaptive_wavefunction, current_psi)
+            
 
-            par_dist = self.gradient_calc.par_dist(dp_i, S_ij)
+            # Compute the parameter distance:
+            par_dist = self.gradient_calc.par_dist(dp_i, _s_ij)
+            ratio    = tf.abs(par_dist - acos) / tf.abs(par_dist + acos+ 1e-8)
+            _metrics = {
+                "optimizer/delta"   : delta,
+                "optimizer/eps"     : _eps,
+                "optimizer/overlap" : overlap,
+                "optimizer/par_dist": par_dist,
+                "optimizer/acos"    : acos,
+                "optimizer/ratio"   : ratio
+            }
+            return gradients, _metrics, next_energy
 
-            ratio = tf.abs(par_dist - acos) / tf.abs(par_dist + acos)
 
-            # This is the
+        def metric_check(metrics):
+            if metrics['optimizer/ratio'] > 0.4: return False
+            if metrics['optimizer/overlap'] < 0.9: return False
+            if metrics['optimizer/par_dist'] > 0.1: return False
+            if metrics['optimizer/acos'] > 0.1: return False
+            return True
 
-            if next_energy < energy_min and ratio < 0.4 and par_dist < 0.1 and overlap > 0.9:
-               energy_min = next_energy
-               delta_p_min = delta_p
-               final_overlap = overlap
-               final_par_dist = par_dist
-               final_ratio = ratio
-               final_acos = acos
-               converged = True
-               eps_max = eps
+
+        # First, evaluate at eps min and eps max:
+
+        # print(eps_min)
+        # print(eps_max)
+        grad_low,  metrics_low,  energy_low  = evaluate(S_ij, f_i, current_psi, delta, eps_min)
+        grad_high, metrics_high, energy_high = evaluate(S_ij, f_i, current_psi, delta, eps_max)
+
+        # print(grad_high)
+        # print(grad_low)
+ 
+        # Take the current minimum as the high energy:
+        if metric_check(metrics_high):
+            current_minimum_energy = energy_high
+            current_best_grad = grad_high
+            current_best_metrics = metrics_high
+        else:
+            # If the highest eps metrics failed, we're not gonna succeed here.
+            grad = [0*w for w in grad_high]
+            return grad, metrics_high, None
+
+        # We use a bisection section technique, in log space, to narrow down the right epsilon.
+        converged = False
+        for i in range(5):
+
+            # And, compute the mid point:
+            eps_mid = tf.sqrt(eps_max * eps_min)
+            grad_mid,  metrics_mid,  energy_mid  = evaluate(S_ij, f_i, current_psi, delta, eps_mid)
+
+
+            # We have 3 values, high, mid, and low eps.  With the same delta, the smallest eps
+            # is the most aggressive update.  The biggest eps is the least aggressive.
+            # (eps is applied before matrix inversion)
+            # If all 3 points pass, we narrow in.  
+
+
+            # If we're here, the most aggressive update passed linear expansion checks.
+            # Check the mid point anywyas:
+            if not metric_check(metrics_mid):
+                logger.debug("Skipping this energy.", metrics_mid)
+                eps_min = eps_mid
+                metrics_min = metrics_mid
+                grad_min = grad_mid
+                continue
+
+            if energy_mid < current_minimum_energy:
+                eps_max = eps_mid
+                grad_max = grad_mid
+                metrics_max = metrics_mid
+                energy_max = energy_mid
+                current_minimum_energy  = energy_mid
+                current_minimum_grad    = grad_mid
+                current_minimum_metrics = metrics_mid
+                converged = True
             else:
-               eps_min = eps
+                eps_min = eps_mid
+                grad_min = grad_mid
+                metrics_min = metrics_mid
+                energy_min = energy_mid
+
+        if not converged:
+            grad = [0*w for w in grad_high]
+            logger.debug("No update selected for this step.")
+            return grad, metrics_high, None
 
 
-        if delta_p_min is None:
-            delta_p_min = delta_p
-
-        delta_metrics = {
-            "optimizer/delta"   : delta,
-            "optimizer/eps"     : eps,
-            "optimizer/overlap" : final_overlap,
-            "optimizer/par_dist": final_par_dist,
-            "optimizer/acos"    : acos,
-            "optimizer/ratio"   : ratio
-        }
-        return delta_p, delta_metrics, energy_min
+        return current_minimum_grad, current_minimum_metrics, current_minimum_energy
 
 
     def optimize_delta(self, current_psi, eps):

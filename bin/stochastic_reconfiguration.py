@@ -197,7 +197,7 @@ class exec(object):
 
         if not MPI_AVAILABLE or hvd.rank() == 0:
             # self.writer = tf.summary.create_file_writer(self.save_path)
-            self.writer = tf.summary.create_file_writer("log/")
+            self.writer = tf.summary.create_file_writer(self.save_path + "/log/")
 
 
         # Now, cast to pathlib:
@@ -477,29 +477,26 @@ def main() -> None:
     overrides = sys.argv[1:]
 
     initialize(config_path="../config", job_name="stochastic_reconfiguration")
-    cfg = compose(config_name="config", return_hydra_config=True, overrides=overrides)
+    cfg = compose(config_name="config", return_hydra_config=False, overrides=overrides)
     # help(compose)
 
-    # logger.info(OmegaConf.to_yaml(cfg))
-    #
-    # manager = logging.root.manager
-    # logger_dict = manager.loggerDict
-    # replacement_dict = {}
-    # for key in logger_dict.keys():
-    #     print(key)
-    #     if "hydra" in key:
-    #         continue
-    #     else:
-    #         replacement_dict[key] = logger_dict[key]
-    # manager.loggerDict = replacement_dict
-    #
-    # loggers = [name for name in logging.root.manager.loggerDict]
+    # We tack on the overrides to the save path:
+    save_path = cfg.save_path
+    overrides = { o.split("=")[0] : o.split("=")[1] for o in overrides}
+    for override in sorted(overrides.keys()):
+        # Skip pieces that are already in the save path by default:
+        if override in ["iterations", "hamiltonian", "nparticles", "dimension", "optimizer", "run_id", ]:
+            continue
+        save_path += f"{override}_{overrides[override]}/"
 
-    work_dir = pathlib.Path(cfg.hydra.run.dir)
-    work_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(OmegaConf.to_yaml(cfg))
+
+    # work_dir = pathlib.Path(cfg.hydra.run.dir)
+    # print(work_dir)
+    # work_dir.mkdir(parents=True, exist_ok=True)
 
     # cd in to the job directory since we disabled that with hydra:
-    os.chdir(cfg.hydra.run.dir)
+    # os.chdir(cfg.hydra.run.dir)
     e = exec(cfg)
     signal.signal(signal.SIGINT, e.interupt_handler)
     e.run()
