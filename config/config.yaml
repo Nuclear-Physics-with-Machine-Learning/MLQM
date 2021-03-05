@@ -12,12 +12,5 @@ sampler:
 nparticles: 2
 dimension: 3
 run_id: ???
-save_path: log/.../${hamiltonian.form}/${run_id}
+save_path: output/${hamiltonian.form}/${nparticles}particles/${dimension}D/${optimizer.form}.${run_id}/
 model_name: ${hamiltonian.form}_${nparticles}part_${dimension}D.model
-
-hydra:
-  job:
-    override_dirname: /
-  run:
-    dir: output/${hamiltonian.form}/${nparticles}particles/${dimension}D/${optimizer.form}.${run_id}
-hydra/hydra_logging: disabled
