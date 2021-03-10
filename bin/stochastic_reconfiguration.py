@@ -491,9 +491,11 @@ def main() -> None:
 
     logger.info(OmegaConf.to_yaml(cfg))
 
-    # work_dir = pathlib.Path(cfg.hydra.run.dir)
-    # print(work_dir)
-    # work_dir.mkdir(parents=True, exist_ok=True)
+    # Prepare directories:
+    work_dir = pathlib.Path(save_path)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    log_dir = pathlib.Path(save_path + "/log/")
+    log_dir.mkdir(parents=True, exist_ok=True)
 
     # cd in to the job directory since we disabled that with hydra:
     # os.chdir(cfg.hydra.run.dir)
