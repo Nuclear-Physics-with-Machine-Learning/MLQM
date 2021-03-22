@@ -163,6 +163,11 @@ class exec(object):
         #
         # exit()
 
+        # Read a target energy if it's there:
+        self.target_energy = None
+        if 'target_energy' in self.config:
+            self.target_energy = self.config['target_energy']
+
 
         self.sr_worker   = StochasticReconfiguration(
             sampler          = sampler,
@@ -339,25 +344,6 @@ class exec(object):
             pass
 
 
-        #
-        # x_test = tf.stack([
-        #     0.01*tf.reshape(tf.linspace(0,11,12), (4,3)),
-        #     -0.02*tf.reshape(tf.linspace(0,11,12), (4,3))
-        # ])
-        #
-        # # Compute the energy with this test:
-        # energy, energy_jf, ke_jf, ke_direct, pe = self.sr_worker.hamiltonian.energy(self.sr_worker.wavefunction, x_test)
-        #
-        # print(energy)
-        # print(energy_jf)
-        #
-        # exit()
-
-
-        # If the file for the model path already exists, we don't change it until after restoring:
-        self.model_path = self.save_path / self.model_name
-
-
         if MPI_AVAILABLE and hvd.size() > 1:
             logger.info("Broadcasting initial model and optimizer state.")
             # We have to broadcast the wavefunction parameter here:
@@ -367,8 +353,6 @@ class exec(object):
             self.global_step = hvd.broadcast_object(
                 self.global_step, root_rank=0)
             logger.info("Done broadcasting initial model and optimizer state.")
-
-        # self.sr_worker.wavefunction.restore_jax("/home/cadams/ThetaGPU/AI-for-QM/full.model")
 
 
 
@@ -387,6 +371,8 @@ class exec(object):
         # Before beginning the loop, manually flush the buffer:
         logger.handlers[0].flush()
 
+        best_energy = 999
+
         while self.global_step < self.config["iterations"]:
             if not self.active: break
 
@@ -398,8 +384,19 @@ class exec(object):
 
             start = time.time()
 
-            metrics  = self.sr_worker.sr_step(n_thermalize = 1000)
+            metrics = self.sr_worker.sr_step(n_thermalize = 1000)
 
+            # Check if we've reached a better energy:
+            if metrics['energy/energy'] < best_energy:
+                best_energy = metrics['energy/energy']
+
+                # If below the target energy, snapshot the weights as the best-yet
+                if self.target_energy is None:
+                    pass
+                elif best_energy < self.target_energy:
+                    if not MPI_AVAILABLE or hvd.rank() == 0:
+                        self.save_weights(name="best_energy")
+                        pass
 
             metrics['time'] = time.time() - start
 
@@ -455,11 +452,16 @@ class exec(object):
                 for key in metrics:
                     tf.summary.scalar(key, metrics[key], step=step)
 
-    def save_weights(self):
+
+    def save_weights(self, name = "checkpoint" ):
+
+        # If the file for the model path already exists, we don't change it until after restoring:
+        self.model_path = self.save_path / pathlib.Path(name) / self.model_name
+
         # Take the network and snapshot it to file:
         self.sr_worker.wavefunction.save_weights(self.model_path)
         # Save the global step:
-        with open(self.save_path / pathlib.Path("global_step.pkl"), 'wb') as _f:
+        with open(self.save_path /  pathlib.Path(name) / pathlib.Path("global_step.pkl"), 'wb') as _f:
             pickle.dump(self.global_step, file=_f)
 
     def finalize(self):
