@@ -4,7 +4,7 @@
 
 # MLQM
 
-MLQM stands for "Machine Learning Quantum Mechanics".  This repository contains tools to perform variational monte carlo for nuclear physics, though there are some additional Hamiltonians implemented as development tools and cross checks: the harmonic oscillator and the Hydrogen atom.
+MLQM stands for "Machine Learning Quantum Montecarlo".  This repository contains tools to perform variational monte carlo for nuclear physics, though there are some additional Hamiltonians implemented as development tools and cross checks: the harmonic oscillator and the Hydrogen atom.
 
 ## Requirements
 
