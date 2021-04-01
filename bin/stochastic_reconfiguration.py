@@ -48,27 +48,6 @@ import logging
 from logging import handlers
 
 
-logger = logging.getLogger("mlqm")
-
-
-# Create a handler for STDOUT, but only on the root rank:
-if not MPI_AVAILABLE or hvd.rank() == 0:
-    stream_handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    stream_handler.setFormatter(formatter)
-    handler = handlers.MemoryHandler(capacity = 10, target=stream_handler)
-    logger.addHandler(handler)
-    # Add a file handler:
-    logger.setLevel(logging.DEBUG)
-    # fh = logging.FileHandler('run.log')
-    # fh.setLevel(logging.DEBUG)
-    # logger.addHandler(fh)
-else:
-    # in this case, MPI is available but it's not rank 0
-    # create a null handler
-    handler = logging.NullHandler()
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
 
 
 
@@ -101,8 +80,13 @@ class exec(object):
             self.size = 1
             self.local_rank = 1
 
-        # Open the config file:
         self.config = config
+
+        self.configure_logger()
+        logger = logging.getLogger()
+        logger.info(OmegaConf.to_yaml(config))
+
+
 
         # Use this flag to catch interrupts, stop the next step and write output.
         self.active = True
@@ -178,28 +162,6 @@ class exec(object):
             sampler_config   = self.config.sampler,
         )
 
-        append_token = ""
-
-        if self.hamiltonian_form not in self.save_path:
-            append_token += f"/{self.hamiltonian_form}/"
-
-        dimension = f"{self.config.dimension}D"
-        if dimension not in self.save_path:
-            append_token += f"/{dimension}/"
-
-        n_part = f"{self.config.nparticles}particles"
-        if n_part not in self.save_path:
-            append_token += f"/{n_part}/"
-
-        # If there is an ellipsis in the save path, we replace that.
-        # Otherwise it just appends
-
-        if "..." in self.save_path:
-            self.save_path = self.save_path.replace("...", append_token)
-        else:
-            self.save_path += append_token
-
-
         if not MPI_AVAILABLE or hvd.rank() == 0:
             # self.writer = tf.summary.create_file_writer(self.save_path)
             self.writer = tf.summary.create_file_writer(self.save_path + "/log/")
@@ -214,6 +176,37 @@ class exec(object):
             with open(pathlib.Path('config.snapshot.yaml'), 'w') as cfg:
                 OmegaConf.save(config=self.config, f=cfg)
 
+    def configure_logger(self):
+
+        logger = logging.getLogger()
+
+        # Create a handler for STDOUT, but only on the root rank:
+        if not MPI_AVAILABLE or hvd.rank() == 0:
+            stream_handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            stream_handler.setFormatter(formatter)
+            handler = handlers.MemoryHandler(capacity = 10, target=stream_handler)
+            logger.addHandler(handler)
+            # Add a file handler:
+
+            # Add a file handler too:
+            log_file = self.config.save_path + "/process.log"
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(formatter)
+            file_handler = handlers.MemoryHandler(capacity=10, target=file_handler)
+            logger.addHandler(file_handler)
+
+
+            logger.setLevel(logging.DEBUG)
+            # fh = logging.FileHandler('run.log')
+            # fh.setLevel(logging.DEBUG)
+            # logger.addHandler(fh)
+        else:
+            # in this case, MPI is available but it's not rank 0
+            # create a null handler
+            handler = logging.NullHandler()
+            logger.addHandler(handler)
+            logger.setLevel(logging.DEBUG)
 
 
     def build_sampler(self):
@@ -257,6 +250,7 @@ class exec(object):
         return hamiltonian
 
     def restore(self):
+        logger = logging.getLogger()
         if not MPI_AVAILABLE or hvd.rank() == 0:
             logger.info("Trying to restore model")
 
@@ -329,6 +323,7 @@ class exec(object):
     def run(self):
 
 
+        logger = logging.getLogger()
 
         #
         # with self.writer.as_default():
@@ -431,7 +426,8 @@ class exec(object):
                     tf.summary.trace_off()
 
         # Save the weights at the very end:
-        self.save_weights()
+        if not MPI_AVAILABLE or hvd.rank() == 0:
+            self.save_weights()
 
 
     def model_summary(self, weights, gradients, step):
@@ -473,30 +469,13 @@ class exec(object):
         self.active = False
 
 
-# @hydra.main(config_path="../config", config_name="config")
-def main() -> None:
-
-    overrides = sys.argv[1:]
-
-    initialize(config_path="../config", job_name="stochastic_reconfiguration")
-    cfg = compose(config_name="config", return_hydra_config=False, overrides=overrides)
-    # help(compose)
-
-    # We tack on the overrides to the save path:
-    save_path = cfg.save_path
-    overrides = { o.split("=")[0] : o.split("=")[1] for o in overrides}
-    for override in sorted(overrides.keys()):
-        # Skip pieces that are already in the save path by default:
-        if override in ["iterations", "hamiltonian", "nparticles", "dimension", "optimizer", "run_id", ]:
-            continue
-        save_path += f"{override}_{overrides[override]}/"
-
-    logger.info(OmegaConf.to_yaml(cfg))
+@hydra.main(config_path="../config", config_name="config")
+def main(cfg : OmegaConf) -> None:
 
     # Prepare directories:
-    work_dir = pathlib.Path(save_path)
+    work_dir = pathlib.Path(cfg.save_path)
     work_dir.mkdir(parents=True, exist_ok=True)
-    log_dir = pathlib.Path(save_path + "/log/")
+    log_dir = pathlib.Path(cfg.save_path + "/log/")
     log_dir.mkdir(parents=True, exist_ok=True)
 
     # cd in to the job directory since we disabled that with hydra:
@@ -507,4 +486,7 @@ def main() -> None:
     e.finalize()
 
 if __name__ == "__main__":
+    import sys
+    if "--help" not in sys.argv and "--hydra-help" not in sys.argv:
+        sys.argv += ['hydra.run.dir=.', 'hydra/job_logging=disabled']
     main()

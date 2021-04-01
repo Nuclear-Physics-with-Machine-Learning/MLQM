@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy
 
 import logging
-logger = logging.getLogger("mlqm")
+logger = logging.getLogger()
 
 from mlqm import DEFAULT_TENSOR_TYPE
 from mlqm.hamiltonians import Hamiltonian

@@ -1,7 +1,7 @@
 import copy
 import logging
 # Set up logging:
-logger = logging.getLogger("mlqm")
+logger = logging.getLogger()
 
 from omegaconf import DictConfig
 
@@ -224,7 +224,7 @@ class StochasticReconfiguration(object):
         return energy, overlap, acos
 
     def flat_optimizer(self, current_psi, eps, delta):
-        
+
         dpsi_i    = self.estimator['dpsi_i']
         energy    = self.estimator["energy"]
         dpsi_i_EL = self.estimator["dpsi_i_EL"]
@@ -234,7 +234,7 @@ class StochasticReconfiguration(object):
 
         dp_i = delta * dp_i
 
-        # Unpack the gradients 
+        # Unpack the gradients
         gradients = self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i)
 
         original_weights = self.wavefunction.trainable_variables
@@ -307,7 +307,7 @@ class StochasticReconfiguration(object):
             # Scale by the learning rate:
             dp_i = delta * dp_i
 
-            # Unpack the gradients 
+            # Unpack the gradients
             gradients = self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i)
 
 
@@ -320,7 +320,7 @@ class StochasticReconfiguration(object):
 
             # Compute the new energy:
             next_energy, overlap, acos = self.recompute_energy(self.adaptive_wavefunction, current_psi)
-            
+
 
             # Compute the parameter distance:
             par_dist = self.gradient_calc.par_dist(dp_i, _s_ij)
@@ -353,7 +353,7 @@ class StochasticReconfiguration(object):
 
         # print(grad_high)
         # print(grad_low)
- 
+
         # Take the current minimum as the high energy:
         if metric_check(metrics_high):
             current_minimum_energy = energy_high
@@ -376,7 +376,7 @@ class StochasticReconfiguration(object):
             # We have 3 values, high, mid, and low eps.  With the same delta, the smallest eps
             # is the most aggressive update.  The biggest eps is the least aggressive.
             # (eps is applied before matrix inversion)
-            # If all 3 points pass, we narrow in.  
+            # If all 3 points pass, we narrow in.
 
 
             # If we're here, the most aggressive update passed linear expansion checks.
@@ -452,7 +452,7 @@ class StochasticReconfiguration(object):
 
         # Snapshot the current weights:
         original_weights = self.wavefunction.trainable_variables
-     
+
 
         # Select the delta options:
 
@@ -513,13 +513,13 @@ class StochasticReconfiguration(object):
                 break
             else:
                 logger.debug(f"Skipping this energy (acos: {acoses[i_e_min]}, overlap: {overlaps[i_e_min]}, par_dist: {par_dist}, ratio: {ratio})")
-                
+
                 # Remove these options
                 energies.pop(i_e_min)
                 overlaps.pop(i_e_min)
                 acoses.pop(i_e_min)
                 delta_options.pop(i_e_min)
-                
+
                 final_overlap = 2.0
                 next_energy = None
 
