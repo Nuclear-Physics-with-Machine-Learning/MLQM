@@ -35,11 +35,13 @@ python bin/stochastic_reconfiguration.py run_id=deuteron nparticles=2 iterations
 
 This software is compatible with both CPUs and GPUs through Tensorflow.  It has good weak and strong scaling performance:
 
-![Scaling performance for 4He on A100 GPUs (ThetaGPU@ALCF)](https://github.com/coreyjadams/AI-for-QM/blob/master/images/Scaling_Performance.pdf)
+![Scaling performance for 4He on A100 GPUs (ThetaGPU@ALCF)](https://github.com/coreyjadams/AI-for-QM/blob/master/images/Scaling_Performance.png)
 
 The software also has good scaling performance with increasing number of nucleons:
 
-![Nucleon scaling performance on A100 GPUs (ThetaGPU@ALCF)](https://github.com/coreyjadams/AI-for-QM/blob/master/images/NucleonScaling.pdf)
+![Nucleon scaling performance on A100 GPUs (ThetaGPU@ALCF)](https://github.com/coreyjadams/AI-for-QM/blob/master/images/NucleonScaling.png)
+
+
 
 ## Reference
 
