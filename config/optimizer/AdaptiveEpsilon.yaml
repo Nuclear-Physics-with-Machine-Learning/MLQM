@@ -1,4 +1,3 @@
-# @package _group_
 delta: 0.01
 epsilon_max: 0.1
 epsilon_min: 0.00000001
