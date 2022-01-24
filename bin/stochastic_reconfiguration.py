@@ -84,6 +84,7 @@ class exec(object):
 
         self.configure_logger()
         logger = logging.getLogger()
+        logger.info("")
         logger.info(OmegaConf.to_yaml(config))
 
 
@@ -109,7 +110,6 @@ class exec(object):
         hamiltonian = self.build_hamiltonian()
 
         x = sampler.sample()
-
 
         wavefunction_config = self.config['wavefunction']
 
@@ -185,7 +185,7 @@ class exec(object):
             stream_handler = logging.StreamHandler()
             formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
             stream_handler.setFormatter(formatter)
-            handler = handlers.MemoryHandler(capacity = 10, target=stream_handler)
+            handler = handlers.MemoryHandler(capacity = 1, target=stream_handler)
             logger.addHandler(handler)
             # Add a file handler:
 
@@ -193,7 +193,7 @@ class exec(object):
             log_file = self.config.save_path + "/process.log"
             file_handler = logging.FileHandler(log_file)
             file_handler.setFormatter(formatter)
-            file_handler = handlers.MemoryHandler(capacity=10, target=file_handler)
+            file_handler = handlers.MemoryHandler(capacity=1, target=file_handler)
             logger.addHandler(file_handler)
 
 

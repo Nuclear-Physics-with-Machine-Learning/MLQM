@@ -17,7 +17,7 @@ class DenseBlock(tf.keras.models.Model):
         tf.keras.models.Model
     """
     def __init__(self, n_output, use_bias, activation):
-        tf.keras.models.Model.__init__(self)
+        tf.keras.models.Model.__init__(self, dtype=DEFAULT_TENSOR_TYPE)
 
         self.layer = tf.keras.layers.Dense(n_output,
             activation = activation, use_bias = use_bias,
@@ -26,10 +26,9 @@ class DenseBlock(tf.keras.models.Model):
             )
 
 
-    def call(self, inputs):
+    def __call__(self, inputs):
 
         x = self.layer(inputs)
-
         return x
 
 
@@ -45,7 +44,7 @@ class ResidualBlock(DenseBlock):
         DenseBlock.__init__(self, n_output, use_bias, activation)
 
 
-    def call(self, inputs):
+    def __call__(self, inputs):
 
         x = self.layer(inputs)
 
@@ -163,9 +162,10 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         return new_ob
 
-    # @tf.function(experimental_compile=True)
+    @tf.function(experimental_compile=True)
     # @tf.function
-    def call(self, inputs, trainable=None):
+    def __call__(self, inputs, training=None):
+
         # Mean subtract for all particles:
         if self.nparticles > 1 and self.mean_subtract:
             mean = tf.reduce_mean(inputs, axis=1)
@@ -185,8 +185,6 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
         boundary_condition = -self.confinement * tf.reduce_sum(xinputs**2, axis=(1,2))
         boundary_condition = tf.reshape(boundary_condition, [-1,1])
-
-
         return x + boundary_condition
 
     def n_parameters(self):
