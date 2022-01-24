@@ -43,7 +43,6 @@ class MetropolisSampler(object):
 
         #  Run the initalize to get the first locations:
         self.walkers = initializer(shape=self.size, **init_params, dtype=dtype)
-
         self.walker_history = []
 
     def sample(self):
@@ -52,6 +51,7 @@ class MetropolisSampler(object):
         '''
         # Make sure to wrap in tf.Variable for back prop calculations
         # Before returning, append the current walkers to the walker history:
+        
         self.walker_history.append(self.walkers)
         return  self.walkers
 
@@ -80,7 +80,6 @@ class MetropolisSampler(object):
         # for i in range(nkicks):
         walkers, acceptance = self.internal_kicker(
             self.size, self.walkers, wavefunction, kicker, kicker_params, tf.constant(nkicks), dtype=self.dtype)
-
 
         # Update the walkers:
         self.walkers = walkers
@@ -129,6 +128,29 @@ class MetropolisSampler(object):
         # print(shape)
         kicks = kicker(shape=[nkicks, *shape], **kicker_params, dtype=dtype)
         # print(kicks.shape)
+
+        # Adding spin:
+        #  A meaningful metropolis move is to pick a pair and exchange the spin
+        #  ONly one pair gets swapped at a time
+        #  Change the isospin of a pair as well.
+        #  The spin coordinate is 2 dimensions per particle: spin and isospin (each up/down)
+        #  
+
+        # Computing modulus square of wavefunction in new vs old coordinates
+        #  - this kicks randomly with a guassian, and has an acceptance probaility
+        # However, what we can do instead is to add a drift term
+        # Instead of kicking with a random gaussian, we compute the derivative 
+        # with respect to X.
+        # Multiply it by sigma^2
+        # Then, clip the drift so it is not too large.
+        # New coordinates are the old + gaussian + drift
+        # Acceptance is ratio of modulus squared wavefunction IF the move is symmetric
+        # So need to weight the modulus with a drift reweighting term.
+
+
+        # Spin typically thermalizes first.
+        # Fewer spin configurations allowed due to total spin conservation
+        # 
 
         for i_kick in tf.range(nkicks):
             # Create a kick:

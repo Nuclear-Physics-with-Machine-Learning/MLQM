@@ -610,7 +610,6 @@ class StochasticReconfiguration(object):
 
             # Get the current walker locations:
             x_current  = _sampler.sample()
-
             # Compute the observables:
             energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = self.hamiltonian.energy(_wavefunction, x_current)
 

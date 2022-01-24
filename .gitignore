@@ -5,6 +5,10 @@ __pycache__/
 
 output/
 
+# Hydra files:
+.hydra/
+config.snapshot.yaml
+
 # Cobalt files:
 *.cobaltlog
 *.error
