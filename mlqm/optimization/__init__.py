@@ -1,3 +1,6 @@
 from .GradientCalculator import GradientCalculator
-from .StochasticReconfiguration import StochasticReconfiguration
+from .FlatOptimizer import FlatOptimizer
+from .AdaptiveDeltaOptimizer import AdaptiveDeltaOptimizer
+from .AdaptiveEpsilonOptimizer import AdaptiveEpsilonOptimizer
+# from .AdamOptimizer import AdamOptimizer
 

@@ -12,7 +12,7 @@ class Hamiltonian(object):
     Implementation of the quantum harmonic oscillator hamiltonian
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, parameters):
         ''' Initialize the Hamiltonian
 
         The derived class will check parameters, but this converts all of them to floats
@@ -21,9 +21,11 @@ class Hamiltonian(object):
         '''
         object.__init__(self)
         self.parameters = {}
+
         # Cast them all to tf constants:
-        for key in kwargs:
-            self.parameters[key] = tf.constant(float(kwargs[key]),dtype=DEFAULT_TENSOR_TYPE)
+        for key in parameters.keys():
+            if type(parameters[key]) is float:
+                self.parameters[key] = tf.constant(float(parameters[key]),dtype=DEFAULT_TENSOR_TYPE)
 
         self.HBAR = tf.constant(1.0, dtype = DEFAULT_TENSOR_TYPE)
 

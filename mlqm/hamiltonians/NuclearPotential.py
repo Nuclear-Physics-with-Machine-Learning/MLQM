@@ -13,18 +13,18 @@ class NuclearPotential(Hamiltonian):
     """Nuclear Physics Potential
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, parameters):
         '''
         Arguments:
             mass {float} -- Nuclear mass, aka number of electrons
 
         '''
-        Hamiltonian.__init__(self, **kwargs)
+        Hamiltonian.__init__(self, parameters)
 
-        # Check the parameters have everything needed:
-        for parameter in ["mass"]:
-            if parameter not in self.parameters:
-                raise KeyError(f"Parameter {parameter} not suppliled as keyword arg to HarmonicOscillator")
+        # # Check the parameters have everything needed:
+        # for parameter in ["mass"]:
+        #     if parameter not in self.parameters:
+        #         raise KeyError(f"Parameter {parameter} not suppliled as keyword arg to NuclearPotential")
 
         if 'vkr' in self.parameters:
             if self.parameters['vkr'] not in [2, 4, 6]:

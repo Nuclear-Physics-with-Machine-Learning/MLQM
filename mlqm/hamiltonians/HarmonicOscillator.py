@@ -12,14 +12,15 @@ class HarmonicOscillator(Hamiltonian):
     Implementation of the quantum harmonic oscillator hamiltonian
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, parameters):
 
-        Hamiltonian.__init__(self, **kwargs)
+        Hamiltonian.__init__(self, parameters)
 
-        # Check the parameters have everything needed:
-        for parameter in ["mass", "omega"]:
-            if parameter not in self.parameters:
-                raise KeyError(f"Parameter {parameter} not suppliled as keyword arg to HarmonicOscillator")
+
+        # # Check the parameters have everything needed:
+        # for parameter in ["mass", "omega"]:
+        #     if parameter not in self.parameters:
+        #         raise KeyError(f"Parameter {parameter} not suppliled as keyword arg to HarmonicOscillator")
 
 
     @tf.function

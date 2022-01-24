@@ -56,9 +56,8 @@ from logging import handlers
 mlqm_dir = os.path.dirname(os.path.abspath(__file__))
 mlqm_dir = os.path.dirname(mlqm_dir)
 sys.path.insert(0,mlqm_dir)
+from mlqm.config import Config
 from mlqm import hamiltonians
-from mlqm.samplers     import Estimator
-from mlqm.optimization import GradientCalculator, StochasticReconfiguration
 from mlqm import DEFAULT_TENSOR_TYPE
 from mlqm.models import DeepSetsWavefunction
 
@@ -153,14 +152,30 @@ class exec(object):
             self.target_energy = self.config['target_energy']
 
 
-        self.sr_worker   = StochasticReconfiguration(
-            sampler          = sampler,
-            wavefunction     = wavefunction,
-            adaptive_wfn     = adaptive_wavefunction,
-            hamiltonian      = hamiltonian,
-            optimizer_config = self.config.optimizer,
-            sampler_config   = self.config.sampler,
-        )
+        from mlqm.config.optimizer import Optimizer
+
+        print(self.config.optimizer)
+
+        optimizer_args = {
+            "sampler"               : sampler,
+            "wavefunction"          : wavefunction,
+            "adaptive_wavefunction" : adaptive_wavefunction,
+            "hamiltonian"           : hamiltonian,
+            "optimizer_config"      : self.config.optimizer,
+            "sampler_config"        : self.config.sampler,
+        }
+
+        if self.config.optimizer.form == Optimizer.flat:
+            from mlqm.optimization import FlatOptimizer
+            self.sr_worker   = FlatOptimizer(**optimizer_args)
+        elif self.config.optimizer.form == Optimizer.adaptive_delta:
+            from mlqm.optimization import AdaptiveDeltaOptimizer
+            self.sr_worker   = AdaptiveDeltaOptimizer(**optimizer_args)
+        elif self.config.optimizer.form == Optimizer.adaptive_epsilon:
+            from mlqm.optimization import AdaptiveEpsilonOptimizer
+            self.sr_worker   = AdaptiveEpsilonOptimizer(**optimizer_args)
+        else:
+            raise Exception("No optimizer matched!")
 
         if not MPI_AVAILABLE or hvd.rank() == 0:
             # self.writer = tf.summary.create_file_writer(self.save_path)
@@ -175,6 +190,7 @@ class exec(object):
         if not MPI_AVAILABLE or hvd.rank() == 0:
             with open(pathlib.Path('config.snapshot.yaml'), 'w') as cfg:
                 OmegaConf.save(config=self.config, f=cfg)
+
 
     def configure_logger(self):
 
@@ -235,17 +251,14 @@ class exec(object):
 
     def build_hamiltonian(self):
 
-        # First, ask for the type of hamiltonian
-        self.hamiltonian_form = self.config["hamiltonian"]["form"]
+        from mlqm.config.hamiltonian import Potential
 
-        # Is this hamiltonian in the options?
-        if self.hamiltonian_form not in hamiltonians.__dict__:
-            raise NotImplementedError(f"hamiltonian {self.hamiltonian_form} is not found.")
 
         parameters = self.config["hamiltonian"]
-        parameters = { p : parameters[p] for p in parameters.keys() if p != "form"}
+        # parameters = { p : parameters[p] for p in parameters.keys() if p != "form"}
 
-        hamiltonian = hamiltonians.__dict__[self.hamiltonian_form](**parameters)
+        # print(hamiltonians.__dict__)
+        hamiltonian = hamiltonians.__dict__[parameters.form.name](parameters)
 
         return hamiltonian
 
@@ -465,11 +478,13 @@ class exec(object):
             self.save_weights()
 
     def interupt_handler(self, sig, frame):
+        logger = logging.getLogger()
+    
         logger.info("Snapshoting weights...")
         self.active = False
 
 
-@hydra.main(config_path="../config", config_name="config")
+@hydra.main(config_path="../mlqm/config/", config_name="config")
 def main(cfg : OmegaConf) -> None:
 
     # Prepare directories:

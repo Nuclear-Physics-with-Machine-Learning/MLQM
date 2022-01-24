@@ -11,7 +11,7 @@ class AtomicPotential(Hamiltonian):
 
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, parameters):
         '''
 
         Arguments:
@@ -19,12 +19,12 @@ class AtomicPotential(Hamiltonian):
             Z {int} -- Nuclear charge, aka number of electrons
 
         '''
-        Hamiltonian.__init__(self, **kwargs)
+        Hamiltonian.__init__(self, parameters)
 
-        # Check the parameters have everything needed:
-        for parameter in ["mass", "z"]:
-            if parameter not in self.parameters:
-                raise KeyError(f"Parameter {parameter} not suppliled as keyword arg to Atomic Potential")
+        # # Check the parameters have everything needed:
+        # for parameter in ["mass", "z"]:
+        #     if parameter not in self.parameters:
+        #         raise KeyError(f"Parameter {parameter} not suppliled as keyword arg to Atomic Potential")
 
 
     def potential_energy(self, *, inputs, Z):
