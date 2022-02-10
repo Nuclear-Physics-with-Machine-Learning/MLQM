@@ -35,18 +35,18 @@ class NuclearPotential(Hamiltonian):
             self.vkr = tf.constant(4, dtype = DEFAULT_TENSOR_TYPE)
 
         if self.vkr == 2.0:
-            self.v0r  = tf.constant(-133.3431, dtype=DEFAULT_TENSOR_TYPE)
-            self.v0s  = tf.constant(-9.0212, dtype = DEFAULT_TENSOR_TYPE)
-            self.ar3b = tf.constant(8.2757658256, dtype = DEFAULT_TENSOR_TYPE)
+            self.v0r  = tf.constant(-133.3431,     dtype = DEFAULT_TENSOR_TYPE)
+            self.v0s  = tf.constant(-9.0212,       dtype = DEFAULT_TENSOR_TYPE)
+            self.ar3b = tf.constant(8.2757658256,  dtype = DEFAULT_TENSOR_TYPE)
             logger.info(f"Using vkr = {self.vkr}")
         elif self.vkr == 4.0:
-            self.v0r  = tf.constant(-487.6128, dtype=DEFAULT_TENSOR_TYPE)
-            self.v0s  = tf.constant(-17.5515, dtype = DEFAULT_TENSOR_TYPE)
+            self.v0r  = tf.constant(-487.6128,     dtype = DEFAULT_TENSOR_TYPE)
+            self.v0s  = tf.constant(-17.5515,      dtype = DEFAULT_TENSOR_TYPE)
             self.ar3b = tf.constant(26.0345712467, dtype = DEFAULT_TENSOR_TYPE)
             logger.info(f"Using vkr = {self.vkr}")
         elif self.vkr == 6.0:
-            self.v0r  = tf.constant(-1064.5010, dtype=DEFAULT_TENSOR_TYPE)
-            self.v0s  = tf.constant(-26.0830, dtype = DEFAULT_TENSOR_TYPE)
+            self.v0r  = tf.constant(-1064.5010,    dtype = DEFAULT_TENSOR_TYPE)
+            self.v0s  = tf.constant(-26.0830,      dtype = DEFAULT_TENSOR_TYPE)
             self.ar3b = tf.constant(51.5038930567, dtype = DEFAULT_TENSOR_TYPE)
             logger.info(f"Using vkr = {self.vkr}")
 
