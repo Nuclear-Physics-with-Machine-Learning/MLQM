@@ -56,10 +56,13 @@ from logging import handlers
 mlqm_dir = os.path.dirname(os.path.abspath(__file__))
 mlqm_dir = os.path.dirname(mlqm_dir)
 sys.path.insert(0,mlqm_dir)
+
+print(sys.path)
+
 from mlqm.config import Config
 from mlqm import hamiltonians
 from mlqm import DEFAULT_TENSOR_TYPE
-from mlqm.models import DeepSetsWavefunction
+from mlqm.models import ManyBodyWavefunction
 
 
 
@@ -108,18 +111,18 @@ class exec(object):
         sampler     = self.build_sampler()
         hamiltonian = self.build_hamiltonian()
 
-        x = sampler.sample()
+        x, spin, isospin = sampler.sample()
 
         wavefunction_config = self.config['wavefunction']
 
         # Create a wavefunction:
-        wavefunction = DeepSetsWavefunction(self.config.dimension, self.config.nparticles, wavefunction_config)
-        adaptive_wavefunction = DeepSetsWavefunction(self.config.dimension, self.config.nparticles, wavefunction_config)
+        wavefunction = ManyBodyWavefunction(self.config.dimension, self.config.nparticles, wavefunction_config)
+        adaptive_wavefunction = ManyBodyWavefunction(self.config.dimension, self.config.nparticles, wavefunction_config)
 
         # Run the wave function once to initialize all its weights
         tf.summary.trace_on(graph=True, profiler=False)
-        _ = wavefunction(x)
-        _ = adaptive_wavefunction(x)
+        _ = wavefunction(x, spin, isospin)
+        _ = adaptive_wavefunction(x, spin, isospin)
         tf.summary.trace_export("graph")
         tf.summary.trace_off()
 
@@ -154,7 +157,6 @@ class exec(object):
 
         from mlqm.config.optimizer import Optimizer
 
-        print(self.config.optimizer)
 
         optimizer_args = {
             "sampler"               : sampler,
@@ -239,7 +241,10 @@ class exec(object):
             nwalkers    = n_walkers,
             initializer = tf.random.normal,
             init_params = {"mean": 0.0, "stddev" : 0.2},
+            z_spin      = self.config.hamiltonian.spin.z_projection,
+            z_isospin   = self.config.hamiltonian.isospin.z_projection,
             dtype       = DEFAULT_TENSOR_TYPE)
+
 
         return sampler
 

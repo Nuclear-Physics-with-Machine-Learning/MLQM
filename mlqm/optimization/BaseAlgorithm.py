@@ -67,23 +67,24 @@ class BaseAlgorithm(object):
         self.predicted_energy = None
 
     @tf.function
-    def batched_jacobian(self, nobs, x_current_arr, wavefunction, jac_fnc):
+    def batched_jacobian(self, nobs, x_current_arr, spin_arr, isospin_arr, wavefunction, jac_fnc):
         ret_jac = []
         for i in range(nobs):
-            flattened_jacobian, flat_shape = jac_fnc(x_current_arr[i], wavefunction)
+            flattened_jacobian, flat_shape = jac_fnc(
+                x_current_arr[i], spin_arr[i], isospin_arr[i], wavefunction)
             ret_jac.append(flattened_jacobian)
 
         return ret_jac, flat_shape
 
 
     @tf.function
-    def jacobian(self, x_current, wavefunction):
+    def jacobian(self, x_current, spin, isospin, wavefunction):
         tape = tf.GradientTape()
         # n_walkers = x_current.shape[0]
 
         # print("Doing forward pass")
         with tape:
-            log_wpsi = wavefunction(x_current)
+            log_wpsi = wavefunction(x_current, spin, isospin)
 
 
         jac = tape.jacobian(log_wpsi, wavefunction.trainable_variables)
@@ -154,8 +155,10 @@ class BaseAlgorithm(object):
         kicker = tf.random.normal
         kicker_params = {"mean": 0.0, "stddev" : 0.2}
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=1)
-        x_current  = self.sampler.sample()
-        energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = self.hamiltonian.energy(self.wavefunction, x_current)
+        x_current, spin, isospin  = self.sampler.sample()
+        energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = \
+            self.hamiltonian.energy(self.wavefunction, x_current, 
+                spin, isospin)
 
 
     #
@@ -165,11 +168,11 @@ class BaseAlgorithm(object):
         estimator = Estimator()
         estimator.clear()
 
-        for next_x, this_current_psi in zip(self.sampler.get_all_walkers(), current_psi):
+        for (next_x, spins, isospins), this_current_psi in zip(*self.sampler.get_all_walkers(), current_psi):
 
             # Compute the observables:
             energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = \
-                self.hamiltonian.energy(test_wavefunction, next_x)
+                self.hamiltonian.energy(test_wavefunction, next_x, spins, isospins)
 
             # Here, we split the energy and other objects into sizes of nwalkers_per_observation
             # if self.n_concurrent_obs_per_rank != 1:
@@ -286,9 +289,10 @@ class BaseAlgorithm(object):
 
 
             # Get the current walker locations:
-            x_current  = _sampler.sample()
+            x_current, spin, isospin  = _sampler.sample()
             # Compute the observables:
-            energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = self.hamiltonian.energy(_wavefunction, x_current)
+            energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = \
+                self.hamiltonian.energy(_wavefunction, x_current, spin, isospin)
 
 
             # R is computed but it needs to be WRT the center of mass of all particles
@@ -321,7 +325,8 @@ class BaseAlgorithm(object):
             # For each observation, we compute the jacobian.
             # flattened_jacobian is a list, flat_shape is just one instance
             flattened_jacobian, flat_shape = self.batched_jacobian(
-                self.n_concurrent_obs_per_rank, x_current, _wavefunction, self.jacobian)
+                self.n_concurrent_obs_per_rank, x_current, 
+                spin, isospin, _wavefunction, self.jacobian)
 
             # Here, if MPI is available, we can do a reduction (sum) over walker variables
 

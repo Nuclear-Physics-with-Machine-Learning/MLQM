@@ -6,51 +6,9 @@ from mlqm import DEFAULT_TENSOR_TYPE
 import copy
 #from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
 
+from . building_blocks import ResidualBlock, DenseBlock
 
-
-class DenseBlock(tf.keras.models.Model):
-    """A dense layer with a bypass lane
-
-    Computes the residual of the inputs.  Will error if n_output != n_input
-
-    Extends:
-        tf.keras.models.Model
-    """
-    def __init__(self, n_output, use_bias, activation):
-        tf.keras.models.Model.__init__(self, dtype=DEFAULT_TENSOR_TYPE)
-
-        self.layer = tf.keras.layers.Dense(n_output,
-            activation = activation, use_bias = use_bias,
-            kernel_initializer = tf.keras.initializers.GlorotNormal,
-            bias_initializer   = tf.keras.initializers.RandomNormal,
-            )
-
-
-    def __call__(self, inputs):
-
-        x = self.layer(inputs)
-        return x
-
-
-class ResidualBlock(DenseBlock):
-    """A dense layer with a bypass lane
-
-    Computes the residual of the inputs.  Will error if n_output != n_input
-
-    Extends:
-        tf.keras.models.Model
-    """
-    def __init__(self, n_output, use_bias, activation):
-        DenseBlock.__init__(self, n_output, use_bias, activation)
-
-
-    def __call__(self, inputs):
-
-        x = self.layer(inputs)
-
-        return inputs + x
-
-class DeepSetsWavefunction(tf.keras.models.Model):
+class DeepSetsCorrelator(tf.keras.models.Model):
     """Create a neural network eave function in N dimensions
 
     Boundary condition, if not supplied, is gaussian in every dimension
@@ -58,14 +16,18 @@ class DeepSetsWavefunction(tf.keras.models.Model):
     Extends:
         tf.keras.models.Model
     """
-    def __init__(self, ndim : int, nparticles: int, configuration: dict,  boundary_condition :tf.keras.layers.Layer = None):
+    def __init__(self, ndim : int, nparticles: int, configuration: dict):
         '''Deep Sets wavefunction for symmetric particle wavefunctions
 
         Implements a deep set network for multiple particles in the same system
 
         Arguments:
-            ndim {int} -- Number of dimensions
-            nparticles {int} -- Number of particls
+        :param      ndim:           Number of dimensions
+        :type       ndim:           int
+        :param      nparticles:     Number of particles
+        :type       nparticles:     int
+        :param      configuration:  Configuration parameters of the network
+        :type       configuration:  dict
 
         Keyword Arguments:
             boundary_condition {tf.keras.layers.Layer} -- [description] (default: {None})
@@ -77,14 +39,11 @@ class DeepSetsWavefunction(tf.keras.models.Model):
 
         self.ndim = ndim
         if self.ndim < 1 or self.ndim > 3:
-           raise Exception("Dimension must be 1, 2, or 3 for DeepSetsWavefunction")
+           raise Exception("Dimension must be 1, 2, or 3 for DeepSetsCorrelator")
 
         self.nparticles = nparticles
 
         self.config = configuration
-
-        self.mean_subtract = self.config.mean_subtract
-
 
         n_filters_per_layer = self.config.n_filters_per_layer
         n_layers            = self.config.n_layers
@@ -145,10 +104,6 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         self.aggregate_net.add(tf.keras.layers.Dense(1,
             use_bias = False))
 
-        # Represent the confinement as a function of r only, which is represented as a neural netowrk
-        # self.confinement = DenseBlock(n_filters_per_layer)
-
-        self.confinement   = tf.constant(self.config.confinement, dtype = DEFAULT_TENSOR_TYPE)
 
         # self.normalization_exponent = tf.Variable(2.0, dtype=DEFAULT_TENSOR_TYPE)
         # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
@@ -165,27 +120,25 @@ class DeepSetsWavefunction(tf.keras.models.Model):
     @tf.function(experimental_compile=True)
     # @tf.function
     def __call__(self, inputs, training=None):
+        """
+        If mean subtraction happens, it is in the call one layer up!
+        """
 
-        # Mean subtract for all particles:
-        if self.nparticles > 1 and self.mean_subtract:
-            mean = tf.reduce_mean(inputs, axis=1)
-            xinputs = inputs - mean[:,None,:]
-        else:
-            xinputs = inputs
 
         x = []
         for p in range(self.nparticles):
-            x.append(self.individual_net(xinputs[:,p,:]))
+            x.append(self.individual_net(inputs[:,p,:]))
 
 
         x = tf.add_n(x)
         x = self.aggregate_net(x)
 
-        # Compute the initial boundary condition, which the network will slowly overcome
-        # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
-        boundary_condition = -self.confinement * tf.reduce_sum(xinputs**2, axis=(1,2))
-        boundary_condition = tf.reshape(boundary_condition, [-1,1])
-        return x + boundary_condition
+        # # Compute the initial boundary condition, which the network will slowly overcome
+        # # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
+        # boundary_condition = -self.confinement * tf.reduce_sum(xinputs**2, axis=(1,2))
+        # boundary_condition = tf.reshape(boundary_condition, [-1,1])
+        # return x + boundary_condition
+        return x 
 
     def n_parameters(self):
         return tf.reduce_sum( [ tf.reduce_prod(p.shape) for p in self.trainable_variables ])

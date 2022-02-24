@@ -5,7 +5,7 @@ from hydra.core.config_store import ConfigStore
 from typing import List, Any
 from omegaconf import MISSING
 
-from .wavefunction import Wavefunction
+from .wavefunction import ManyBodyCfg
 from .hamiltonian  import Hamiltonian
 from .optimizer    import Optimizer
 
@@ -42,7 +42,7 @@ cs.store(
 defaults = [
     {"hamiltonian"  : "nuclear"},
     {"optimizer"    : "flat"},
-    {"wavefunction" : "deepsets"},
+    {"wavefunction" : "many_body"},
     {"sampler"      : "sampler"},
 ]
 
@@ -52,7 +52,7 @@ class Config:
 
     hamiltonian:   Hamiltonian = MISSING
     optimizer:       Optimizer = MISSING
-    wavefunction: Wavefunction = MISSING
+    wavefunction:  ManyBodyCfg = MISSING
     sampler:           Sampler = MISSING
 
     run_id:     str = MISSING

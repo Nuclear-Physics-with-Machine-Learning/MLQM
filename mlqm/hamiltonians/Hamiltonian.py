@@ -30,7 +30,7 @@ class Hamiltonian(object):
         self.HBAR = tf.constant(1.0, dtype = DEFAULT_TENSOR_TYPE)
 
     @tf.function
-    def potential_energy(self, *, inputs):
+    def potential_energy(self, *, inputs, spin, isospin=None):
         """Return potential energy
 
         Calculate and return the PE.
@@ -85,7 +85,11 @@ class Hamiltonian(object):
         return ke
 
     @tf.function
-    def compute_derivatives(self, wavefunction : tf.keras.models.Model, inputs : tf.Tensor):
+    def compute_derivatives(self, 
+        wavefunction : tf.keras.models.Model, 
+        inputs : tf.Tensor,
+        spin : tf.Tensor,
+        isospin : tf.Tensor = None):
 
 
         # Turning off all tape watching except for the inputs:
@@ -95,7 +99,7 @@ class Hamiltonian(object):
             tape.watch(inputs)
             with tf.GradientTape() as second_tape:
                 second_tape.watch(inputs)
-                logw_of_x = wavefunction(inputs, training=True)
+                logw_of_x = wavefunction(inputs, spin, isospin, training=True)
             # Get the derivative of logw_of_x with respect to inputs
             dlogw_dx = second_tape.gradient(logw_of_x, inputs)
 
@@ -167,7 +171,7 @@ class Hamiltonian(object):
     '''
 
     @tf.function
-    def compute_energies(self, inputs, logw_of_x, dlogw_dx, d2logw_dx2):
+    def compute_energies(self, inputs, spin, isospin, logw_of_x, dlogw_dx, d2logw_dx2):
         '''Compute PE, KE_JF, and KE_direct
 
         Placeholder for a user to implement their calculation of the energies.
@@ -194,7 +198,11 @@ class Hamiltonian(object):
         # return None
 
     @tf.function
-    def energy(self, wavefunction : tf.keras.models.Model, inputs : tf.Tensor):
+    def energy(self, 
+        wavefunction : tf.keras.models.Model, 
+        inputs       : tf.Tensor,
+        spin         : tf.Tensor,
+        isospin      : tf.Tensor = None):
         """Compute the expectation value of energy of the supplied wavefunction.
 
         Computes the integral of the wavefunction in this potential
@@ -215,9 +223,11 @@ class Hamiltonian(object):
         # This function takes the inputs
         # And computes the expectation value of the energy at each input point
 
-        logw_of_x, dlogw_dx, d2logw_dx2 = self.compute_derivatives(wavefunction, inputs)
+        logw_of_x, dlogw_dx, d2logw_dx2 = \
+            self.compute_derivatives(wavefunction, inputs, spin, isospin)
 
-        pe, ke_jf, ke_direct = self.compute_energies(inputs, logw_of_x, dlogw_dx, d2logw_dx2)
+        pe, ke_jf, ke_direct = self.compute_energies(
+            inputs, spin, isospin, logw_of_x, dlogw_dx, d2logw_dx2)
 
         # Total energy computations:
         energy = tf.squeeze(pe+ke_direct)

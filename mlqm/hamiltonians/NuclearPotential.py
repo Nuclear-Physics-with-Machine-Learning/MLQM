@@ -69,7 +69,7 @@ class NuclearPotential(Hamiltonian):
         return pot_3b
 
     @tf.function(experimental_compile=False)
-    def potential_energy(self, *, inputs):
+    def potential_energy(self, *, inputs, spin, isospin):
         """Return potential energy
 
         Calculate and return the PE.
@@ -123,7 +123,7 @@ class NuclearPotential(Hamiltonian):
 
     # @tf.function()
     @tf.function(experimental_compile=False)
-    def compute_energies(self, inputs, logw_of_x, dlogw_dx, d2logw_dx2):
+    def compute_energies(self, inputs, spin, isospin, logw_of_x, dlogw_dx, d2logw_dx2):
         '''Compute PE, KE_JF, and KE_direct
 
         Harmonic Oscillator Energy Calculations
@@ -144,7 +144,7 @@ class NuclearPotential(Hamiltonian):
         '''
 
         # Potential energy depends only on the wavefunction
-        pe = self.potential_energy(inputs=inputs)
+        pe = self.potential_energy(inputs=inputs, spin=spin, isospin=isospin)
 
         # KE by parts needs only one derivative
         ke_jf = self.kinetic_energy_jf(dlogw_dx=dlogw_dx, M=self.parameters["mass"])
