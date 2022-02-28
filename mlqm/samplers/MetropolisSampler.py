@@ -15,8 +15,8 @@ class MetropolisSampler(object):
         nparticles  : int,
         initializer : callable,
         init_params : iter,
-        z_spin      : int = 0,
-        z_isospin   : int = 0,
+        n_spin_up   : int = 0,
+        n_protons   : int = 0,
         dtype       : tf.dtypes = tf.float64):
         '''Initialize a metropolis sampler
 
@@ -53,7 +53,7 @@ class MetropolisSampler(object):
         self.use_isospin = False
 
         #  Initialize the spin if needed:
-        if z_spin != 0:
+        if n_spin_up != 0:
             self.use_spin = True
             self.spin_size = (self.nwalkers, self.nparticles)
 
@@ -63,9 +63,9 @@ class MetropolisSampler(object):
             #  to the spin up state in order to create a total z sping as specified.
             
             # Note that we initialize with NUMPY for ease of indexing and shuffling
-            init_walkers = numpy.zeros(shape=self.spin_size)
-            for i in range(z_spin):
-                init_walkers[:,i] += 1
+            init_walkers = numpy.zeros(shape=self.spin_size) - 1
+            for i in range(n_spin_up):
+                init_walkers[:,i] += 2
 
             # Shuffle the spin up particles on each axis:
 
@@ -80,7 +80,7 @@ class MetropolisSampler(object):
             self.spin_walker_history = []
 
         #  Initialize the spin if needed:
-        if z_isospin != 0:
+        if n_protons != 0:
             self.use_isospin = True
             self.isospin_size = (self.nwalkers, self.nparticles)
 
@@ -90,9 +90,9 @@ class MetropolisSampler(object):
             #  to the spin up state in order to create a total z sping as specified.
             
             # Note that we initialize with NUMPY for ease of indexing and shuffling
-            init_walkers = numpy.zeros(shape=self.isospin_size)
-            for i in range(z_isospin):
-                init_walkers[:,i] += 1
+            init_walkers = numpy.zeros(shape=self.isospin_size) -1
+            for i in range(n_protons):
+                init_walkers[:,i] += 2
 
             # Shuffle the spin up particles on each axis:
 
@@ -158,7 +158,7 @@ class MetropolisSampler(object):
         # Send back the acceptance:
         return acceptance
 
-    # @tf.function(experimental_compile=False)
+    @tf.function(experimental_compile=False)
     # @profile
     def internal_kicker(self,
         shape,
@@ -233,6 +233,7 @@ class MetropolisSampler(object):
             kicked_spins = self.swap_random_indexes(spin_walkers)
             kicked_isospins = self.swap_random_indexes(isospin_walkers)
 
+
             # Create a kick:
             kick = kicks[i_kick]
             # kick = kicker(shape=shape, **kicker_params, dtype=dtype)
@@ -265,13 +266,14 @@ class MetropolisSampler(object):
 
             spin_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:-1])])
             spin_walkers = tf.where(spin_accept,kicked_spins,spin_walkers )
-            isospin_walkers = tf.where(spin_accept,kicked_spins,isospin_walkers )
+            isospin_walkers = tf.where(spin_accept,kicked_isospins,isospin_walkers )
 
 
             acceptance = tf.reduce_mean(tf.cast(accept, dtype))
 
         return walkers, spin_walkers, isospin_walkers, acceptance
     
+    @tf.function
     def swap_random_indexes(self, input_tensor):  
         '''
         Pick two indexes, per row, and swap the values
@@ -281,7 +283,7 @@ class MetropolisSampler(object):
 
 
         # First thing to do is generate a set of pairs of indexes, for every row.
-        first_index = tf.constant(tf.range(input_tensor.shape[0]))
+        first_index = tf.range(input_tensor.shape[0])
 
         # First, select indexes:
         swap_indexes = tf.math.top_k(tf.random.uniform(shape=input_tensor.shape), 2, sorted=False).indices

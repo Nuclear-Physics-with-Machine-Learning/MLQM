@@ -17,17 +17,27 @@ class ManyBodyWavefunction(tf.keras.models.Model):
     The forward call computes the many-body correlated multipled by the slater determinant.
     """
 
-    def __init__(self, ndim : int, nparticles: int, configuration: dict):
+    def __init__(self, ndim : int, 
+        nparticles: int, 
+        configuration: dict,
+        n_spin_up : int,
+        n_protons : float):
         """
         Constructs a new instance of the ManyBodyWavefunction
-        
+    
+    
         :param      ndim:           Number of dimensions
         :type       ndim:           int
         :param      nparticles:     Number of particles
         :type       nparticles:     int
         :param      configuration:  Configuration parameters of the network
         :type       configuration:  dict
+        :param      n_spin_up:      The spin
+        :type       n_spin_up:      int
+        :param      n_protons:      The n_protons
+        :type       n_protons:      int
         """
+
         tf.keras.models.Model.__init__(self)
 
         self.ndim = ndim
@@ -64,13 +74,57 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         #     )
 
         self.simple_spatial_net = tf.keras.models.Sequential(
-        [
-            DenseBlock(nparticles, use_bias=True, activation="tanh"),
-            DenseBlock(nparticles, use_bias=True, activation="tanh"),
-        ]  
-    )
+            [
+                DenseBlock(nparticles, use_bias=True, activation="tanh"),
+                DenseBlock(nparticles, use_bias=True, activation="tanh"),
+            ]  
+        )
 
-    # @tf.function
+        # Here, we construct, up front, the appropriate spinor (spin + isospin)
+        # component of the slater determinant.
+
+        # The idea is that for each row (horizontal), the state in question
+        # is ADDED to this matrix to get the right values.
+
+        # We have two of these, one for spin and one for isospin. After the 
+        # addition of the spinors, apply a DOT PRODUCT between these two matrices
+        # and then a DOT PRODUCT to the spatial matrix
+
+        # Since the spinors are getting shuffled by the metropolis alg,
+        # It's not relevant what the order is as long as we have
+        # the total spin and isospin correct.
+        
+        # Since we add the spinors directly to this, we need
+        # to have the following mappings:
+        # spin up -> 1 for the first n_spin_up state
+        # spin up -> 0 for the last nparticles - n_spin_up states
+        # spin down -> 0 for the first n_spin_up state
+        # spin down -> 1 for the last nparticles - n_spin_up states
+
+        # so, set the first n_spin_up entries to 1, which 
+        # (when added to the spinor) yields 2 for spin up and 0 for spin down
+
+        # Set the last nparticles - n_spin_up states to -1, which 
+        # yields 0 for spin up and -2 for spin down.
+
+        spin_spinor_2d = numpy.zeros(shape=(nparticles, nparticles))
+        spin_spinor_2d[0:n_spin_up,:] = 1
+        spin_spinor_2d[n_spin_up:,:]  = -1
+
+        self.spin_spinor_2d = tf.constant(spin_spinor_2d, dtype = DEFAULT_TENSOR_TYPE)
+
+
+        isospin_spinor_2d = numpy.zeros(shape=(nparticles, nparticles))
+        isospin_spinor_2d[0:n_protons,:] = 1
+        isospin_spinor_2d[n_protons:,:]  = -1
+
+        self.isospin_spinor_2d = tf.constant(isospin_spinor_2d, dtype = DEFAULT_TENSOR_TYPE)
+
+        # After doing the additions, it is imperative to apply a factor of 0.5!
+
+
+
+    @tf.function
     def __call__(self, inputs, spin, isospin, training=True):
             
 
@@ -92,14 +146,10 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # We also have to build a matrix of size [nparticles, nparticles] which we
         # then take a determinant of.
         
-        # The components of the spin in the wavefunction are always of the form:
-        # (1/2)(1 +/- s_z) which maps to 0/1 for spin up, 1/0 for spin down in our coordinate system
+        # The axes of the determinant are state (changes vertically) and 
+        # particle (changes horizontally)
 
-        # Compute them up front:
-        spin_plus  = 0.5*(1 + spin)
-        spin_minus = 0.5*(1 - spin)
-
-        # We also need to compute the spatial components.
+        # We need to compute the spatial components.
         # This computes each spatial net (nparticles of them) for each particle (nparticles)
         # You can see how this builds to an output shape of (Np, nP)
         # 
@@ -113,7 +163,35 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # Reshape this to the proper shape for the slater determinant
         spatial_det = tf.reshape(flat_output, (n_walkers, self.nparticles, self.nparticles))
 
-        # For spinors, we need to 
+        # For spinors, we need to do the inner product with the states.
+        # For the deuteron, this is p-up and n-up.  In pratcice, for the 
+        # spinors we recieve (+/- 1 in value for up/down), this can be computed
+        # like so:
+
+        # spin_plus  = 0.5*(1 + spin) # This is 1 for spin up, 0 for spin down
+        # spin_minus = 0.5*(1 - spin) # this is 0 for spin up, 1 for spin down.
+
+        # In the der
+
+        # print("spin: ", spin)
+        repeated_spin_spinor = tf.tile(spin, multiples = (1, self.nparticles))
+        repeated_spin_spinor = tf.reshape(repeated_spin_spinor, (-1, self.nparticles, self.nparticles))
+
+        # print("repeated_spin_spinor: ", repeated_spin_spinor)
+        # print("self.spin_spinor_2d", self.spin_spinor_2d)
+        spin_slater = 0.5*(repeated_spin_spinor + self.spin_spinor_2d)
+        # print("spin_slater: ", spin_slater)
+
+
+        # print("isospin: ", isospin)
+        repeated_isospin_spinor = tf.tile(isospin, multiples = (1, self.nparticles))
+        repeated_isospin_spinor = tf.reshape(repeated_isospin_spinor, (-1, self.nparticles, self.nparticles))
+
+        # print("repeated_isospin_spinor: ", repeated_isospin_spinor)
+        # print("self.isospin_spinor_2d", self.isospin_spinor_2d)
+        isospin_slater = 0.5*(repeated_isospin_spinor + self.isospin_spinor_2d)
+        # print("isospin_slater: ", isospin_slater)
+
 
         # Compute the determinant here
         # Determinant is not pos def
@@ -123,11 +201,19 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # we are using psi = e^U(X) * slater_det, but parametrizing log(psi)
         # with this wave function. Therefore, we return:
         # log(psi) = U(x) + log(slater_det)
-        
-        slater_det = spatial_det
+        # Since the op we use below is `slogdet` and returns the sign + log(abs(det))
+        # Then the total function is psi = e^(U(X))*[sign(det(S))*exp^(log(abs(det(S))))]
+        # log(psi) = U(X) + log(sign(det(S)) +log(abs(det(S)))
+        #         
+        slater_det = spin_slater * isospin_slater * spatial_det
+
+        # print("slater_det, ", slater_det)
 
 
         sign, logdet = tf.linalg.slogdet(slater_det)
+
+        # print(sign)
+        # print(logdet)
 
         # print("Logdet shape: ", logdet.shape)
 

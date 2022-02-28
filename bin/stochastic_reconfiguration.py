@@ -116,8 +116,20 @@ class exec(object):
         wavefunction_config = self.config['wavefunction']
 
         # Create a wavefunction:
-        wavefunction = ManyBodyWavefunction(self.config.dimension, self.config.nparticles, wavefunction_config)
-        adaptive_wavefunction = ManyBodyWavefunction(self.config.dimension, self.config.nparticles, wavefunction_config)
+        wavefunction = ManyBodyWavefunction(
+            self.config.dimension, 
+            self.config.nparticles, 
+            wavefunction_config,
+            n_spin_up = 2*self.config.hamiltonian.spin.z_projection,
+            n_protons = self.config.hamiltonian.Z,
+            )
+        adaptive_wavefunction = ManyBodyWavefunction(
+            self.config.dimension, 
+            self.config.nparticles, 
+            wavefunction_config,
+            n_spin_up = 2*self.config.hamiltonian.spin.z_projection,
+            n_protons = self.config.hamiltonian.Z,
+            )
 
         # Run the wave function once to initialize all its weights
         tf.summary.trace_on(graph=True, profiler=False)
@@ -241,8 +253,8 @@ class exec(object):
             nwalkers    = n_walkers,
             initializer = tf.random.normal,
             init_params = {"mean": 0.0, "stddev" : 0.2},
-            z_spin      = self.config.hamiltonian.spin.z_projection,
-            z_isospin   = self.config.hamiltonian.isospin.z_projection,
+            n_spin_up   = 2*self.config.hamiltonian.spin.z_projection,
+            n_protons   = self.config.hamiltonian.Z,
             dtype       = DEFAULT_TENSOR_TYPE)
 
 

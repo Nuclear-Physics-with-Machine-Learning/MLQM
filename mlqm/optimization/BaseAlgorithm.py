@@ -168,7 +168,7 @@ class BaseAlgorithm(object):
         estimator = Estimator()
         estimator.clear()
 
-        for (next_x, spins, isospins), this_current_psi in zip(*self.sampler.get_all_walkers(), current_psi):
+        for next_x, spins, isospins, this_current_psi in zip(*self.sampler.get_all_walkers(), current_psi):
 
             # Compute the observables:
             energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = \
@@ -308,7 +308,12 @@ class BaseAlgorithm(object):
 
             # Here, we split the energy and other objects into sizes of nwalkers_per_observation
             # if self.n_concurrent_obs_per_rank != 1:
+            # Split walkers:
             x_current  = tf.split(x_current, self.n_concurrent_obs_per_rank, axis=0)
+            spin       = tf.split(spin,      self.n_concurrent_obs_per_rank, axis=0)
+            isospin    = tf.split(isospin,    self.n_concurrent_obs_per_rank, axis=0)
+
+            # Split observables:
             energy     = tf.split(energy,    self.n_concurrent_obs_per_rank, axis=0)
             energy_jf  = tf.split(energy_jf, self.n_concurrent_obs_per_rank, axis=0)
             ke_jf      = tf.split(ke_jf,     self.n_concurrent_obs_per_rank, axis=0)
