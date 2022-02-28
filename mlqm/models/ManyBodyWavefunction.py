@@ -4,7 +4,7 @@ from mlqm import DEFAULT_TENSOR_TYPE
 
 from . DeepSetsCorrelator import DeepSetsCorrelator
 from mlqm.models.building_blocks import ResidualBlock, DenseBlock
-# from . NeuralSpatialComponent import NeuralSpatialComponent
+from . NeuralSpatialComponent import NeuralSpatialComponent
 
 class ManyBodyWavefunction(tf.keras.models.Model):
     """
@@ -17,15 +17,15 @@ class ManyBodyWavefunction(tf.keras.models.Model):
     The forward call computes the many-body correlated multipled by the slater determinant.
     """
 
-    def __init__(self, ndim : int, 
-        nparticles: int, 
+    def __init__(self, ndim : int,
+        nparticles: int,
         configuration: dict,
         n_spin_up : int,
         n_protons : float):
         """
         Constructs a new instance of the ManyBodyWavefunction
-    
-    
+
+
         :param      ndim:           Number of dimensions
         :type       ndim:           int
         :param      nparticles:     Number of particles
@@ -58,27 +58,27 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         # We need two components of this wavefunction:
         self.correlator  = DeepSetsCorrelator(
-            ndim          = self.ndim, 
-            nparticles    = self.nparticles, 
+            ndim          = self.ndim,
+            nparticles    = self.nparticles,
             configuration = self.config.deep_sets_cfg
         )
 
         # We need a spatial component for _every_ particle
 
-        # self.spatial_nets = []
-        # for i_particle in range(self.nparticles):
-        #     self.spatial_nets.append(NeuralSpatialComponent(
-        #         ndim          = self.ndim, 
-        #         nparticles    = self.nparticles, 
-        #         configuration = self.config.spatial_cfg)
-        #     )
-
-        self.simple_spatial_net = tf.keras.models.Sequential(
-            [
-                DenseBlock(nparticles, use_bias=True, activation="tanh"),
-                DenseBlock(nparticles, use_bias=True, activation="tanh"),
-            ]  
-        )
+        self.spatial_nets = []
+        for i_particle in range(self.nparticles):
+            self.spatial_nets.append(NeuralSpatialComponent(
+                ndim          = self.ndim,
+                nparticles    = self.nparticles,
+                configuration = self.config.spatial_cfg)
+            )
+        #
+        # self.simple_spatial_net = tf.keras.models.Sequential(
+        #     [
+        #         DenseBlock(nparticles, use_bias=True, activation="tanh"),
+        #         DenseBlock(nparticles, use_bias=True, activation=None),
+        #     ]
+        # )
 
         # Here, we construct, up front, the appropriate spinor (spin + isospin)
         # component of the slater determinant.
@@ -86,14 +86,14 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # The idea is that for each row (horizontal), the state in question
         # is ADDED to this matrix to get the right values.
 
-        # We have two of these, one for spin and one for isospin. After the 
+        # We have two of these, one for spin and one for isospin. After the
         # addition of the spinors, apply a DOT PRODUCT between these two matrices
         # and then a DOT PRODUCT to the spatial matrix
 
         # Since the spinors are getting shuffled by the metropolis alg,
         # It's not relevant what the order is as long as we have
         # the total spin and isospin correct.
-        
+
         # Since we add the spinors directly to this, we need
         # to have the following mappings:
         # spin up -> 1 for the first n_spin_up state
@@ -101,10 +101,10 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # spin down -> 0 for the first n_spin_up state
         # spin down -> 1 for the last nparticles - n_spin_up states
 
-        # so, set the first n_spin_up entries to 1, which 
+        # so, set the first n_spin_up entries to 1, which
         # (when added to the spinor) yields 2 for spin up and 0 for spin down
 
-        # Set the last nparticles - n_spin_up states to -1, which 
+        # Set the last nparticles - n_spin_up states to -1, which
         # yields 0 for spin up and -2 for spin down.
 
         spin_spinor_2d = numpy.zeros(shape=(nparticles, nparticles))
@@ -122,11 +122,11 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         # After doing the additions, it is imperative to apply a factor of 0.5!
 
+        self.confinement = 0.01
 
-
-    @tf.function
+    # @tf.function
     def __call__(self, inputs, spin, isospin, training=True):
-            
+
 
         n_walkers = inputs.shape[0]
 
@@ -139,32 +139,62 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
 
         correlation = self.correlator(xinputs)
+        #
+        # print("inputs.shape: ", inputs.shape)
+        # print("correlation.shape: ", correlation.shape)
 
         # We get individual response for every particle in the slater determinant
         # The axis of the particles is 1 (nwalkers, nparticles, ndim)
-        
+
         # We also have to build a matrix of size [nparticles, nparticles] which we
         # then take a determinant of.
-        
-        # The axes of the determinant are state (changes vertically) and 
+
+        # The axes of the determinant are state (changes vertically) and
         # particle (changes horizontally)
 
         # We need to compute the spatial components.
         # This computes each spatial net (nparticles of them) for each particle (nparticles)
         # You can see how this builds to an output shape of (Np, nP)
-        # 
+        #
         # Flatten the input for a neural network to compute
         # over all particles at once, for each network:
-        flat_input = tf.reshape(xinputs, (-1, self.ndim)) # leave the spatial dimension
 
-        flat_output = self.simple_spatial_net(flat_input)
-        # print(flat_output.shape)
+        slater_rows = []
+        for i_particle in range(self.nparticles):
+            this_input = xinputs[:,i_particle,:]
 
-        # Reshape this to the proper shape for the slater determinant
-        spatial_det = tf.reshape(flat_output, (n_walkers, self.nparticles, self.nparticles))
+            slater_rows.append(tf.concat([self.spatial_nets[i_particle](this_input) \
+                for j_state_function in range(self.nparticles) ],
+                axis=-1)
+            )
+            # print(slater_rows)
+        spatial_slater = tf.stack(slater_rows, axis=-1)
+        spatial_slater = tf.transpose(spatial_slater, perm=(0,2,1))
+        # print(spatial_slater)
+        #
+        # flat_input = tf.reshape(xinputs, (-1, self.ndim)) # leave the spatial dimension
+        # print("flat_input.shape: ", flat_input.shape)
+        # flat_output = self.simple_spatial_net(flat_input)
+        # # print("flat_output.shape: ", flat_output.shape)
+        # print("flat_output.shape: ", flat_output.shape)
+        #
+        # boundary_condition = -self.confinement * tf.reduce_sum(xinputs**2, axis=(1,2))
+        # print("boundary_condition.shape: ", boundary_condition.shape)
+        # boundary_condition = tf.reshape(boundary_condition, (-1,1,1))
+        #
+        #
+        #
+        # # Reshape this to the proper shape for the slater determinant
+        # spatial_det = tf.reshape(flat_output, (n_walkers, self.nparticles, self.nparticles))
+        #
+        # spatial_det = spatial_det + boundary_condition
+        #
+        # print("spatial_det.shape: ", spatial_det.shape)
+
+        # exit()
 
         # For spinors, we need to do the inner product with the states.
-        # For the deuteron, this is p-up and n-up.  In pratcice, for the 
+        # For the deuteron, this is p-up and n-up.  In pratcice, for the
         # spinors we recieve (+/- 1 in value for up/down), this can be computed
         # like so:
 
@@ -195,17 +225,17 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         # Compute the determinant here
         # Determinant is not pos def
-        # 
+        #
         # When computed, it gets added to the deep sets correlator.
-        # 
+        #
         # we are using psi = e^U(X) * slater_det, but parametrizing log(psi)
         # with this wave function. Therefore, we return:
         # log(psi) = U(x) + log(slater_det)
         # Since the op we use below is `slogdet` and returns the sign + log(abs(det))
         # Then the total function is psi = e^(U(X))*[sign(det(S))*exp^(log(abs(det(S))))]
         # log(psi) = U(X) + log(sign(det(S)) +log(abs(det(S)))
-        #         
-        slater_det = spin_slater * isospin_slater * spatial_det
+        #
+        slater_det = spin_slater * isospin_slater * spatial_slater
 
         # print("slater_det, ", slater_det)
 
@@ -220,10 +250,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # print("correlation shape: ", correlation.shape)
 
         wavefunction = correlation + tf.reshape(logdet, (-1, 1))
-        
+
         # print("Wavefunction shape: ", wavefunction.shape)
 
         return wavefunction
-
-
-

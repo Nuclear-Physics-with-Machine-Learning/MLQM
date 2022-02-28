@@ -85,8 +85,8 @@ class Hamiltonian(object):
         return ke
 
     @tf.function
-    def compute_derivatives(self, 
-        wavefunction : tf.keras.models.Model, 
+    def compute_derivatives(self,
+        wavefunction : tf.keras.models.Model,
         inputs : tf.Tensor,
         spin : tf.Tensor,
         isospin : tf.Tensor = None):
@@ -197,9 +197,9 @@ class Hamiltonian(object):
         return pe, ke_jf, ke_direct
         # return None
 
-    @tf.function
-    def energy(self, 
-        wavefunction : tf.keras.models.Model, 
+    # @tf.function
+    def energy(self,
+        wavefunction : tf.keras.models.Model,
         inputs       : tf.Tensor,
         spin         : tf.Tensor,
         isospin      : tf.Tensor = None):

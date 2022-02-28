@@ -21,6 +21,8 @@ class NuclearPotential(Hamiltonian):
         '''
         Hamiltonian.__init__(self, parameters)
 
+        print(parameters)
+
         # # Check the parameters have everything needed:
         # for parameter in ["mass"]:
         #     if parameter not in self.parameters:
@@ -53,11 +55,15 @@ class NuclearPotential(Hamiltonian):
 
         self.HBAR = tf.constant(197.327, dtype = DEFAULT_TENSOR_TYPE)
 
-    @tf.function(experimental_compile=False)
+    # @tf.function(experimental_compile=False)
     def pionless_2b(self, *, r_ij):
+        print("r_ij: ", r_ij)
         x = self.vkr * r_ij
+        print("x: ", x)
         vr = tf.exp(-x**2/4.0)
-
+        print("vr: ", vr)
+        print("self.v0r: ", self.v0r)
+        print("self.v0s: ", self.v0s)
         return self.v0r*vr, self.v0s*vr
 
     @tf.function(experimental_compile=False)
@@ -68,7 +74,7 @@ class NuclearPotential(Hamiltonian):
         pot_3b = vr * self.ar3b
         return pot_3b
 
-    @tf.function(experimental_compile=False)
+    # @tf.function(experimental_compile=False)
     def potential_energy(self, *, inputs, spin, isospin):
         """Return potential energy
 
@@ -118,11 +124,11 @@ class NuclearPotential(Hamiltonian):
         V_ijk += 0.5 * tf.reduce_sum(gr3b**2, axis = 1)
         pe = v_ij + V_ijk
 
-
+        print(pe)
         return pe
 
     # @tf.function()
-    @tf.function(experimental_compile=False)
+    # @tf.function(experimental_compile=False)
     def compute_energies(self, inputs, spin, isospin, logw_of_x, dlogw_dx, d2logw_dx2):
         '''Compute PE, KE_JF, and KE_direct
 

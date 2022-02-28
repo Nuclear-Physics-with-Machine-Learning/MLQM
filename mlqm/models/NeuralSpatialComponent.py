@@ -7,8 +7,8 @@ from mlqm.models.building_blocks import ResidualBlock, DenseBlock
 
 class NeuralSpatialComponent(tf.keras.models.Model):
     """Create a neural network wave function in N dimensions
-    
-    Applies a neural network to a _single_ particle 
+
+    Applies a neural network to a _single_ particle
 
     Extends:
         tf.keras.models.Model
@@ -55,40 +55,40 @@ class NeuralSpatialComponent(tf.keras.models.Model):
 
         self.net = tf.keras.models.Sequential()
 
-        # self.net.add(
-        #     DenseBlock(n_filters_per_layer,
-        #         use_bias   = bias,
-        #         activation = activation)
-        #     )
+        self.net.add(
+            DenseBlock(n_filters_per_layer,
+                use_bias   = bias,
+                activation = activation)
+            )
 
-        # # The above layer counts as a layer!
-        # for l in range(n_layers-1):
-        #     if l == n_layers - 2:
-        #         _activation = None
-        #     else:
-        #         _activation = activation
-        #     if residual:
-        #         self.net.add(
-        #             ResidualBlock(n_filters_per_layer,
-        #                 use_bias    = bias,
-        #                 activation = _activation)
-        #             )
-        #     else:
-        #         self.net.add(
-        #             DenseBlock(n_output = n_filters_per_layer,
-        #                 use_bias    = bias,
-        #                 activation = _activation)
-        #             )
-
-        # self.net.add(
-        #     DenseBlock(n_output = 1,
-        #     use_bias = False,
-        #     activation = None))
-
+        # The above layer counts as a layer!
+        for l in range(n_layers-1):
+            if l == n_layers - 2:
+                _activation = None
+            else:
+                _activation = activation
+            if residual:
+                self.net.add(
+                    ResidualBlock(n_filters_per_layer,
+                        use_bias    = bias,
+                        activation = _activation)
+                    )
+            else:
+                self.net.add(
+                    DenseBlock(n_output = n_filters_per_layer,
+                        use_bias    = bias,
+                        activation = _activation)
+                    )
 
         self.net.add(
-            tf.keras.layers.Conv1D(filters=10,kernel_size=3)
-            )
+            DenseBlock(n_output = 1,
+            use_bias = False,
+            activation = None))
+
+
+        # self.net.add(
+        #     tf.keras.layers.Conv1D(filters=10,kernel_size=3)
+        #     )
 
         # Represent the confinement as a function of r only, which is represented as a neural netowrk
         # self.confinement = DenseBlock(n_filters_per_layer)
@@ -99,18 +99,24 @@ class NeuralSpatialComponent(tf.keras.models.Model):
         # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
 
 
-    @tf.function(experimental_compile=True)
+    # @tf.function(jit_compile=True)
     # @tf.function
     def __call__(self, inputs, training=None):
 
-        print("Inputs shape:", inputs.shape)
+        # print("Inputs shape:", inputs.shape)
+        # print("Inputs`:", inputs`)
         x = self.net(inputs)
 
-        print("x.shape: ", x.shape)
+        # print("x.shape: ", x.shape)
         # Compute the initial boundary condition, which the network will slowly overcome
         # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(inputs**self.normalization_exponent, axis=(1,2))
         boundary_condition = -self.confinement * tf.reduce_sum(inputs**2, axis=(1))
         boundary_condition = tf.reshape(boundary_condition, [-1,1])
+        # print("boundary_condition.shape: ", boundary_condition.shape)
+        # print(inputs)
+        # print(x)
+        # print(boundary_condition)
+        # exit()
         return x + boundary_condition
 
     def n_parameters(self):

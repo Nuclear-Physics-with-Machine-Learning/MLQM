@@ -14,7 +14,6 @@ iterations: 5
 nparticles: 2
 dimension: 3
 run_id: ???
-save_path: output/${hamiltonian.form}/${nparticles}particles/${dimension}D/${optimizer.form}.${run_id}/
 model_name: ${hamiltonian.form}_${nparticles}part_${dimension}D.model
 
 """
@@ -63,8 +62,3 @@ class Config:
     model_name: str = "${hamiltonian.form}_${nparticles}part_${dimension}D.model"
 
 cs.store(name="base_config", node=Config)
-
-
-
-
-
