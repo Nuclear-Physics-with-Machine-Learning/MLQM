@@ -80,10 +80,8 @@ class NeuralSpatialComponent(tf.keras.models.Model):
                         activation = _activation)
                     )
 
-        self.net.add(
-            DenseBlock(n_output = 1,
-            use_bias = False,
-            activation = None))
+        self.net.add(tf.keras.layers.Dense(1,
+            use_bias = False))
 
 
         # self.net.add(
@@ -93,31 +91,20 @@ class NeuralSpatialComponent(tf.keras.models.Model):
         # Represent the confinement as a function of r only, which is represented as a neural netowrk
         # self.confinement = DenseBlock(n_filters_per_layer)
 
-        self.confinement   = tf.constant(self.config.confinement, dtype = DEFAULT_TENSOR_TYPE)
 
         # self.normalization_exponent = tf.Variable(2.0, dtype=DEFAULT_TENSOR_TYPE)
         # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
 
 
+    @tf.function
     # @tf.function(jit_compile=True)
-    # @tf.function
     def __call__(self, inputs, training=None):
 
         # print("Inputs shape:", inputs.shape)
         # print("Inputs`:", inputs`)
         x = self.net(inputs)
 
-        # print("x.shape: ", x.shape)
-        # Compute the initial boundary condition, which the network will slowly overcome
-        # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(inputs**self.normalization_exponent, axis=(1,2))
-        boundary_condition = -self.confinement * tf.reduce_sum(inputs**2, axis=(1))
-        boundary_condition = tf.reshape(boundary_condition, [-1,1])
-        # print("boundary_condition.shape: ", boundary_condition.shape)
-        # print(inputs)
-        # print(x)
-        # print(boundary_condition)
-        # exit()
-        return x + boundary_condition
+        return x
 
     def n_parameters(self):
         return tf.reduce_sum( [ tf.reduce_prod(p.shape) for p in self.trainable_variables ])

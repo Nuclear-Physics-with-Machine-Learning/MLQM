@@ -78,9 +78,11 @@ class Hamiltonian(object):
         Returns:
             tf.Tensor - potential energy of shape [1]
         """
-
         ke = -(self.HBAR**2 / (2 * M)) * tf.reduce_sum(d2logw_dx2, axis=(1,2))
-        ke = ke  - KE_JF
+        # print(KE_JF.shape)
+        # print(ke.shape)
+        # print(sign.shape)
+        ke = (ke  - KE_JF)
 
         return ke
 
@@ -99,7 +101,7 @@ class Hamiltonian(object):
             tape.watch(inputs)
             with tf.GradientTape() as second_tape:
                 second_tape.watch(inputs)
-                logw_of_x = wavefunction(inputs, spin, isospin, training=True)
+                logw_of_x, sign = wavefunction(inputs, spin, isospin, training=True)
             # Get the derivative of logw_of_x with respect to inputs
             dlogw_dx = second_tape.gradient(logw_of_x, inputs)
 
@@ -114,7 +116,7 @@ class Hamiltonian(object):
         # And this contracts:
         d2logw_dx2 = tf.einsum("wpdpd->wpd",d2logw_dx2)
 
-        return logw_of_x, dlogw_dx, d2logw_dx2
+        return logw_of_x, dlogw_dx, d2logw_dx2, sign
 
     '''
     This whole section is correct but a bad implementation
@@ -223,14 +225,16 @@ class Hamiltonian(object):
         # This function takes the inputs
         # And computes the expectation value of the energy at each input point
 
-        logw_of_x, dlogw_dx, d2logw_dx2 = \
+        logw_of_x, dlogw_dx, d2logw_dx2, sign = \
             self.compute_derivatives(wavefunction, inputs, spin, isospin)
 
         pe, ke_jf, ke_direct = self.compute_energies(
             inputs, spin, isospin, logw_of_x, dlogw_dx, d2logw_dx2)
 
+        pe = pe
+
         # Total energy computations:
         energy = tf.squeeze(pe+ke_direct)
-        energy_jf = tf.squeeze(pe+ke_jf)
+        energy_jf =  tf.squeeze(pe+ke_jf)
 
         return energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x

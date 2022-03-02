@@ -104,6 +104,10 @@ class DeepSetsCorrelator(tf.keras.models.Model):
         self.aggregate_net.add(tf.keras.layers.Dense(1,
             use_bias = False))
 
+        self.confinement   = tf.constant(
+                self.config.confinement,
+                dtype = DEFAULT_TENSOR_TYPE
+            )
 
         # self.normalization_exponent = tf.Variable(2.0, dtype=DEFAULT_TENSOR_TYPE)
         # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
@@ -117,8 +121,7 @@ class DeepSetsCorrelator(tf.keras.models.Model):
 
         return new_ob
 
-    @tf.function(experimental_compile=True)
-    # @tf.function
+    @tf.function()
     def __call__(self, inputs, training=None):
         """
         If mean subtraction happens, it is in the call one layer up!
@@ -135,10 +138,10 @@ class DeepSetsCorrelator(tf.keras.models.Model):
 
         # # Compute the initial boundary condition, which the network will slowly overcome
         # # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
-        # boundary_condition = -self.confinement * tf.reduce_sum(xinputs**2, axis=(1,2))
-        # boundary_condition = tf.reshape(boundary_condition, [-1,1])
-        # return x + boundary_condition
-        return x 
+        boundary_condition = -0.1 * tf.reduce_sum(inputs**2, axis=(1,2))
+        boundary_condition = tf.reshape(boundary_condition, [-1,1])
+        return x + boundary_condition
+        # return x
 
     def n_parameters(self):
         return tf.reduce_sum( [ tf.reduce_prod(p.shape) for p in self.trainable_variables ])

@@ -117,24 +117,29 @@ class exec(object):
 
         # Create a wavefunction:
         wavefunction = ManyBodyWavefunction(
-            self.config.dimension, 
-            self.config.nparticles, 
+            self.config.dimension,
+            self.config.nparticles,
             wavefunction_config,
             n_spin_up = 2*self.config.hamiltonian.spin.z_projection,
             n_protons = self.config.hamiltonian.Z,
             )
         adaptive_wavefunction = ManyBodyWavefunction(
-            self.config.dimension, 
-            self.config.nparticles, 
+            self.config.dimension,
+            self.config.nparticles,
             wavefunction_config,
             n_spin_up = 2*self.config.hamiltonian.spin.z_projection,
             n_protons = self.config.hamiltonian.Z,
             )
 
+
+        # print(x)
+        # print(spin)
+        # print(isospin)
         # Run the wave function once to initialize all its weights
         tf.summary.trace_on(graph=True, profiler=False)
         _ = wavefunction(x, spin, isospin)
         _ = adaptive_wavefunction(x, spin, isospin)
+
         tf.summary.trace_export("graph")
         tf.summary.trace_off()
 
@@ -496,7 +501,7 @@ class exec(object):
 
     def interupt_handler(self, sig, frame):
         logger = logging.getLogger()
-    
+
         logger.info("Snapshoting weights...")
         self.active = False
 

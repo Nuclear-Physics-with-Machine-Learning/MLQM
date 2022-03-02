@@ -52,6 +52,9 @@ class MetropolisSampler(object):
         self.use_spin = False
         self.use_isospin = False
 
+        self.possible_swap_pairs = self.gen_possible_swaps(self.nparticles)
+
+
         #  Initialize the spin if needed:
         if n_spin_up != 0:
             self.use_spin = True
@@ -61,7 +64,7 @@ class MetropolisSampler(object):
             #  Run the initalize to get the first locations:
             #  The initializer sets a random number of particles in each walker
             #  to the spin up state in order to create a total z sping as specified.
-            
+
             # Note that we initialize with NUMPY for ease of indexing and shuffling
             init_walkers = numpy.zeros(shape=self.spin_size) - 1
             for i in range(n_spin_up):
@@ -72,7 +75,7 @@ class MetropolisSampler(object):
             # How to compute many permutations at once?
             #  Answer from https://stackoverflow.com/questions/5040797/shuffling-numpy-array-along-a-given-axis
             # Bottom line: gen random numbers for each axis, sort only in that axis,
-            # and apply the permutations 
+            # and apply the permutations
             idx = numpy.random.rand(*init_walkers.shape).argsort(axis=1)
             init_walkers = numpy.take_along_axis(init_walkers, idx, axis=1)
 
@@ -88,7 +91,7 @@ class MetropolisSampler(object):
             #  Run the initalize to get the first locations:
             #  The initializer sets a random number of particles in each walker
             #  to the spin up state in order to create a total z sping as specified.
-            
+
             # Note that we initialize with NUMPY for ease of indexing and shuffling
             init_walkers = numpy.zeros(shape=self.isospin_size) -1
             for i in range(n_protons):
@@ -99,13 +102,42 @@ class MetropolisSampler(object):
             # How to compute many permutations at once?
             #  Answer from https://stackoverflow.com/questions/5040797/shuffling-numpy-array-along-a-given-axis
             # Bottom line: gen random numbers for each axis, sort only in that axis,
-            # and apply the permutations 
+            # and apply the permutations
             idx = numpy.random.rand(*init_walkers.shape).argsort(axis=1)
             init_walkers = numpy.take_along_axis(init_walkers, idx, axis=1)
 
             self.isospin_walkers = tf.Variable(init_walkers)
             self.isospin_walker_history = []
 
+
+    def gen_possible_swaps(self, n_particles):
+        '''
+            # Create a list of all possible swaps.
+            # With n particles, there are n_particles * (n_particles - 1) / 2 possible
+            # swaps.  We can generate them all at once.
+            # Note that swapping particles i and j is equal to swapping particles j and i.
+
+
+            # Say, n = 4
+            # 0 -> 1
+            # 0 -> 2
+            # 0 -> 3
+            # 1 -> 2
+            # 1 -> 3
+            # 2 -> 3
+
+        '''
+        swap_i = []
+        swap_j = []
+        max_index = n_particles
+        i = 0
+        while i < n_particles:
+            for j in range(i + 1, max_index):
+                swap_i.append(i)
+                swap_j.append(j)
+            i += 1
+
+        return tf.convert_to_tensor(swap_i), tf.convert_to_tensor(swap_j)
 
 
     def sample(self):
@@ -114,7 +146,7 @@ class MetropolisSampler(object):
         '''
         # Make sure to wrap in tf.Variable for back prop calculations
         # Before returning, append the current walkers to the walker history:
-        
+
         self.walker_history.append(self.walkers)
         self.spin_walker_history.append(self.spin_walkers)
         self.isospin_walker_history.append(self.isospin_walkers)
@@ -148,7 +180,7 @@ class MetropolisSampler(object):
         # for i in range(nkicks):
         walkers, spin_walkers, isospin_walkers, acceptance = self.internal_kicker(
             self.size, self.walkers, self.spin_walkers, self.isospin_walkers,
-            wavefunction, 
+            wavefunction,
             kicker, kicker_params, tf.constant(nkicks), dtype=self.dtype)
 
         # Update the walkers:
@@ -158,8 +190,9 @@ class MetropolisSampler(object):
         # Send back the acceptance:
         return acceptance
 
-    @tf.function(experimental_compile=False)
+    # @tf.function(experimental_compile=False)
     # @profile
+    @tf.function
     def internal_kicker(self,
         shape,
         walkers,
@@ -192,7 +225,7 @@ class MetropolisSampler(object):
         # Once for the original coordiate, and again for the kicked coordinates
         acceptance = tf.convert_to_tensor(0.0, dtype=dtype)
         # Calculate the current wavefunction value:
-        current_wavefunction = wavefunction(
+        current_wavefunction, _ = wavefunction(
             walkers, spin_walkers, isospin_walkers)
 
         # Generate a long set of random number from which we will pull:
@@ -204,17 +237,66 @@ class MetropolisSampler(object):
         kicks = kicker(shape=[nkicks, *shape], **kicker_params, dtype=dtype)
         # print(kicks.shape)
 
+        # spin_swap_indexes = tf.math.top_k( \
+        #     tf.random.uniform(shape=(nkicks, *spin_walkers.shape)), 2, sorted=False).indices
+        #
+        # isospin_swap_indexes = tf.math.top_k( \
+        #     tf.random.uniform(shape=(nkicks, *isospin_walkers.shape)), 2, sorted=False).indices
+
+        # swap_index_i = self.possible_swap_pairs[0]
+        # swap_index_j = self.possible_swap_pairs[1]
+
+        def generate_swap_first_and_second(nkicks,nwalkers,swap_index_i, swap_index_j):
+
+
+            # Generate k random numbers in the range (0, swap_index_i.shape[0])
+            spin_swap_indexes = tf.random.uniform(
+                shape = (nkicks, shape[0]),
+                minval = 0,
+                maxval = swap_index_i.shape[0],
+                dtype = tf.int32
+            )
+
+            spin_swap_indexes_f = tf.gather(swap_index_i, spin_swap_indexes)
+            spin_swap_indexes_s = tf.gather(swap_index_j, spin_swap_indexes)
+            return spin_swap_indexes_f, spin_swap_indexes_s
+
+        spin_swap_indexes_f, spin_swap_indexes_s = \
+            generate_swap_first_and_second(nkicks, shape[0], *self.possible_swap_pairs)
+
+        isospin_swap_indexes_f, isospin_swap_indexes_s = \
+            generate_swap_first_and_second(nkicks, shape[0], *self.possible_swap_pairs)
+
+        first_index = tf.range(shape[0])
+        #
+        # print(spin_swap_indexes_f)
+        # print(spin_swap_indexes_s)
+        # print(first_index)
+
+        #
+        # # Generate k random numbers in the range (0, swap_index_i.shape[0])
+        # isospin_swap_indexes = tf.random.uniform(
+        #     shape = (nkicks, shape[0]),
+        #     minval = 0,
+        #     maxval = swap_index_i.shape[0],
+        #     dtype = tf.int32
+        # )
+        #
+        # isospin_swap_indexes_f = tf.gather(swap_index_i, isospin_swap_indexes)
+        # isospin_swap_indexes_s = tf.gather(swap_index_j, isospin_swap_indexes)
+
+
         # Adding spin:
         #  A meaningful metropolis move is to pick a pair and exchange the spin
         #  ONly one pair gets swapped at a time
         #  Change the isospin of a pair as well.
         #  The spin coordinate is 2 dimensions per particle: spin and isospin (each up/down)
-        #  
+        #
 
         # Computing modulus square of wavefunction in new vs old coordinates
         #  - this kicks randomly with a guassian, and has an acceptance probaility
         # However, what we can do instead is to add a drift term
-        # Instead of kicking with a random gaussian, we compute the derivative 
+        # Instead of kicking with a random gaussian, we compute the derivative
         # with respect to X.
         # Multiply it by sigma^2
         # Then, clip the drift so it is not too large.
@@ -225,13 +307,18 @@ class MetropolisSampler(object):
 
         # Spin typically thermalizes first.
         # Fewer spin configurations allowed due to total spin conservation
-        # 
+        #
 
         for i_kick in tf.range(nkicks):
 
-            # Get kicked spin coordinates 
-            kicked_spins = self.swap_random_indexes(spin_walkers)
-            kicked_isospins = self.swap_random_indexes(isospin_walkers)
+            # Get kicked spin coordinates
+            kicked_spins = self.swap_random_indexes_opt(
+                spin_walkers, first_index,
+                spin_swap_indexes_f[i_kick], spin_swap_indexes_s[i_kick])
+            kicked_isospins = self.swap_random_indexes_opt(
+                isospin_walkers, first_index,
+                isospin_swap_indexes_f[i_kick], isospin_swap_indexes_s[i_kick])
+
 
 
             # Create a kick:
@@ -241,7 +328,7 @@ class MetropolisSampler(object):
 
             # Compute the values of the wave function, which should be of shape
             # [nwalkers, 1]
-            kicked_wavefunction   = wavefunction(kicked, 
+            kicked_wavefunction, _ = wavefunction(kicked,
                 kicked_spins, kicked_isospins)
 
 
@@ -262,7 +349,7 @@ class MetropolisSampler(object):
             spatial_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:])])
             spatial_accept = tf.reshape(spatial_accept, shape)
             walkers = tf.where(spatial_accept, kicked, walkers)
-            
+
 
             spin_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:-1])])
             spin_walkers = tf.where(spin_accept,kicked_spins,spin_walkers )
@@ -272,25 +359,19 @@ class MetropolisSampler(object):
             acceptance = tf.reduce_mean(tf.cast(accept, dtype))
 
         return walkers, spin_walkers, isospin_walkers, acceptance
-    
+
+    # @profile
     @tf.function
-    def swap_random_indexes(self, input_tensor):  
+    def swap_random_indexes_opt(self, input_tensor, first_index, swap_indexes_f, swap_indexes_s):
         '''
         Pick two indexes, per row, and swap the values
         '''
-        # # No swapping occurs with just two particles!
-        # if input_tensor.shape[-1] == 2: return input_tensor
-
 
         # First thing to do is generate a set of pairs of indexes, for every row.
-        first_index = tf.range(input_tensor.shape[0])
 
         # First, select indexes:
-        swap_indexes = tf.math.top_k(tf.random.uniform(shape=input_tensor.shape), 2, sorted=False).indices
-
-        first_swap_indexes  = tf.stack([first_index, swap_indexes[:,0]], axis=-1)
-        second_swap_indexes = tf.stack([first_index, swap_indexes[:,1]], axis=-1)
-
+        second_swap_indexes = tf.stack([first_index, swap_indexes_f], axis=-1)
+        first_swap_indexes  = tf.stack([first_index, swap_indexes_s], axis=-1)
 
         # Gather the values:
         first_index_value  = tf.gather_nd(input_tensor, first_swap_indexes)
@@ -300,5 +381,5 @@ class MetropolisSampler(object):
         # Now, have to _set_ the new indexes
         swapped_tensor = tf.tensor_scatter_nd_update(input_tensor, first_swap_indexes, second_index_value)
         swapped_tensor = tf.tensor_scatter_nd_update(swapped_tensor, second_swap_indexes, first_index_value)
-        
+
         return swapped_tensor

@@ -84,13 +84,16 @@ class BaseAlgorithm(object):
 
         # print("Doing forward pass")
         with tape:
-            log_wpsi = wavefunction(x_current, spin, isospin)
+            log_wpsi, sign = wavefunction(x_current, spin, isospin)
 
 
         jac = tape.jacobian(log_wpsi, wavefunction.trainable_variables)
         # jac = tape.jacobian(log_wpsi, wavefunction.trainable_variables, parallel_iterations = MAX_PARALLEL_ITERATIONS)
-
-
+        #
+        # for var, j in zip(wavefunction.trainable_variables, jac):
+        #     print(var.shape, j)
+        #
+        # print(jac)
         # Grab the original shapes ([1:] means everything except first dim):
         jac_shape = [j.shape[1:] for j in jac]
         # get the flattened shapes:
@@ -157,7 +160,7 @@ class BaseAlgorithm(object):
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=1)
         x_current, spin, isospin  = self.sampler.sample()
         energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = \
-            self.hamiltonian.energy(self.wavefunction, x_current, 
+            self.hamiltonian.energy(self.wavefunction, x_current,
                 spin, isospin)
 
 
@@ -248,7 +251,7 @@ class BaseAlgorithm(object):
 
         return dp_i, S_ij
 
-
+    @profile
     def walk_and_accumulate_observables(self,
             estimator,
             _wavefunction,
@@ -330,7 +333,7 @@ class BaseAlgorithm(object):
             # For each observation, we compute the jacobian.
             # flattened_jacobian is a list, flat_shape is just one instance
             flattened_jacobian, flat_shape = self.batched_jacobian(
-                self.n_concurrent_obs_per_rank, x_current, 
+                self.n_concurrent_obs_per_rank, x_current,
                 spin, isospin, _wavefunction, self.jacobian)
 
             # Here, if MPI is available, we can do a reduction (sum) over walker variables
@@ -399,7 +402,7 @@ class BaseAlgorithm(object):
 
 
     def compute_updates_and_metrics(self, current_psi):
-    
+
         raise Exception("Must be implemented in child class")
 
     # @tf.function

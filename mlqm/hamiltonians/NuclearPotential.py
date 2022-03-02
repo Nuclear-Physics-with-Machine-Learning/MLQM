@@ -21,7 +21,6 @@ class NuclearPotential(Hamiltonian):
         '''
         Hamiltonian.__init__(self, parameters)
 
-        print(parameters)
 
         # # Check the parameters have everything needed:
         # for parameter in ["mass"]:
@@ -57,13 +56,13 @@ class NuclearPotential(Hamiltonian):
 
     # @tf.function(experimental_compile=False)
     def pionless_2b(self, *, r_ij):
-        print("r_ij: ", r_ij)
+        # print("r_ij: ", r_ij)
         x = self.vkr * r_ij
-        print("x: ", x)
+        # print("x: ", x)
         vr = tf.exp(-x**2/4.0)
-        print("vr: ", vr)
-        print("self.v0r: ", self.v0r)
-        print("self.v0s: ", self.v0s)
+        # print("vr: ", vr)
+        # print("self.v0r: ", self.v0r)
+        # print("self.v0s: ", self.v0s)
         return self.v0r*vr, self.v0s*vr
 
     @tf.function(experimental_compile=False)
@@ -74,7 +73,7 @@ class NuclearPotential(Hamiltonian):
         pot_3b = vr * self.ar3b
         return pot_3b
 
-    # @tf.function(experimental_compile=False)
+    @tf.function(experimental_compile=False)
     def potential_energy(self, *, inputs, spin, isospin):
         """Return potential energy
 
@@ -124,7 +123,7 @@ class NuclearPotential(Hamiltonian):
         V_ijk += 0.5 * tf.reduce_sum(gr3b**2, axis = 1)
         pe = v_ij + V_ijk
 
-        print(pe)
+        # print(pe)
         return pe
 
     # @tf.function()
@@ -157,6 +156,5 @@ class NuclearPotential(Hamiltonian):
 
         # True, directly, uses the second derivative
         ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M=self.parameters["mass"])
-
 
         return pe, ke_jf, ke_direct

@@ -11,6 +11,7 @@ class DeepSetsCfg():
     bias:               bool = True
     activation:          str = "tanh"
     residual:           bool = False
+    confinement:       float = 0.1
 
 @dataclass
 class SpatialCfg():
@@ -19,9 +20,8 @@ class SpatialCfg():
     bias:               bool = True
     activation:          str = "tanh"
     residual:           bool = False
-    confinement:       float = 0.1
 
-@dataclass 
+@dataclass
 class ManyBodyCfg():
     mean_subtract:        bool = True
     deep_sets_cfg: DeepSetsCfg = DeepSetsCfg()
