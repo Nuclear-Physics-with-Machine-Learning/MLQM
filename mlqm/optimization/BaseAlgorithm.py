@@ -159,7 +159,7 @@ class BaseAlgorithm(object):
         kicker_params = {"mean": 0.0, "stddev" : 0.2}
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=1)
         x_current, spin, isospin  = self.sampler.sample()
-        energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = \
+        energy, energy_jf, ke_jf, ke_direct, pe, w_of_x = \
             self.hamiltonian.energy(self.wavefunction, x_current,
                 spin, isospin)
 
@@ -174,20 +174,20 @@ class BaseAlgorithm(object):
         for next_x, spins, isospins, this_current_psi in zip(*self.sampler.get_all_walkers(), current_psi):
 
             # Compute the observables:
-            energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = \
+            energy, energy_jf, ke_jf, ke_direct, pe, w_of_x = \
                 self.hamiltonian.energy(test_wavefunction, next_x, spins, isospins)
 
             # Here, we split the energy and other objects into sizes of nwalkers_per_observation
             # if self.n_concurrent_obs_per_rank != 1:
-            next_x     = tf.split(next_x,    self.n_concurrent_obs_per_rank, axis=0)
-            energy     = tf.split(energy,    self.n_concurrent_obs_per_rank, axis=0)
-            logw_of_x  = tf.split(logw_of_x, self.n_concurrent_obs_per_rank, axis=0)
+            next_x     = tf.split(next_x, self.n_concurrent_obs_per_rank, axis=0)
+            energy     = tf.split(energy, self.n_concurrent_obs_per_rank, axis=0)
+            w_of_x     = tf.split(w_of_x, self.n_concurrent_obs_per_rank, axis=0)
 
             # print("New energy: ", energy)
-            # print("New psi: ", logw_of_x)
+            # print("New psi: ", w_of_x)
 
             # overlap of wavefunctions:
-            wavefunction_ratio = [ tf.math.exp((next_psi - curr_psi)) for next_psi, curr_psi in zip(logw_of_x, this_current_psi) ]
+            wavefunction_ratio = [ next_psi / (curr_psi + 1e-16) for next_psi, curr_psi in zip(w_of_x, this_current_psi) ]
             probability_ratio  = [ tf.reshape(wf_ratio**2, energy[i].shape) for i, wf_ratio in enumerate(wavefunction_ratio) ]
 
             # print("wavefunction_ratio: ", wavefunction_ratio)
@@ -294,7 +294,7 @@ class BaseAlgorithm(object):
             # Get the current walker locations:
             x_current, spin, isospin  = _sampler.sample()
             # Compute the observables:
-            energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = \
+            energy, energy_jf, ke_jf, ke_direct, pe, w_of_x = \
                 self.hamiltonian.energy(_wavefunction, x_current, spin, isospin)
 
 
@@ -322,12 +322,11 @@ class BaseAlgorithm(object):
             ke_jf      = tf.split(ke_jf,     self.n_concurrent_obs_per_rank, axis=0)
             ke_direct  = tf.split(ke_direct, self.n_concurrent_obs_per_rank, axis=0)
             pe         = tf.split(pe,        self.n_concurrent_obs_per_rank, axis=0)
-            logw_of_x  = tf.split(logw_of_x, self.n_concurrent_obs_per_rank, axis=0)
+            w_of_x     = tf.split(w_of_x, self.n_concurrent_obs_per_rank, axis=0)
 
-            # print("Original logw_of_x: ", logw_of_x)
             # print("Original energy: ", energy)
 
-            current_psi.append(logw_of_x)
+            current_psi.append(w_of_x)
 
 
             # For each observation, we compute the jacobian.

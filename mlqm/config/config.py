@@ -21,8 +21,8 @@ model_name: ${hamiltonian.form}_${nparticles}part_${dimension}D.model
 
 @dataclass
 class Sampler:
-    n_thermalize:              int =  5000
-    n_void_steps:              int =  200
+    n_thermalize:              int =  10000
+    n_void_steps:              int =  500
     n_observable_measurements: int =  20
     n_walkers_per_observation: int =  200
     n_concurrent_obs_per_rank: int =  20
@@ -40,7 +40,7 @@ cs.store(
 
 defaults = [
     {"hamiltonian"  : "nuclear"},
-    {"optimizer"    : "flat"},
+    {"optimizer"    : "adaptivedelta"},
     {"wavefunction" : "many_body"},
     {"sampler"      : "sampler"},
 ]

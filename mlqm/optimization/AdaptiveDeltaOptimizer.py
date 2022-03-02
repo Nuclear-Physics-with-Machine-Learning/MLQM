@@ -34,19 +34,19 @@ class AdaptiveDeltaOptimizer(BaseAlgorithm):
         ):
 
         BaseAlgorithm.__init__(self,
-            sampler, 
-            wavefunction, 
-            adaptive_wavefunction, 
+            sampler,
+            wavefunction,
+            adaptive_wavefunction,
             hamiltonian,
             optimizer_config,
             sampler_config)
 
 
     def compute_updates_and_metrics(self, current_psi):
-        
+
         eps = self.optimizer_config.epsilon
         delta_p, opt_metrics, next_energy = self.optimize_delta(current_psi, eps)
-        
+
         return delta_p, opt_metrics, next_energy
 
     def optimize_delta(self, current_psi, eps):
@@ -149,7 +149,8 @@ class AdaptiveDeltaOptimizer(BaseAlgorithm):
                 next_energy = energies[i_e_min]
                 break
             else:
-                logger.debug(f"Skipping this energy (acos: {acoses[i_e_min]}, overlap: {overlaps[i_e_min]}, par_dist: {par_dist}, ratio: {ratio})")
+                logger.debug(f"Skipping this energy (acos: {acoses[i_e_min]:.3f},\
+                 overlap: {overlaps[i_e_min]:.3f}, par_dist: {par_dist:.3f}, ratio: {ratio:.3f})")
 
                 # Remove these options
                 energies.pop(i_e_min)

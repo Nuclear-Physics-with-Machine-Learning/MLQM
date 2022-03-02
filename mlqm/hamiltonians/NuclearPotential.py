@@ -128,7 +128,7 @@ class NuclearPotential(Hamiltonian):
 
     # @tf.function()
     # @tf.function(experimental_compile=False)
-    def compute_energies(self, inputs, spin, isospin, logw_of_x, dlogw_dx, d2logw_dx2):
+    def compute_energies(self, inputs, spin, isospin, w_of_x, dw_dx, d2w_dx2):
         '''Compute PE, KE_JF, and KE_direct
 
         Harmonic Oscillator Energy Calculations
@@ -152,9 +152,11 @@ class NuclearPotential(Hamiltonian):
         pe = self.potential_energy(inputs=inputs, spin=spin, isospin=isospin)
 
         # KE by parts needs only one derivative
-        ke_jf = self.kinetic_energy_jf(dlogw_dx=dlogw_dx, M=self.parameters["mass"])
+        ke_jf = self.kinetic_energy_jf(
+            w_of_x = w_of_x, dw_dx = dw_dx, M=self.parameters["mass"])
 
         # True, directly, uses the second derivative
-        ke_direct = self.kinetic_energy(KE_JF = ke_jf, d2logw_dx2 = d2logw_dx2, M=self.parameters["mass"])
+        ke_direct = self.kinetic_energy(
+            w_of_x = w_of_x, d2w_dx2 = d2w_dx2, M=self.parameters["mass"])
 
         return pe, ke_jf, ke_direct

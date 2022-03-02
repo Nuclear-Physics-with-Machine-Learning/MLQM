@@ -138,7 +138,7 @@ class DeepSetsCorrelator(tf.keras.models.Model):
 
         # # Compute the initial boundary condition, which the network will slowly overcome
         # # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
-        boundary_condition = -0.1 * tf.reduce_sum(inputs**2, axis=(1,2))
+        boundary_condition = -self.confinement * tf.reduce_sum(inputs**2, axis=(1,2))
         boundary_condition = tf.reshape(boundary_condition, [-1,1])
         return x + boundary_condition
         # return x

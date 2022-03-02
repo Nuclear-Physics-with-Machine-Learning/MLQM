@@ -44,7 +44,7 @@ class Hamiltonian(object):
         raise NotImplementedError("Hamiltonian classes should implement this function")
 
     @tf.function
-    def kinetic_energy_jf(self, *, dlogw_dx, M):
+    def kinetic_energy_jf(self, *, w_of_x, dw_dx, M):
         """Return Kinetic energy
 
         Calculate and return the KE directly
@@ -60,12 +60,15 @@ class Hamiltonian(object):
         # < x | KE | psi > / < x | psi > =  1 / 2m [ < x | p | psi > / < x | psi >  = 1/2 w * x**2
 
         # Contract d2_w_dx over spatial dimensions and particles:
-        ke_jf = (self.HBAR**2 / (2 * M)) * tf.reduce_sum(dlogw_dx**2, axis=(1,2))
+
+        internal_arg = tf.reshape( (1./(w_of_x+1e-16))**2, (-1,) )
+
+        ke_jf = (self.HBAR**2 / (2 * M)) * internal_arg * tf.reduce_sum(dw_dx**2, axis=(1,2))
 
         return ke_jf
 
     @tf.function
-    def kinetic_energy(self, *, KE_JF : tf.Tensor, d2logw_dx2 : tf.Tensor, M):
+    def kinetic_energy(self, *, w_of_x : tf.Tensor, d2w_dx2 : tf.Tensor, M):
         """Return Kinetic energy
 
 
@@ -78,11 +81,15 @@ class Hamiltonian(object):
         Returns:
             tf.Tensor - potential energy of shape [1]
         """
-        ke = -(self.HBAR**2 / (2 * M)) * tf.reduce_sum(d2logw_dx2, axis=(1,2))
+
+        inverse_w = tf.reshape(1/(w_of_x + 1e-16), (-1,) )
+        summed_d2 = tf.reduce_sum(d2w_dx2, axis=(1,2))
+
+        ke = -(self.HBAR**2 / (2 * M)) * inverse_w * summed_d2
         # print(KE_JF.shape)
         # print(ke.shape)
         # print(sign.shape)
-        ke = (ke  - KE_JF)
+        # ke = (ke  - KE_JF)
 
         return ke
 
@@ -102,8 +109,9 @@ class Hamiltonian(object):
             with tf.GradientTape() as second_tape:
                 second_tape.watch(inputs)
                 logw_of_x, sign = wavefunction(inputs, spin, isospin, training=True)
+                w_of_x = tf.reshape(sign, (-1, 1)) * tf.exp(logw_of_x)
             # Get the derivative of logw_of_x with respect to inputs
-            dlogw_dx = second_tape.gradient(logw_of_x, inputs)
+            dw_dx = second_tape.gradient(w_of_x, inputs)
 
         # Get the derivative of dlogw_dx with respect to inputs (aka second derivative)
 
@@ -111,12 +119,12 @@ class Hamiltonian(object):
         # [nwalkers, nparticles, dimension, nwalkers, nparticles, dimension]
 
         # This is the full hessian computation:
-        d2logw_dx2 = tape.batch_jacobian(dlogw_dx, inputs)
+        d2w_dx2 = tape.batch_jacobian(dw_dx, inputs)
 
         # And this contracts:
-        d2logw_dx2 = tf.einsum("wpdpd->wpd",d2logw_dx2)
+        d2w_dx2 = tf.einsum("wpdpd->wpd",d2w_dx2)
 
-        return logw_of_x, dlogw_dx, d2logw_dx2, sign
+        return w_of_x, dw_dx, d2w_dx2
 
     '''
     This whole section is correct but a bad implementation
@@ -173,7 +181,7 @@ class Hamiltonian(object):
     '''
 
     @tf.function
-    def compute_energies(self, inputs, spin, isospin, logw_of_x, dlogw_dx, d2logw_dx2):
+    def compute_energies(self, inputs, spin, isospin, w_of_x, dw_dx, d2w_dx2):
         '''Compute PE, KE_JF, and KE_direct
 
         Placeholder for a user to implement their calculation of the energies.
@@ -199,7 +207,7 @@ class Hamiltonian(object):
         return pe, ke_jf, ke_direct
         # return None
 
-    # @tf.function
+    @tf.function
     def energy(self,
         wavefunction : tf.keras.models.Model,
         inputs       : tf.Tensor,
@@ -225,16 +233,16 @@ class Hamiltonian(object):
         # This function takes the inputs
         # And computes the expectation value of the energy at each input point
 
-        logw_of_x, dlogw_dx, d2logw_dx2, sign = \
+        w_of_x, dw_dx, d2w_dx2 = \
             self.compute_derivatives(wavefunction, inputs, spin, isospin)
 
         pe, ke_jf, ke_direct = self.compute_energies(
-            inputs, spin, isospin, logw_of_x, dlogw_dx, d2logw_dx2)
+            inputs, spin, isospin, w_of_x, dw_dx, d2w_dx2)
 
         pe = pe
 
         # Total energy computations:
-        energy = tf.squeeze(pe+ke_direct)
-        energy_jf =  tf.squeeze(pe+ke_jf)
+        energy    = tf.squeeze(pe+ke_direct)
+        energy_jf = tf.squeeze(pe+ke_jf)
 
-        return energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x
+        return energy, energy_jf, ke_jf, ke_direct, pe, w_of_x
