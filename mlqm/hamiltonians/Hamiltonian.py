@@ -82,7 +82,7 @@ class Hamiltonian(object):
             tf.Tensor - potential energy of shape [1]
         """
 
-        inverse_w = tf.reshape(1/(w_of_x + 1e-16), (-1,) )
+        inverse_w = tf.reshape(1/(w_of_x), (-1,) )
         summed_d2 = tf.reduce_sum(d2w_dx2, axis=(1,2))
 
         ke = -(self.HBAR**2 / (2 * M)) * inverse_w * summed_d2
@@ -108,8 +108,8 @@ class Hamiltonian(object):
             tape.watch(inputs)
             with tf.GradientTape() as second_tape:
                 second_tape.watch(inputs)
-                logw_of_x, sign = wavefunction(inputs, spin, isospin, training=True)
-                w_of_x = tf.reshape(sign, (-1, 1)) * tf.exp(logw_of_x)
+                w_of_x = wavefunction(inputs, spin, isospin, training=True)
+                # w_of_x = tf.reshape(sign, (-1, 1)) * tf.exp(logw_of_x)
             # Get the derivative of logw_of_x with respect to inputs
             dw_dx = second_tape.gradient(w_of_x, inputs)
 

@@ -84,18 +84,24 @@ class BaseAlgorithm(object):
 
         # print("Doing forward pass")
         with tape:
-            log_wpsi, sign = wavefunction(x_current, spin, isospin)
+            wpsi = wavefunction(x_current, spin, isospin)
 
 
-        jac = tape.jacobian(log_wpsi, wavefunction.trainable_variables)
-        # jac = tape.jacobian(log_wpsi, wavefunction.trainable_variables, parallel_iterations = MAX_PARALLEL_ITERATIONS)
+        jac = tape.jacobian(wpsi, wavefunction.trainable_variables)
+        jac_shape = [j.shape[1:] for j in jac]
+
+        # Normalize the jacobian estimation by the wavefunction:
+
+        for i in range(len(jac)):
+            new_shape =[1 for j in jac_shape[i]]
+            jac[i] = jac[i] / tf.reshape(wpsi, [-1, *new_shape])
+        # jac = tape.jacobian(wpsi, wavefunction.trainable_variables, parallel_iterations = MAX_PARALLEL_ITERATIONS)
         #
         # for var, j in zip(wavefunction.trainable_variables, jac):
         #     print(var.shape, j)
         #
         # print(jac)
         # Grab the original shapes ([1:] means everything except first dim):
-        jac_shape = [j.shape[1:] for j in jac]
         # get the flattened shapes:
         flat_shape = [[-1, tf.reduce_prod(js)] for js in jac_shape]
         # Reshape the
@@ -322,7 +328,7 @@ class BaseAlgorithm(object):
             ke_jf      = tf.split(ke_jf,     self.n_concurrent_obs_per_rank, axis=0)
             ke_direct  = tf.split(ke_direct, self.n_concurrent_obs_per_rank, axis=0)
             pe         = tf.split(pe,        self.n_concurrent_obs_per_rank, axis=0)
-            w_of_x     = tf.split(w_of_x, self.n_concurrent_obs_per_rank, axis=0)
+            w_of_x     = tf.split(w_of_x,    self.n_concurrent_obs_per_rank, axis=0)
 
             # print("Original energy: ", energy)
 

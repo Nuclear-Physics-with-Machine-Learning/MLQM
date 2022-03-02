@@ -64,14 +64,14 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         )
 
         # We need a spatial component for _every_ particle
-
-        self.spatial_nets = []
-        for i_particle in range(self.nparticles):
-            self.spatial_nets.append(NeuralSpatialComponent(
-                ndim          = self.ndim,
-                nparticles    = self.nparticles,
-                configuration = self.config.spatial_cfg)
-            )
+        #
+        # self.spatial_nets = []
+        # for i_particle in range(self.nparticles):
+        #     self.spatial_nets.append(NeuralSpatialComponent(
+        #         ndim          = self.ndim,
+        #         nparticles    = self.nparticles,
+        #         configuration = self.config.spatial_cfg)
+        #     )
 
         # Here, we construct, up front, the appropriate spinor (spin + isospin)
         # component of the slater determinant.
@@ -117,7 +117,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
 
     # @tf.function
-    def compute_spatial_slater(self, xinputs):
+    def compute_spatial_slater(self, _xinputs):
         # We get individual response for every particle in the slater determinant
         # The axis of the particles is 1 (nwalkers, nparticles, ndim)
 
@@ -136,7 +136,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         slater_rows = []
         for i_particle in range(self.nparticles):
-            this_input = xinputs[:,i_particle,:]
+            this_input = _xinputs[:,i_particle,:]
 
             slater_rows.append(tf.concat([self.spatial_nets[j_state_function](this_input) \
                 for j_state_function in range(self.nparticles) ],
@@ -168,6 +168,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         correlation = self.correlator(xinputs)
 
+        return tf.math.exp(correlation)
 
         spatial_slater = self.compute_spatial_slater(xinputs)
 
@@ -204,4 +205,4 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         # print("Wavefunction shape: ", wavefunction.shape)
 
-        return wavefunction, sign
+        return sign * tf.math.exp(wavefunction)
