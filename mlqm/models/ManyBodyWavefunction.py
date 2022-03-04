@@ -65,13 +65,13 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         # We need a spatial component for _every_ particle
         #
-        # self.spatial_nets = []
-        # for i_particle in range(self.nparticles):
-        #     self.spatial_nets.append(NeuralSpatialComponent(
-        #         ndim          = self.ndim,
-        #         nparticles    = self.nparticles,
-        #         configuration = self.config.spatial_cfg)
-        #     )
+        self.spatial_nets = []
+        for i_particle in range(self.nparticles):
+            self.spatial_nets.append(NeuralSpatialComponent(
+                ndim          = self.ndim,
+                nparticles    = self.nparticles,
+                configuration = self.config.spatial_cfg)
+            )
 
         # Here, we construct, up front, the appropriate spinor (spin + isospin)
         # component of the slater determinant.
@@ -116,7 +116,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # After doing the additions, it is imperative to apply a factor of 0.5!
 
 
-    # @tf.function
+    @tf.function
     def compute_spatial_slater(self, _xinputs):
         # We get individual response for every particle in the slater determinant
         # The axis of the particles is 1 (nwalkers, nparticles, ndim)
@@ -137,17 +137,72 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         slater_rows = []
         for i_particle in range(self.nparticles):
             this_input = _xinputs[:,i_particle,:]
+            slater_rows.append([])
+            for j_state_function in range(self.nparticles):
+                slater_rows[i_particle].append(self.spatial_nets[j_state_function](this_input))
+                # print(f"  {this_input} mapped to {slater_rows[i_particle][-1]}")
 
-            slater_rows.append(tf.concat([self.spatial_nets[j_state_function](this_input) \
-                for j_state_function in range(self.nparticles) ],
-                axis=-1)
-            )
-            # print(slater_rows)
+            # slater_rows.append(tf.concat([ \
+            #     for j_state_function in range(self.nparticles) ],
+            #     axis=-1)
+            # )
+            # print("Slater rows [-1]: ", slater_rows[-1])
+            slater_rows[-1] = tf.concat(slater_rows[-1], axis=-1)
+            # print("Slater rows [-1]: ", slater_rows[-1])
+        # print("Slater rows: ", slater_rows)
         spatial_slater = tf.stack(slater_rows, axis=-1)
-        # spatial_slater = tf.transpose(spatial_slater, perm=(0,2,1))
-
+        spatial_slater = tf.transpose(spatial_slater, perm=(0,2,1))
+        # print(spatial_slater)
+        # exit()
 
         return spatial_slater
+
+    def compute_spin_slater(self, spin):
+        repeated_spin_spinor = tf.tile(spin, multiples = (1, self.nparticles))
+        repeated_spin_spinor = tf.reshape(repeated_spin_spinor, (-1, self.nparticles, self.nparticles))
+        spin_slater = tf.pow(0.5*(repeated_spin_spinor + self.spin_spinor_2d), 2)
+
+        return spin_slater
+
+    def compute_isospin_slater(self, isospin):
+
+        # print("  Isospin: ", isospin)
+        # print("  self.isospin_spinor_2d", self.isospin_spinor_2d)
+
+        repeated_isospin_spinor = tf.tile(isospin, multiples = (1, self.nparticles))
+        # print("  repeated_isospin_spinor: ", repeated_isospin_spinor)
+        repeated_isospin_spinor = tf.reshape(repeated_isospin_spinor, (-1, self.nparticles, self.nparticles))
+        # repeated_isospin_spinor = tf.transpose(repeated_isospin_spinor, perm=(0,2,1))
+        # print("  repeated_isospin_spinor: ", repeated_isospin_spinor)
+        isospin_slater = tf.pow(0.5*(repeated_isospin_spinor + self.isospin_spinor_2d), 2)
+
+        return isospin_slater
+
+    @tf.function
+    def construct_slater_matrix(self, inputs, spin, isospin):
+
+        spatial_slater = self.compute_spatial_slater(inputs)
+
+        spin_slater = self.compute_spin_slater(spin)
+        isospin_slater = self.compute_isospin_slater(isospin)
+
+        # Compute the determinant here
+        # Determinant is not pos def
+        #
+        # When computed, it gets added to the deep sets correlator.
+        #
+        # we are using psi = e^U(X) * slater_det, but parametrizing log(psi)
+        # with this wave function. Therefore, we return:
+        # log(psi) = U(x) + log(slater_det)
+        # Since the op we use below is `slogdet` and returns the sign + log(abs(det))
+        # Then the total function is psi = e^(U(X))*[sign(det(S))*exp^(log(abs(det(S))))]
+        # log(psi) = U(X) + log(sign(det(S)) +log(abs(det(S)))
+        #
+
+        # slater_matrix = spin_slater * isospin_slater
+        slater_matrix = spin_slater * isospin_slater * spatial_slater
+        return slater_matrix
+
 
     # @tf.function
     # @tf.function(jit_compile=True)
@@ -167,42 +222,14 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
 
         correlation = self.correlator(xinputs)
+        # return tf.math.exp(correlation)
 
-        return tf.math.exp(correlation)
-
-        spatial_slater = self.compute_spatial_slater(xinputs)
-
-
-        repeated_spin_spinor = tf.tile(spin, multiples = (1, self.nparticles))
-        repeated_spin_spinor = tf.reshape(repeated_spin_spinor, (-1, self.nparticles, self.nparticles))
-        spin_slater = 0.5*(repeated_spin_spinor + self.spin_spinor_2d)
+        slater_matrix = self.construct_slater_matrix(xinputs, spin, isospin)
 
 
-        repeated_isospin_spinor = tf.tile(isospin, multiples = (1, self.nparticles))
-        repeated_isospin_spinor = tf.reshape(repeated_isospin_spinor, (-1, self.nparticles, self.nparticles))
-        isospin_slater = 0.5*(repeated_isospin_spinor + self.isospin_spinor_2d)
-
-
-        # Compute the determinant here
-        # Determinant is not pos def
-        #
-        # When computed, it gets added to the deep sets correlator.
-        #
-        # we are using psi = e^U(X) * slater_det, but parametrizing log(psi)
-        # with this wave function. Therefore, we return:
-        # log(psi) = U(x) + log(slater_det)
-        # Since the op we use below is `slogdet` and returns the sign + log(abs(det))
-        # Then the total function is psi = e^(U(X))*[sign(det(S))*exp^(log(abs(det(S))))]
-        # log(psi) = U(X) + log(sign(det(S)) +log(abs(det(S)))
-        #
-
-        slater_det = spin_slater * isospin_slater * spatial_slater
-
-
-        sign, logdet = tf.linalg.slogdet(slater_det)
+        sign, logdet = tf.linalg.slogdet(slater_matrix)
 
         wavefunction = correlation + tf.reshape(logdet, (-1, 1))
-
         # print("Wavefunction shape: ", wavefunction.shape)
 
-        return sign * tf.math.exp(wavefunction)
+        return tf.reshape(sign, (-1, 1)) * tf.math.exp(wavefunction)

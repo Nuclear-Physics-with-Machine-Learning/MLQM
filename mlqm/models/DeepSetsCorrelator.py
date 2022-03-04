@@ -52,7 +52,7 @@ class DeepSetsCorrelator(tf.keras.models.Model):
 
         try:
             activation = tf.keras.activations.__getattribute__(self.config['activation'])
-        except e:
+        except Exception as e:
             print(e)
             print(f"Could not use the activation {self.config['activation']} - not in tf.keras.activations.")
 

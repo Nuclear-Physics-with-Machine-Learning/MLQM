@@ -81,7 +81,9 @@ class NeuralSpatialComponent(tf.keras.models.Model):
                     )
 
         self.net.add(tf.keras.layers.Dense(1,
-            use_bias = False))
+            use_bias = False, activation="tanh"))
+
+        print(self.net)
 
 
         # self.net.add(
