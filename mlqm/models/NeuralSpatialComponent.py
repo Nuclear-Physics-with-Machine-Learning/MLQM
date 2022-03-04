@@ -83,7 +83,6 @@ class NeuralSpatialComponent(tf.keras.models.Model):
         self.net.add(tf.keras.layers.Dense(1,
             use_bias = False, activation="tanh"))
 
-        print(self.net)
 
 
         # self.net.add(
@@ -91,8 +90,11 @@ class NeuralSpatialComponent(tf.keras.models.Model):
         #     )
 
         # Represent the confinement as a function of r only, which is represented as a neural netowrk
-        # self.confinement = DenseBlock(n_filters_per_layer)
 
+        self.confinement   = tf.constant(
+                self.config.confinement,
+                dtype = DEFAULT_TENSOR_TYPE
+            )
 
         # self.normalization_exponent = tf.Variable(2.0, dtype=DEFAULT_TENSOR_TYPE)
         # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
@@ -103,9 +105,11 @@ class NeuralSpatialComponent(tf.keras.models.Model):
     def __call__(self, inputs, training=None):
 
         # print("Inputs shape:", inputs.shape)
-        # print("Inputs`:", inputs`)
+        # print("Inputs:", inputs)
         x = self.net(inputs)
-
+        # boundary_condition = -self.confinement * tf.reduce_sum(inputs**2, axis=(1,))
+        # boundary_condition = tf.reshape(boundary_condition, [-1,1])
+        # return x * boundary_condition
         return x
 
     def n_parameters(self):

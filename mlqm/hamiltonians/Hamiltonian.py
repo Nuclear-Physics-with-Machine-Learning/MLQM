@@ -61,7 +61,7 @@ class Hamiltonian(object):
 
         # Contract d2_w_dx over spatial dimensions and particles:
 
-        internal_arg = tf.reshape( (1./(w_of_x+1e-16))**2, (-1,) )
+        internal_arg = tf.reshape( (1./(w_of_x+1e-8))**2, (-1,) )
 
         ke_jf = (self.HBAR**2 / (2 * M)) * internal_arg * tf.reduce_sum(dw_dx**2, axis=(1,2))
 
@@ -82,7 +82,7 @@ class Hamiltonian(object):
             tf.Tensor - potential energy of shape [1]
         """
 
-        inverse_w = tf.reshape(1/(w_of_x), (-1,) )
+        inverse_w = tf.reshape(1/(w_of_x+1e-8), (-1,) )
         summed_d2 = tf.reduce_sum(d2w_dx2, axis=(1,2))
 
         ke = -(self.HBAR**2 / (2 * M)) * inverse_w * summed_d2

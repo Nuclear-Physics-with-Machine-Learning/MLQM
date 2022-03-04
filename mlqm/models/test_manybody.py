@@ -120,47 +120,49 @@ def test_wavefunction_spatial_slater(nwalkers, nparticles, ndim):
 
         assert (diff == 0).all()
 
-@pytest.mark.parametrize('nwalkers', [1, 4, 10])
-@pytest.mark.parametrize('nparticles', [2,3])
-@pytest.mark.parametrize('ndim', [1,2,3])
-def test_spin_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
-
-    c = ManyBodyCfg()
-
-    c = OmegaConf.structured(c)
-    w = ManyBodyWavefunction(ndim, nparticles, c, n_spin_up, n_protons)
-
-    _, spins, _ = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
-    # print("spins: ", spins)
-    a = w.compute_spin_slater(spins).numpy()
-    # print("a: ", a)
-
-    # print(numpy.linalg.det(a))
-
-    # The slater determinant for spins should
-
-@pytest.mark.parametrize('nwalkers', [1, 4, 10])
-@pytest.mark.parametrize('nparticles', [2,3])
-@pytest.mark.parametrize('ndim', [1,2,3])
-@pytest.mark.parametrize('n_spin_up',[1])
-@pytest.mark.parametrize('n_protons',[1])
-def test_isospin_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
-
-    c = ManyBodyCfg()
-
-    c = OmegaConf.structured(c)
-    w = ManyBodyWavefunction(ndim, nparticles, c, n_spin_up, n_protons)
-    # print(w.isospin_spinor_2d)
-    _, _, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
-    # print("isospins: ", isospins)
-    a = w.compute_isospin_slater(isospins).numpy()
-    # print("isospin_slater: ", a)
-
-    # print(numpy.linalg.det(a))
+# @pytest.mark.parametrize('nwalkers', [1, 4, 10])
+# @pytest.mark.parametrize('nparticles', [2,3])
+# @pytest.mark.parametrize('ndim', [1,2,3])
+# def test_spin_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
+#
+#     c = ManyBodyCfg()
+#
+#     c = OmegaConf.structured(c)
+#     w = ManyBodyWavefunction(ndim, nparticles, c, n_spin_up, n_protons)
+#
+#     _, spins, _ = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
+#     # print("spins: ", spins)
+#     a = w.compute_spin_slater(spins).numpy()
+#     # print("a: ", a)
+#
+#     # print(numpy.linalg.det(a))
+#
+#     # The slater determinant for spins should
+#
+# @pytest.mark.parametrize('nwalkers', [1, 4, 10])
+# @pytest.mark.parametrize('nparticles', [2,3])
+# @pytest.mark.parametrize('ndim', [1,2,3])
+# @pytest.mark.parametrize('n_spin_up',[1])
+# @pytest.mark.parametrize('n_protons',[1])
+# def test_isospin_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
+#
+#     c = ManyBodyCfg()
+#
+#     c = OmegaConf.structured(c)
+#     w = ManyBodyWavefunction(ndim, nparticles, c, n_spin_up, n_protons)
+#     print("w.isospin_spinor_2d: ", w.isospin_spinor_2d)
+#     _, _, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
+#     print("isospins: ", isospins)
+#     a = w.compute_isospin_slater(isospins).numpy()
+#     print("isospin_slater: ", a)
+#
+#     print("numpy.linalg.det(a): ", numpy.linalg.det(a))
 
 @pytest.mark.parametrize('nwalkers', [10])
-@pytest.mark.parametrize('nparticles', [3])
+@pytest.mark.parametrize('nparticles', [2])
 @pytest.mark.parametrize('ndim', [3])
+@pytest.mark.parametrize('n_spin_up', [2])
+@pytest.mark.parametrize('n_protons', [1])
 def test_wavefunction_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
 
     c = ManyBodyCfg()
@@ -175,18 +177,21 @@ def test_wavefunction_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
     a = w.construct_slater_matrix(inputs, spins, isospins)
     print(a)
 
-    sign, logdet = tf.linalg.logdet(a)
+    # sign, logdet = tf.linalg.logdet(a)
+    det = tf.linalg.det(a)
 
-    det = sign * tf.exp(logdet)
+    # det = sign * logdet
     print(det)
 
     assert (det.numpy() !=0).all()
 
 
 @pytest.mark.parametrize('nwalkers', [10])
-@pytest.mark.parametrize('nparticles', [3])
+@pytest.mark.parametrize('nparticles', [2])
 @pytest.mark.parametrize('ndim', [3])
-def test_wavefunction_asymmetry(nwalkers, nparticles, ndim):
+@pytest.mark.parametrize('n_spin_up', [2])
+@pytest.mark.parametrize('n_protons', [1])
+def test_wavefunction_asymmetry(nwalkers, nparticles, ndim, n_spin_up, n_protons):
 
     c = ManyBodyCfg()
 
@@ -211,20 +216,81 @@ def test_wavefunction_asymmetry(nwalkers, nparticles, ndim):
     assert (a_prime != 0).all()
     assert (a + a_prime == 0 ).all()
 
-#
-# print(inputs, spins, isospins)
-# print(a)
-# print(w.construct_slater_matrix(inputs, spins, isospins))
-#
-# # Make a swap:
-#
-# print(inputs, spins, isospins)
-# a = w(inputs, spins, isospins)
-# print(a)
-# print(w.construct_slater_matrix(inputs, spins, isospins))
+@pytest.mark.parametrize('nwalkers', [10])
+@pytest.mark.parametrize('nparticles', [2])
+@pytest.mark.parametrize('ndim', [3])
+@pytest.mark.parametrize('n_spin_up', [2])
+@pytest.mark.parametrize('n_protons', [1])
+def test_spin_swap(nwalkers, nparticles, ndim, n_spin_up, n_protons):
+
+
+    c = ManyBodyCfg()
+
+    c = OmegaConf.structured(c)
+    w = ManyBodyWavefunction(ndim, nparticles, c, n_spin_up = n_spin_up, n_protons = n_protons)
+
+    inputs, spins, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
+    # print("inputs: ", inputs)
+    # print("spins: ", spins)
+    # print("isospins: ", isospins)
+    a = w(inputs, spins, isospins).numpy()
+    # print("a: ", a)
+
+    i , j = numpy.random.choice(range(nparticles), size=2, replace=False)
+
+    _, spins, _ = swap_particles(numpy.copy(inputs), spins, numpy.copy(isospins), i, j)
+
+    # print(spins)
+
+    a_prime = w(inputs, spins, isospins).numpy()
+    print("spin 2*a_prime / a: ", 2*a_prime / a)
+    # print("a_prime: ", a)
+    # By switching two particles, we should have inverted the sign.
+    assert (a != 0).all()
+    assert (a_prime != 0).all()
+    assert (2*a_prime / a - 1 == 1 ).all()
+
+
+@pytest.mark.parametrize('nwalkers', [1, 5, 10])
+@pytest.mark.parametrize('nparticles', [2])
+@pytest.mark.parametrize('ndim', [3])
+@pytest.mark.parametrize('n_spin_up', [2])
+@pytest.mark.parametrize('n_protons', [1])
+def test_isospin_swap(nwalkers, nparticles, ndim, n_spin_up, n_protons):
+
+
+    c = ManyBodyCfg()
+
+    c = OmegaConf.structured(c)
+    w = ManyBodyWavefunction(ndim, nparticles, c, n_spin_up = n_spin_up, n_protons = n_protons)
+
+    inputs, spins, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
+    # print("inputs: ", inputs)
+    # print("spins: ", spins)
+    # print("isospins: ", isospins)
+    a = w(inputs, spins, isospins).numpy()
+    # print("a: ", a)
+
+    i , j = numpy.random.choice(range(nparticles), size=2, replace=False)
+
+    _, _, isospins = swap_particles(numpy.copy(inputs), numpy.copy(spins), isospins, i, j)
+
+    # print(spins)
+
+    a_prime = w(inputs, spins, isospins).numpy()
+    print("isospin 2*a_prime / a: ", 2*a_prime / a)
+    # print("a_prime: ", a)
+    # By switching two particles, we should have inverted the sign.
+    assert (a != 0).all()
+    assert (a_prime != 0).all()
+    assert (2*a_prime / a - 1 == -3 ).all()
+
+
 
 if __name__ == "__main__":
     test_wavefunction_slater(2,2,3,2,1)
     # test_wavefunction_asymmetry(2,3,3)
     # test_spin_slater(2,2,3, 2,1)
     # test_isospin_slater(2,2,3, 2,1)
+    test_spin_swap(4,2,3,2,1)
+    test_isospin_swap(4,2,3,2,1)
