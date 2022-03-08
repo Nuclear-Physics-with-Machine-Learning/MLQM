@@ -73,7 +73,7 @@ def swap_particles(walkers, spin, isospin, i, j):
     # Switch two particles, i != j:
 
 
-    walkers[:,[i,j],:] = walkers[:, [j,i], :]
+    walkers[:, [i,j], :] = walkers[:, [j,i], :]
 
     spin[:,[i,j]] = spin[:,[j,i]]
 
@@ -85,12 +85,17 @@ def swap_particles(walkers, spin, isospin, i, j):
 @pytest.mark.parametrize('nwalkers', [1, 4, 10])
 @pytest.mark.parametrize('nparticles', [2,3,4])
 @pytest.mark.parametrize('ndim', [1,2,3])
-def test_wavefunction_spatial_slater(nwalkers, nparticles, ndim):
+@pytest.mark.parametrize('n_spin_up', [2])
+@pytest.mark.parametrize('n_protons', [1])
+def test_wavefunction_spatial_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
 
     c = ManyBodyCfg()
 
     c = OmegaConf.structured(c)
-    w = ManyBodyWavefunction(ndim, nparticles, c, n_spin_up = 2, n_protons = 1)
+    w = ManyBodyWavefunction(ndim, nparticles, c,
+        n_spin_up = n_spin_up, n_protons = n_protons,
+        use_spin = True, use_isospin = True
+    )
 
     inputs, _, _ = generate_inputs(nwalkers, nparticles, ndim, 2, 1)
     # print(inputs)
@@ -168,7 +173,10 @@ def test_wavefunction_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
     c = ManyBodyCfg()
 
     c = OmegaConf.structured(c)
-    w = ManyBodyWavefunction(ndim, nparticles, c, n_spin_up = n_spin_up, n_protons = n_protons)
+    w = ManyBodyWavefunction(ndim, nparticles, c,
+        n_spin_up = n_spin_up, n_protons = n_protons,
+        use_spin = True, use_isospin = True
+    )
 
     inputs, spins, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
     print("inputs: ", inputs)
@@ -196,16 +204,15 @@ def test_wavefunction_asymmetry(nwalkers, nparticles, ndim, n_spin_up, n_protons
     c = ManyBodyCfg()
 
     c = OmegaConf.structured(c)
-    w = ManyBodyWavefunction(ndim, nparticles, c, n_spin_up = n_spin_up, n_protons = n_protons)
-
+    w = ManyBodyWavefunction(ndim, nparticles, c,
+        n_spin_up = n_spin_up, n_protons = n_protons,
+        use_spin = True, use_isospin = True
+    )
     inputs, spins, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
-    print("inputs: ", inputs)
-    print("spins: ", spins)
-    print("isospins: ", isospins)
     a = w(inputs, spins, isospins).numpy()
     print("a: ", a)
-
     i , j = numpy.random.choice(range(nparticles), size=2, replace=False)
+
 
     inputs, spins, isospins = swap_particles(inputs, spins, isospins, i, j)
 
@@ -227,7 +234,10 @@ def test_spin_swap(nwalkers, nparticles, ndim, n_spin_up, n_protons):
     c = ManyBodyCfg()
 
     c = OmegaConf.structured(c)
-    w = ManyBodyWavefunction(ndim, nparticles, c, n_spin_up = n_spin_up, n_protons = n_protons)
+    w = ManyBodyWavefunction(ndim, nparticles, c,
+        n_spin_up = n_spin_up, n_protons = n_protons,
+        use_spin = True, use_isospin = True
+    )
 
     inputs, spins, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
     # print("inputs: ", inputs)
@@ -262,8 +272,10 @@ def test_isospin_swap(nwalkers, nparticles, ndim, n_spin_up, n_protons):
     c = ManyBodyCfg()
 
     c = OmegaConf.structured(c)
-    w = ManyBodyWavefunction(ndim, nparticles, c, n_spin_up = n_spin_up, n_protons = n_protons)
-
+    w = ManyBodyWavefunction(ndim, nparticles, c,
+        n_spin_up = n_spin_up, n_protons = n_protons,
+        use_spin = True, use_isospin = True
+    )
     inputs, spins, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
     # print("inputs: ", inputs)
     # print("spins: ", spins)
@@ -288,9 +300,10 @@ def test_isospin_swap(nwalkers, nparticles, ndim, n_spin_up, n_protons):
 
 
 if __name__ == "__main__":
-    test_wavefunction_slater(2,2,3,2,1)
-    # test_wavefunction_asymmetry(2,3,3)
+    # test_wavefunction_slater(2,2,3,2,1)
+    test_wavefunction_asymmetry(2,2,3,2,1)
+    # test_wavefunction_asymmetry(2,3,3,2,1)
     # test_spin_slater(2,2,3, 2,1)
     # test_isospin_slater(2,2,3, 2,1)
-    test_spin_swap(4,2,3,2,1)
-    test_isospin_swap(4,2,3,2,1)
+    # test_spin_swap(4,2,3,2,1)
+    # test_isospin_swap(4,2,3,2,1)

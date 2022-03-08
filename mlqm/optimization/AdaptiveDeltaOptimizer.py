@@ -49,6 +49,7 @@ class AdaptiveDeltaOptimizer(BaseAlgorithm):
 
         return delta_p, opt_metrics, next_energy
 
+    @profile
     def optimize_delta(self, current_psi, eps):
 
         # Get the natural gradients and S_ij

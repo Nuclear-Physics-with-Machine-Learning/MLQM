@@ -69,12 +69,14 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         # We need a spatial component for _every_ particle
         #
-        # self.spatial_nets = []
+        self.spatial_nets = []
         if self.use_spin or self.use_isospin:
-            self.spatial_nets = NeuralSpatialComponent(
-                ndim          = self.ndim,
-                nparticles    = self.nparticles,
-                configuration = self.config.spatial_cfg)
+            for i in range(self.nparticles):
+                self.spatial_nets.append(NeuralSpatialComponent(
+                    ndim          = self.ndim,
+                    nparticles    = self.nparticles,
+                    configuration = self.config.spatial_cfg)
+                )
         # for i_particle in range(self.nparticles):
         #     if i_particle < 4:
         #         self.spatial_nets.append(n)
@@ -146,7 +148,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
             this_input = _xinputs[:,i_particle,:]
             slater_rows.append([])
             for j_state_function in range(self.nparticles):
-                slater_rows[i_particle].append(self.spatial_nets(this_input))
+                slater_rows[i_particle].append(self.spatial_nets[j_state_function](this_input))
                 # print(f"  {this_input} mapped to {slater_rows[i_particle][-1]}")
 
             # slater_rows.append(tf.concat([ \
@@ -241,7 +243,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
             wavefunction = tf.math.exp(correlation) * tf.reshape(det, (-1, 1))
         else:
             wavefunction = tf.math.exp(correlation)
-            
+
         # This code uses logdet:
         # sign, logdet = tf.linalg.slogdet(slater_matrix)
         #

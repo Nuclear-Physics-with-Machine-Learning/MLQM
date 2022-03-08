@@ -21,7 +21,7 @@ model_name: ${hamiltonian.form}_${nparticles}part_${dimension}D.model
 
 @dataclass
 class Sampler:
-    n_thermalize:              int = 5000
+    n_thermalize:              int = 1000
     n_void_steps:              int = 200
     n_observable_measurements: int = 160
     n_walkers_per_observation: int = 500

@@ -361,6 +361,7 @@ class exec(object):
         for device in physical_devices:
             tf.config.experimental.set_memory_growth(device, True)
 
+    @profile
     def run(self):
 
 
