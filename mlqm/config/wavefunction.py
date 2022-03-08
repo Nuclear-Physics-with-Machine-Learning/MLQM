@@ -7,7 +7,7 @@ from omegaconf import MISSING
 @dataclass
 class DeepSetsCfg():
     n_filters_per_layer: int = 16
-    n_layers:            int = 2
+    n_layers:            int = 4
     bias:               bool = True
     activation:          str = "tanh"
     residual:           bool = False
@@ -15,7 +15,7 @@ class DeepSetsCfg():
 
 @dataclass
 class SpatialCfg():
-    n_layers: int = 2
+    n_layers:            int = 4
     n_filters_per_layer: int = 16
     bias:               bool = True
     activation:          str = "tanh"

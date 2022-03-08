@@ -120,15 +120,19 @@ class exec(object):
             self.config.dimension,
             self.config.nparticles,
             wavefunction_config,
-            n_spin_up = 2*self.config.hamiltonian.spin.z_projection,
-            n_protons = self.config.hamiltonian.Z,
+            n_spin_up   = 2*self.config.hamiltonian.spin.z_projection,
+            n_protons   = self.config.hamiltonian.Z,
+            use_spin    = self.config.sampler.use_spin,
+            use_isospin = self.config.sampler.use_isospin,
             )
         adaptive_wavefunction = ManyBodyWavefunction(
             self.config.dimension,
             self.config.nparticles,
             wavefunction_config,
-            n_spin_up = 2*self.config.hamiltonian.spin.z_projection,
-            n_protons = self.config.hamiltonian.Z,
+            n_spin_up   = 2*self.config.hamiltonian.spin.z_projection,
+            n_protons   = self.config.hamiltonian.Z,
+            use_spin    = self.config.sampler.use_spin,
+            use_isospin = self.config.sampler.use_isospin,
             )
 
 
@@ -260,6 +264,8 @@ class exec(object):
             init_params = {"mean": 0.0, "stddev" : 0.2},
             n_spin_up   = 2*self.config.hamiltonian.spin.z_projection,
             n_protons   = self.config.hamiltonian.Z,
+            use_spin    = self.config.sampler.use_spin,
+            use_isospin = self.config.sampler.use_isospin,
             dtype       = DEFAULT_TENSOR_TYPE)
 
 

@@ -48,6 +48,8 @@ class BaseAlgorithm(object):
         self.n_void_steps              = sampler_config.n_void_steps
         self.n_walkers_per_observation = sampler_config.n_walkers_per_observation
         self.n_concurrent_obs_per_rank = sampler_config.n_concurrent_obs_per_rank
+        self.use_spin                  = sampler_config.use_spin
+        self.use_isospin               = sampler_config.use_isospin
 
         # MPI Enabled?
         if MPI_AVAILABLE:
@@ -70,8 +72,17 @@ class BaseAlgorithm(object):
     def batched_jacobian(self, nobs, x_current_arr, spin_arr, isospin_arr, wavefunction, jac_fnc):
         ret_jac = []
         for i in range(nobs):
+            if self.use_spin:
+                spin = spin_arr[i]
+            else:
+                spin = None
+            if self.use_isospin:
+                isospin = isospin_arr[i]
+            else:
+                isospin = None
+
             flattened_jacobian, flat_shape = jac_fnc(
-                x_current_arr[i], spin_arr[i], isospin_arr[i], wavefunction)
+                x_current_arr[i], spin, isospin, wavefunction)
             ret_jac.append(flattened_jacobian)
 
         return ret_jac, flat_shape
@@ -257,7 +268,6 @@ class BaseAlgorithm(object):
 
         return dp_i, S_ij
 
-    @profile
     def walk_and_accumulate_observables(self,
             estimator,
             _wavefunction,
@@ -319,8 +329,14 @@ class BaseAlgorithm(object):
             # if self.n_concurrent_obs_per_rank != 1:
             # Split walkers:
             x_current  = tf.split(x_current, self.n_concurrent_obs_per_rank, axis=0)
-            spin       = tf.split(spin,      self.n_concurrent_obs_per_rank, axis=0)
-            isospin    = tf.split(isospin,    self.n_concurrent_obs_per_rank, axis=0)
+            if self.use_spin:
+                spin       = tf.split(spin,      self.n_concurrent_obs_per_rank, axis=0)
+            else:
+                spin = None
+            if self.use_isospin:
+                isospin    = tf.split(isospin,    self.n_concurrent_obs_per_rank, axis=0)
+            else:
+                isospin = None
 
             # Split observables:
             energy     = tf.split(energy,    self.n_concurrent_obs_per_rank, axis=0)

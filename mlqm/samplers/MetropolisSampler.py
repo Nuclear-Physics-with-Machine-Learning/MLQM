@@ -17,6 +17,8 @@ class MetropolisSampler(object):
         init_params : iter,
         n_spin_up   : int = 0,
         n_protons   : int = 0,
+        use_spin    : bool = False,
+        use_isospin : bool = False,
         dtype       : tf.dtypes = tf.float64):
         '''Initialize a metropolis sampler
 
@@ -49,14 +51,15 @@ class MetropolisSampler(object):
 
         self.walker_history = []
 
-        self.use_spin = False
-        self.use_isospin = False
+        self.use_spin = use_spin
+        self.use_isospin = use_isospin
 
-        self.possible_swap_pairs = self.gen_possible_swaps(self.nparticles)
+        if self.use_spin or self.use_isospin:
+            self.possible_swap_pairs = self.gen_possible_swaps(self.nparticles)
 
 
         #  Initialize the spin if needed:
-        if n_spin_up != 0:
+        if self.use_spin and n_spin_up != 0:
             self.use_spin = True
             self.spin_size = (self.nwalkers, self.nparticles)
 
@@ -81,9 +84,12 @@ class MetropolisSampler(object):
 
             self.spin_walkers = tf.Variable(init_walkers)
             self.spin_walker_history = []
+        else:
+            self.spin_walkers = None
+            self.spin_walker_history = []
 
         #  Initialize the spin if needed:
-        if n_protons != 0:
+        if self.use_isospin and n_protons != 0:
             self.use_isospin = True
             self.isospin_size = (self.nwalkers, self.nparticles)
 
@@ -107,6 +113,9 @@ class MetropolisSampler(object):
             init_walkers = numpy.take_along_axis(init_walkers, idx, axis=1)
 
             self.isospin_walkers = tf.Variable(init_walkers)
+            self.isospin_walker_history = []
+        else:
+            self.isospin_walkers = None
             self.isospin_walker_history = []
 
 
@@ -183,6 +192,7 @@ class MetropolisSampler(object):
             wavefunction,
             kicker, kicker_params, tf.constant(nkicks), dtype=self.dtype)
 
+
         # Update the walkers:
         self.walkers = walkers
         self.spin_walkers = spin_walkers
@@ -252,13 +262,24 @@ class MetropolisSampler(object):
             spin_swap_indexes_s = tf.gather(swap_index_j, spin_swap_indexes)
             return spin_swap_indexes_f, spin_swap_indexes_s
 
-        spin_swap_indexes_f, spin_swap_indexes_s = \
-            generate_swap_first_and_second(nkicks, shape[0], *self.possible_swap_pairs)
+        if self.use_spin:
+            spin_swap_indexes_f, spin_swap_indexes_s = \
+                generate_swap_first_and_second(nkicks, shape[0], *self.possible_swap_pairs)
+        else:
+            spin_walkers = 0.0
+            kicked_spins = 0.0
 
-        isospin_swap_indexes_f, isospin_swap_indexes_s = \
-            generate_swap_first_and_second(nkicks, shape[0], *self.possible_swap_pairs)
+        if self.use_isospin:
+            isospin_swap_indexes_f, isospin_swap_indexes_s = \
+                generate_swap_first_and_second(nkicks, shape[0], *self.possible_swap_pairs)
+        else:
+            isospin_walkers = 0.0
+            kicked_isospins = 0.0
 
-        first_index = tf.range(shape[0])
+        if self.use_spin or self.use_isospin:
+            first_index = tf.range(shape[0])
+        else:
+            spin_accept = False
         #
 
         # Adding spin:
@@ -284,17 +305,17 @@ class MetropolisSampler(object):
         # Fewer spin configurations allowed due to total spin conservation
         #
 
-        for i_kick in tf.range(nkicks):
+        for i_kick in range(nkicks):
 
             # Get kicked spin coordinates
-            kicked_spins = self.swap_random_indexes_opt(
-                spin_walkers, first_index,
-                spin_swap_indexes_f[i_kick], spin_swap_indexes_s[i_kick])
-            kicked_isospins = self.swap_random_indexes_opt(
-                isospin_walkers, first_index,
-                isospin_swap_indexes_f[i_kick], isospin_swap_indexes_s[i_kick])
-            # kicked_spins = spin_walkers
-            # kicked_isospins = isospin_walkers
+            if self.use_spin:
+                kicked_spins = self.swap_random_indexes_opt(
+                    spin_walkers, first_index,
+                    spin_swap_indexes_f[i_kick], spin_swap_indexes_s[i_kick])
+            if self.use_isospin:
+                kicked_isospins = self.swap_random_indexes_opt(
+                    isospin_walkers, first_index,
+                    isospin_swap_indexes_f[i_kick], isospin_swap_indexes_s[i_kick])
 
 
             # Create a kick:
@@ -327,9 +348,12 @@ class MetropolisSampler(object):
             walkers = tf.where(spatial_accept, kicked, walkers)
 
 
-            spin_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:-1])])
-            spin_walkers = tf.where(spin_accept,kicked_spins,spin_walkers )
-            isospin_walkers = tf.where(spin_accept,kicked_isospins,isospin_walkers )
+            if self.use_spin or self.use_isospin:
+                spin_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:-1])])
+            if self.use_spin:
+                spin_walkers = tf.where(spin_accept,kicked_spins,spin_walkers )
+            if self.use_isospin:
+                isospin_walkers = tf.where(spin_accept,kicked_isospins,isospin_walkers )
 
 
             acceptance = tf.reduce_mean(tf.cast(accept, dtype))

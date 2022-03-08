@@ -21,7 +21,9 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         nparticles: int,
         configuration: dict,
         n_spin_up : int,
-        n_protons : float):
+        n_protons : int,
+        use_spin: bool,
+        use_isospin: bool,):
         """
         Constructs a new instance of the ManyBodyWavefunction
 
@@ -50,6 +52,8 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         self.mean_subtract = self.config.mean_subtract
 
+        self.use_spin = use_spin
+        self.use_isospin = use_isospin
         # try:
         #     activation = tf.keras.activations.__getattribute__(self.config['activation'])
         # except e:
@@ -66,10 +70,11 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # We need a spatial component for _every_ particle
         #
         # self.spatial_nets = []
-        self.spatial_nets = NeuralSpatialComponent(
-            ndim          = self.ndim,
-            nparticles    = self.nparticles,
-            configuration = self.config.spatial_cfg)
+        if self.use_spin or self.use_isospin:
+            self.spatial_nets = NeuralSpatialComponent(
+                ndim          = self.ndim,
+                nparticles    = self.nparticles,
+                configuration = self.config.spatial_cfg)
         # for i_particle in range(self.nparticles):
         #     if i_particle < 4:
         #         self.spatial_nets.append(n)
@@ -101,18 +106,19 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # Set the last nparticles - n_spin_up states to -1, which
         # yields 0 for spin up and -2 for spin down.
 
-        spin_spinor_2d = numpy.zeros(shape=(nparticles, nparticles))
-        spin_spinor_2d[0:n_spin_up,:] = 1
-        spin_spinor_2d[n_spin_up:,:]  = -1
+        if self.use_spin:
+            spin_spinor_2d = numpy.zeros(shape=(nparticles, nparticles))
+            spin_spinor_2d[0:n_spin_up,:] = 1
+            spin_spinor_2d[n_spin_up:,:]  = -1
 
-        self.spin_spinor_2d = tf.constant(spin_spinor_2d, dtype = DEFAULT_TENSOR_TYPE)
+            self.spin_spinor_2d = tf.constant(spin_spinor_2d, dtype = DEFAULT_TENSOR_TYPE)
 
+        if self.use_isospin:
+            isospin_spinor_2d = numpy.zeros(shape=(nparticles, nparticles))
+            isospin_spinor_2d[0:n_protons,:] = 1
+            isospin_spinor_2d[n_protons:,:]  = -1
 
-        isospin_spinor_2d = numpy.zeros(shape=(nparticles, nparticles))
-        isospin_spinor_2d[0:n_protons,:] = 1
-        isospin_spinor_2d[n_protons:,:]  = -1
-
-        self.isospin_spinor_2d = tf.constant(isospin_spinor_2d, dtype = DEFAULT_TENSOR_TYPE)
+            self.isospin_spinor_2d = tf.constant(isospin_spinor_2d, dtype = DEFAULT_TENSOR_TYPE)
 
         # After doing the additions, it is imperative to apply a factor of 0.5!
 
@@ -229,9 +235,13 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         correlation = self.correlator(xinputs)
         # return tf.math.exp(correlation)
 
-        slater_matrix = self.construct_slater_matrix(xinputs, spin, isospin)
-
-
+        if self.use_spin or self.use_isospin:
+            slater_matrix = self.construct_slater_matrix(xinputs, spin, isospin)
+            det = tf.linalg.det(slater_matrix)
+            wavefunction = tf.math.exp(correlation) * tf.reshape(det, (-1, 1))
+        else:
+            wavefunction = tf.math.exp(correlation)
+            
         # This code uses logdet:
         # sign, logdet = tf.linalg.slogdet(slater_matrix)
         #
@@ -241,6 +251,5 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # return tf.reshape(sign, (-1, 1)) * tf.math.exp(wavefunction)
 
         # This code computes the determinant directly:
-        det = tf.linalg.det(slater_matrix)
-        wavefunction = tf.math.exp(correlation) * tf.reshape(det, (-1, 1))
+
         return tf.reshape(wavefunction, (-1, 1))
