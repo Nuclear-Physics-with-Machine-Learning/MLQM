@@ -207,7 +207,8 @@ class Hamiltonian(object):
         return pe, ke_jf, ke_direct
         # return None
 
-    @tf.function
+    # @tf.function
+    @profile
     def energy(self,
         wavefunction : tf.keras.models.Model,
         inputs       : tf.Tensor,
@@ -238,8 +239,6 @@ class Hamiltonian(object):
 
         pe, ke_jf, ke_direct = self.compute_energies(
             inputs, spin, isospin, w_of_x, dw_dx, d2w_dx2)
-
-        pe = pe
 
         # Total energy computations:
         energy    = tf.squeeze(pe+ke_direct)

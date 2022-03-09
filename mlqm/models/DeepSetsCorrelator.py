@@ -126,22 +126,22 @@ class DeepSetsCorrelator(tf.keras.models.Model):
         """
         If mean subtraction happens, it is in the call one layer up!
         """
-        
-        ################################################
-        # Old way
-        x = []
-        for p in range(self.nparticles):
-            x.append(self.individual_net(inputs[:,p,:]))
-            # print("p: ", x[-1].shape)
-
-        x = tf.add_n(x)
-        ################################################
 
         # ################################################
-        # # Improved efficiency:
-        # transposed_inputs = tf.transpose(inputs, perm=(1,0,2))
-        # latent_space = tf.vectorized_map(lambda x : self.individual_net(x), transposed_inputs)
-        # x = tf.reduce_sum(latent_space, axis=0)
+        # # Old way
+        # x = []
+        # for p in range(self.nparticles):
+        #     x.append(self.individual_net(inputs[:,p,:]))
+        #     # print("p: ", x[-1].shape)
+        #
+        # x = tf.add_n(x)
+        # ################################################
+
+        ################################################
+        # Improved efficiency:
+        transposed_inputs = tf.transpose(inputs, perm=(1,0,2))
+        latent_space = tf.vectorized_map(lambda x : self.individual_net(x), transposed_inputs)
+        x = tf.reduce_sum(latent_space, axis=0)
 
 
         x = self.aggregate_net(x)

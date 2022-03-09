@@ -182,8 +182,8 @@ class BaseAlgorithm(object):
 
 
     #
-    # @tf.function
-    @profile
+    @tf.function
+    # @profile
     def recompute_energy(self, test_wavefunction, current_psi, ):
 
         estimator = Estimator()

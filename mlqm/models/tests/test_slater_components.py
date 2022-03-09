@@ -189,12 +189,12 @@ def test_wavefunction_slater_component(nwalkers, nparticles, ndim, n_spin_up, n_
 
 
 if __name__ == "__main__":
-    test_wavefunction_slater_component(2,2,3,2,1, "compute_spatial_slater")
-    test_wavefunction_slater_component(2,3,3,2,1, "compute_spatial_slater")
-    test_wavefunction_slater_component(2,4,3,2,1, "compute_spatial_slater")
-    test_wavefunction_slater_component(2,2,3,2,1, "compute_spin_slater")
-    test_wavefunction_slater_component(2,3,3,2,1, "compute_spin_slater")
-    test_wavefunction_slater_component(2,4,3,2,1, "compute_spin_slater")
-    test_wavefunction_slater_component(2,2,3,2,1, "compute_isospin_slater")
-    test_wavefunction_slater_component(2,3,3,2,1, "compute_isospin_slater")
-    test_wavefunction_slater_component(2,4,3,2,1, "compute_isospin_slater")
+    test_wavefunction_slater_component(4,2,3,2,1, "compute_spatial_slater")
+    # test_wavefunction_slater_component(2,3,3,2,1, "compute_spatial_slater")
+    # test_wavefunction_slater_component(2,4,3,2,1, "compute_spatial_slater")
+    # test_wavefunction_slater_component(2,2,3,2,1, "compute_spin_slater")
+    # test_wavefunction_slater_component(2,3,3,2,1, "compute_spin_slater")
+    # test_wavefunction_slater_component(2,4,3,2,1, "compute_spin_slater")
+    # test_wavefunction_slater_component(2,2,3,2,1, "compute_isospin_slater")
+    # test_wavefunction_slater_component(2,3,3,2,1, "compute_isospin_slater")
+    # test_wavefunction_slater_component(2,4,3,2,1, "compute_isospin_slater")

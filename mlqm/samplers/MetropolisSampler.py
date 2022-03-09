@@ -190,7 +190,10 @@ class MetropolisSampler(object):
             # for i in range(nkicks):
             walkers, spin_walkers, isospin_walkers, acceptance = \
             self.internal_kicker_spin_isospin(
-                self.size, self.walkers, self.spin_walkers, self.isospin_walkers,
+                self.size,
+                tf.stop_gradient(self.walkers),
+                tf.stop_gradient(self.spin_walkers),
+                tf.stop_gradient(self.isospin_walkers),
                 wavefunction,
                 kicker, kicker_params, tf.constant(nkicks), dtype=self.dtype)
 
@@ -317,11 +320,13 @@ class MetropolisSampler(object):
             # Grab the kicked wavefunction in the places it is new, to speed up metropolis:
             current_wavefunction = tf.where(accept, kicked_wavefunction, current_wavefunction)
 
-            # We need to broadcast accept to match the right shape
-            # Needs to come out to the shape [nwalkers, nparticles, ndim]
-            spatial_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:])])
-            spatial_accept = tf.reshape(spatial_accept, shape)
-            walkers = tf.where(spatial_accept, kicked, walkers)
+            # # We need to broadcast accept to match the right shape
+            # # Needs to come out to the shape [nwalkers, nparticles, ndim]
+            # spatial_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:])])
+            # spatial_accept = tf.reshape(spatial_accept, shape)
+            # walkers = tf.where(spatial_accept, kicked, walkers)
+
+            walkers = tf.where(tf.reshape(accept, (-1,1,1)), kicked, walkers)
 
             acceptance = tf.reduce_mean(tf.cast(accept, dtype))
 
@@ -431,21 +436,30 @@ class MetropolisSampler(object):
             # Grab the kicked wavefunction in the places it is new, to speed up metropolis:
             current_wavefunction = tf.where(accept, kicked_wavefunction, current_wavefunction)
 
-            # We need to broadcast accept to match the right shape
-            # Needs to come out to the shape [nwalkers, nparticles, ndim]
-            spatial_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:])])
-            spatial_accept = tf.reshape(spatial_accept, shape)
-            walkers = tf.where(spatial_accept, kicked, walkers)
+            # # We need to broadcast accept to match the right shape
+            # # Needs to come out to the shape [nwalkers, nparticles, ndim]
+            # spatial_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:])])
+            # spatial_accept = tf.reshape(spatial_accept, shape)
+            # walkers = tf.where(spatial_accept, kicked, walkers)
+            #
+            #
+            # spin_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:-1])])
+            # spin_walkers = tf.where(spin_accept,kicked_spins,spin_walkers )
+
+            walkers = tf.where(tf.reshape(accept, (-1,1,1)), kicked, walkers)
 
 
-            spin_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:-1])])
-            spin_walkers = tf.where(spin_accept,kicked_spins,spin_walkers )
+            # spin_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:-1])])
+            spin_walkers = tf.where(tf.reshape(accept, (-1,1)),kicked_spins,spin_walkers )
+
+
 
             acceptance = tf.reduce_mean(tf.cast(accept, dtype))
 
         return walkers, spin_walkers, acceptance
 
-    @tf.function
+    # @tf.function
+    @profile
     def internal_kicker_spin_isospin(self,
         shape,
         walkers,
@@ -525,12 +539,8 @@ class MetropolisSampler(object):
         for i_kick in range(nkicks):
 
             # Get kicked spin coordinates
-            kicked_spins = self.swap_random_indexes_opt(
-                spin_walkers, first_index,
-                spin_swap_indexes_f[i_kick], spin_swap_indexes_s[i_kick])
-            kicked_isospins = self.swap_random_indexes_opt(
-                isospin_walkers, first_index,
-                isospin_swap_indexes_f[i_kick], isospin_swap_indexes_s[i_kick])
+            kicked_spins = self.swap_random_indexes_opt(spin_walkers, first_index, spin_swap_indexes_f[i_kick], spin_swap_indexes_s[i_kick])
+            kicked_isospins = self.swap_random_indexes_opt(isospin_walkers, first_index, isospin_swap_indexes_f[i_kick], isospin_swap_indexes_s[i_kick])
 
 
             # Create a kick:
@@ -558,14 +568,14 @@ class MetropolisSampler(object):
 
             # We need to broadcast accept to match the right shape
             # Needs to come out to the shape [nwalkers, nparticles, ndim]
-            spatial_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:])])
-            spatial_accept = tf.reshape(spatial_accept, shape)
-            walkers = tf.where(spatial_accept, kicked, walkers)
+            # spatial_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:])])
+            # spatial_accept = tf.reshape(spatial_accept, shape)
+            walkers = tf.where(tf.reshape(accept, (-1,1,1)), kicked, walkers)
 
 
-            spin_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:-1])])
-            spin_walkers = tf.where(spin_accept,kicked_spins,spin_walkers )
-            isospin_walkers = tf.where(spin_accept,kicked_isospins,isospin_walkers )
+            # spin_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:-1])])
+            spin_walkers = tf.where(tf.reshape(accept, (-1,1)),kicked_spins,spin_walkers )
+            isospin_walkers = tf.where(tf.reshape(accept,(-1,1)),kicked_isospins,isospin_walkers )
 
 
             acceptance = tf.reduce_mean(tf.cast(accept, dtype))

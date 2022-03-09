@@ -147,33 +147,47 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # over all particles at once, for each network:
 
         # The matrix indexes in the end should be:
-        # [walker, state, particle] 
+        # [walker, state, particle]
         # In other words, columns (y, 3rd index) share the particle
         # and rows (x, 2nd index) share the state
 
-        slater_rows = []
-        for j_state_function in range(self.nparticles):
-            slater_rows.append([])
-            for i_particle in range(self.nparticles):
-                this_input = _xinputs[:,i_particle,:]
-                slater_rows[j_state_function].append(self.spatial_nets[j_state_function](this_input))
-                # print(f"  {this_input} mapped to {slater_rows[i_particle][-1]}")
-
-            # slater_rows.append(tf.concat([ \
-            #     for j_state_function in range(self.nparticles) ],
-            #     axis=-1)
+        @tf.function
+        def compute_row(_wavefunction, _input):
+            # Use the vectorized_map function to map over particles:
+            transposed_inputs = tf.transpose(_input, perm=(1,0,2))
+            # print(transposed_inputs)
+            # mapped_values = (this_input)
+            temp_value = tf.vectorized_map(\
+                lambda x : _wavefunction(x), transposed_inputs)
+            temp_value = tf.reshape(temp_value,(transposed_inputs.shape[0], -1))
             # )
-            # print("Slater rows [-1]: ", slater_rows[-1])
-            slater_rows[-1] = tf.concat(slater_rows[-1], axis=-1)
-            # print("Slater rows [-1]: ", slater_rows[-1])
-        # print("Slater rows: ", slater_rows)
+            # print("temp_value: ", temp_value)
+            temp_value = tf.transpose(temp_value)
+            return temp_value
+
+        slater_rows = [compute_row(w, _xinputs) for w in self.spatial_nets]
+        # for j_state_function in range(self.nparticles):
+            # slater_rows.append([])
+            #
+            # for i_particle in range(self.nparticles):
+            #     this_input = _xinputs[:,i_particle,:]
+            #     print("this_input.shape: ", this_input.shape)
+            #     slater_rows[j_state_function].append(self.spatial_nets[j_state_function](this_input))
+            #     # print(f"  {this_input} mapped to {slater_rows[i_particle][-1]}")
+            # slater_rows[-1] = tf.concat(slater_rows[-1], axis=-1)
+
+
+
+            # slater_rows.append(temp_value)
+
+
+        # print("new slater rows: ", new_slater_rows)
         spatial_slater = tf.stack(slater_rows, axis=-1)
         spatial_slater = tf.transpose(spatial_slater, perm=(0,2,1))
-        # print(spatial_slater)
-        # exit()
 
         return spatial_slater
 
+    @tf.function
     def compute_spin_slater(self, spin):
         repeated_spin_spinor = tf.tile(spin, multiples = (1, self.nparticles))
         repeated_spin_spinor = tf.reshape(repeated_spin_spinor, (-1, self.nparticles, self.nparticles))
@@ -181,6 +195,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         return spin_slater
 
+    @tf.function
     def compute_isospin_slater(self, isospin):
 
         # print("  Isospin: ", isospin)
@@ -196,6 +211,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         return isospin_slater
 
     # @tf.function
+    @tf.function
     def construct_slater_matrix(self, inputs, spin, isospin):
 
 
@@ -229,9 +245,9 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         return slater_matrix
 
 
-    # @tf.function
+    @tf.function
     # @tf.function(jit_compile=True)
-    @profile
+    # @profile
     def __call__(self, inputs, spin=None, isospin=None, training=True):
 
 
