@@ -243,7 +243,7 @@ class BaseAlgorithm(object):
         overlap  = tf.sqrt(overlap2)
         acos     = tf.math.acos(overlap)**2
 
-        energy = estimator['energy'].numpy()
+        energy = estimator['energy']
 
         return energy, overlap, acos
 

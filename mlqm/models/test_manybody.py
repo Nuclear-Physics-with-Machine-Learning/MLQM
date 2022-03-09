@@ -82,48 +82,108 @@ def swap_particles(walkers, spin, isospin, i, j):
     return walkers, spin, isospin
 
 
+# def test_wavefunction_spatial_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
+
 @pytest.mark.parametrize('nwalkers', [1, 4, 10])
 @pytest.mark.parametrize('nparticles', [2,3,4])
 @pytest.mark.parametrize('ndim', [1,2,3])
 @pytest.mark.parametrize('n_spin_up', [2])
 @pytest.mark.parametrize('n_protons', [1])
-def test_wavefunction_spatial_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
+@pytest.mark.parametrize('func', ['compute_spatial_slater', 'compute_spin_slater', 'compute_isospin_slater'])
+def test_wavefunction_slater_component(nwalkers, nparticles, ndim, n_spin_up, n_protons, func):
 
+
+    # Create a config:
     c = ManyBodyCfg()
 
+    # Cast to structured config:
     c = OmegaConf.structured(c)
+    # Init the wavefunction object:
     w = ManyBodyWavefunction(ndim, nparticles, c,
         n_spin_up = n_spin_up, n_protons = n_protons,
         use_spin = True, use_isospin = True
     )
 
-    inputs, _, _ = generate_inputs(nwalkers, nparticles, ndim, 2, 1)
+    # Create inputs:
+    inputs, spin, isospin = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
     # print(inputs)
 
     # mean subtract:
     xinputs = inputs - numpy.reshape(numpy.mean(inputs, axis=1), (nwalkers, 1, ndim))
-    a = w.compute_spatial_slater(inputs).numpy()
 
+    def make_computation(_inputs, _spin, _isospin, w, func):
+
+        if func == "compute_spatial_slater":
+            # Compute the SPATIAL slater only:
+            _a = w.compute_spatial_slater(_inputs).numpy()
+        elif func == "compute_spin_slater":
+            # Spin only
+            _a = w.compute_spin_slater(_spin).numpy()
+        elif func == "compute_isospin_slater":
+            # Isospin only
+            _a = w.compute_isospin_slater(_isospin).numpy()
+        return _a
+
+    a = make_computation(xinputs, spin, isospin, w, func)
     print("a: ", a)
+
+    def kick_inputs(_inputs, _spin, _isospin, func):
+
+        if func == "compute_spatial_slater":
+            # Compute the SPATIAL slater only:
+            _inputs = _inputs.copy()
+            _inputs[:,i_particle,:] += 1
+        elif func == "compute_spin_slater":
+            # Spin only
+            _spin = _spin.copy()
+            _spin[:,i_particle] += 1
+        elif func == "compute_isospin_slater":
+            # Isospin only
+            _isospin = _isospin.copy()
+            _isospin[:,i_particle] += 1
+        return _inputs, _spin, _isospin
 
     # If we change one particle, it should change just one column of the matrix.
     for i_particle in range(nparticles):
-        new_inputs = inputs.copy()
-        new_inputs[:,i_particle,:] += 1
+
+        print(xinputs)
+        new_inputs, new_spin, new_isospin = kick_inputs(xinputs, spin, isospin, func)
+        print(new_inputs)
         # print("inputs - new_inputs: ", inputs - new_inputs)
-        a_prime = w.compute_spatial_slater(new_inputs).numpy()
+        # a_prime = w.__getattribute__(func)(new_inputs).numpy()
+        a_prime = make_computation(new_inputs, new_spin, new_isospin, w, func)
+        print(a_prime)
 
         # print("a_prime: ", a_prime)
 
         diff = a - a_prime
         # print(f"diff[:, {i_particle}, :]: ", diff[:, i_particle, :])
-        # print(f"diff: ", diff)
-        assert (diff[:,i_particle,:] != 0).all()
+        assert (diff[:,:,i_particle] != 0).all()
 
-        diff = numpy.delete(diff, i_particle, 1)
+        diff = numpy.delete(diff, i_particle, 2)
         # print(f"numpy.delete(diff, {i_particle}, 1): ", diff )
 
         assert (diff == 0).all()
+
+    # if we swap two particles, any two, the spatial slater should exchange two columns.
+    # Practically, the determinant should change sign.
+    i , j = numpy.random.choice(range(nparticles), size=2, replace=False)
+    xinputs, spin, isospin = swap_particles(xinputs, spin, isospin, i, j)
+
+    original_det = numpy.linalg.det(a)
+    swapped_a = make_computation(xinputs, spin, isospin, w, func)
+
+    # The index of the slater matrix should be [walker, state, particle, ]
+    print(a[0,:,i])
+    print(swapped_a[0,:,j])
+    print("Swapped a: ", swapped_a)
+    new_det = numpy.linalg.det(swapped_a)
+    print("original_det: ", original_det)
+    print("new_det: ", new_det)
+    print("original_det + new_det: ", original_det + new_det)
+
+    # Assert 0 within machine tolerance:
+    assert  (original_det + new_det < 1e-8).all()
 
 # @pytest.mark.parametrize('nwalkers', [1, 4, 10])
 # @pytest.mark.parametrize('nparticles', [2,3])
@@ -163,8 +223,8 @@ def test_wavefunction_spatial_slater(nwalkers, nparticles, ndim, n_spin_up, n_pr
 #
 #     print("numpy.linalg.det(a): ", numpy.linalg.det(a))
 
-@pytest.mark.parametrize('nwalkers', [10])
-@pytest.mark.parametrize('nparticles', [2])
+@pytest.mark.parametrize('nwalkers', [1, 4, 10])
+@pytest.mark.parametrize('nparticles', [2,3,4])
 @pytest.mark.parametrize('ndim', [3])
 @pytest.mark.parametrize('n_spin_up', [2])
 @pytest.mark.parametrize('n_protons', [1])
@@ -185,17 +245,25 @@ def test_wavefunction_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
     a = w.construct_slater_matrix(inputs, spins, isospins)
     print(a)
 
-    # sign, logdet = tf.linalg.logdet(a)
     det = tf.linalg.det(a)
 
-    # det = sign * logdet
     print(det)
 
     assert (det.numpy() !=0).all()
 
+    # We've checked antisymmetry in another test but check it again here
 
-@pytest.mark.parametrize('nwalkers', [10])
-@pytest.mark.parametrize('nparticles', [2])
+    i , j = numpy.random.choice(range(nparticles), size=2, replace=False)
+    inputs, spins, isospins = swap_particles(inputs, spins, isospins, i, j)
+
+    swapped_a = w.construct_slater_matrix(inputs, spins, isospins)
+    swapped_det = tf.linalg.det(swapped_a)
+    diff = (swapped_det + det).numpy()
+    assert (diff < 1e-8 ).all()
+
+
+@pytest.mark.parametrize('nwalkers', [1, 4, 10])
+@pytest.mark.parametrize('nparticles', [2, 3])
 @pytest.mark.parametrize('ndim', [3])
 @pytest.mark.parametrize('n_spin_up', [2])
 @pytest.mark.parametrize('n_protons', [1])
@@ -217,14 +285,14 @@ def test_wavefunction_asymmetry(nwalkers, nparticles, ndim, n_spin_up, n_protons
     inputs, spins, isospins = swap_particles(inputs, spins, isospins, i, j)
 
     a_prime = w(inputs, spins, isospins).numpy()
-    print("a_prime: ", a)
+    print("a_prime: ", a_prime)
     # By switching two particles, we should have inverted the sign.
     assert (a != 0).all()
     assert (a_prime != 0).all()
     assert (a + a_prime == 0 ).all()
 
-@pytest.mark.parametrize('nwalkers', [10])
-@pytest.mark.parametrize('nparticles', [2])
+@pytest.mark.parametrize('nwalkers', [1, 4, 10])
+@pytest.mark.parametrize('nparticles', [2, 3])
 @pytest.mark.parametrize('ndim', [3])
 @pytest.mark.parametrize('n_spin_up', [2])
 @pytest.mark.parametrize('n_protons', [1])
@@ -300,10 +368,22 @@ def test_isospin_swap(nwalkers, nparticles, ndim, n_spin_up, n_protons):
 
 
 if __name__ == "__main__":
-    # test_wavefunction_slater(2,2,3,2,1)
-    test_wavefunction_asymmetry(2,2,3,2,1)
-    # test_wavefunction_asymmetry(2,3,3,2,1)
+    # test_wavefunction_slater_component(2,2,3,2,1, "compute_spatial_slater")
+    # test_wavefunction_slater_component(2,3,3,2,1, "compute_spatial_slater")
+    # test_wavefunction_slater_component(2,4,3,2,1, "compute_spatial_slater")
+    # test_wavefunction_slater_component(2,2,3,2,1, "compute_spin_slater")
+    # test_wavefunction_slater_component(2,3,3,2,1, "compute_spin_slater")
+    # test_wavefunction_slater_component(2,4,3,2,1, "compute_spin_slater")
+    # test_wavefunction_slater_component(2,2,3,2,1, "compute_isospin_slater")
+    # test_wavefunction_slater_component(2,3,3,2,1, "compute_isospin_slater")
+    # test_wavefunction_slater_component(2,4,3,2,1, "compute_isospin_slater")
+    test_wavefunction_slater(2,2,3,2,1,)
+    test_wavefunction_slater(2,3,3,2,1,)
+    test_wavefunction_slater(2,4,3,2,1,)
+    # test_wavefunction_asymmetry(2,2,3,2,1)
+    # test_wavefunction_asymmetry(2,3,3,2,2)
     # test_spin_slater(2,2,3, 2,1)
     # test_isospin_slater(2,2,3, 2,1)
     # test_spin_swap(4,2,3,2,1)
     # test_isospin_swap(4,2,3,2,1)
+    # test_wavefunction_spatial_slater(2,4,3,2,1)

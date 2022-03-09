@@ -599,12 +599,12 @@ class MetropolisSampler(object):
 
 
     @tf.function
-    def generate_swap_first_and_second(self, nkicks,nwalkers,swap_index_i, swap_index_j):
+    def generate_swap_first_and_second(self, nkicks, nwalkers,swap_index_i, swap_index_j):
 
 
         # Generate k random numbers in the range (0, swap_index_i.shape[0])
         spin_swap_indexes = tf.random.uniform(
-            shape = (nkicks, shape[0]),
+            shape = (nkicks, nwalkers),
             minval = 0,
             maxval = swap_index_i.shape[0],
             dtype = tf.int32
