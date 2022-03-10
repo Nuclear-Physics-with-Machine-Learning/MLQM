@@ -85,7 +85,7 @@ def swap_particles(walkers, spin, isospin, i, j):
 # def test_wavefunction_spatial_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
 
 @pytest.mark.parametrize('nwalkers', [10])
-@pytest.mark.parametrize('nparticles', [2,3,4])
+@pytest.mark.parametrize('nparticles', [2])
 @pytest.mark.parametrize('ndim', [1,2,3])
 @pytest.mark.parametrize('n_spin_up', [1,2])
 @pytest.mark.parametrize('n_protons', [1,2])
@@ -157,7 +157,7 @@ def test_wavefunction_slater_component(nwalkers, nparticles, ndim, n_spin_up, n_
         # print("a_prime: ", a_prime)
 
         diff = a - a_prime
-        # print(f"diff[:, {i_particle}, :]: ", diff[:, i_particle, :])
+        print(f"diff[:, {i_particle}, :]: ", diff[:, i_particle, :])
         assert (diff[:,:,i_particle] != 0).all()
 
         diff = numpy.delete(diff, i_particle, 2)
@@ -189,7 +189,7 @@ def test_wavefunction_slater_component(nwalkers, nparticles, ndim, n_spin_up, n_
 
 
 if __name__ == "__main__":
-    test_wavefunction_slater_component(4,2,3,2,1, "compute_spatial_slater")
+    test_wavefunction_slater_component(3,2,3,2,1, "compute_spatial_slater")
     # test_wavefunction_slater_component(2,3,3,2,1, "compute_spatial_slater")
     # test_wavefunction_slater_component(2,4,3,2,1, "compute_spatial_slater")
     # test_wavefunction_slater_component(2,2,3,2,1, "compute_spin_slater")

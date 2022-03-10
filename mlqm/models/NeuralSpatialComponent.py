@@ -53,13 +53,13 @@ class NeuralSpatialComponent(tf.keras.models.Model):
 
 
 
-        self.net = tf.keras.models.Sequential()
+        self.net = []
 
-        self.net.add(
+        self.net.append(
             DenseBlock(n_filters_per_layer,
                 use_bias   = bias,
                 activation = activation)
-            )
+           )
 
         # The above layer counts as a layer!
         for l in range(n_layers-1):
@@ -68,33 +68,28 @@ class NeuralSpatialComponent(tf.keras.models.Model):
             else:
                 _activation = activation
             if residual:
-                self.net.add(
+                self.net.append(
                     ResidualBlock(n_filters_per_layer,
                         use_bias    = bias,
                         activation = _activation)
                     )
             else:
-                self.net.add(
+                self.net.append(
                     DenseBlock(n_output = n_filters_per_layer,
                         use_bias    = bias,
                         activation = _activation)
                     )
 
-        self.net.add(tf.keras.layers.Dense(1,
-            use_bias = False, activation="tanh"))
+        self.net.append(tf.keras.layers.Dense(1,
+            use_bias = False))
 
-
-
-        # self.net.add(
-        #     tf.keras.layers.Conv1D(filters=10,kernel_size=3)
-        #     )
 
         # Represent the confinement as a function of r only, which is represented as a neural netowrk
 
-        self.confinement   = tf.constant(
-                self.config.confinement,
-                dtype = DEFAULT_TENSOR_TYPE
-            )
+        # self.confinement   = tf.constant(
+        #         self.config.confinement,
+        #         dtype = DEFAULT_TENSOR_TYPE
+        #     )
 
         # self.normalization_exponent = tf.Variable(2.0, dtype=DEFAULT_TENSOR_TYPE)
         # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
@@ -103,10 +98,12 @@ class NeuralSpatialComponent(tf.keras.models.Model):
     @tf.function
     # @tf.function(jit_compile=True)
     def __call__(self, inputs, training=None):
-
+        # return tf.constant(1.0, dtype=tf.float64)
         # print("Inputs shape:", inputs.shape)
         # print("Inputs:", inputs)
-        x = self.net(inputs)
+        x = inputs
+        for layer in self.net:
+            x = layer(x)
         # boundary_condition = -self.confinement * tf.reduce_sum(inputs**2, axis=(1,))
         # boundary_condition = tf.reshape(boundary_condition, [-1,1])
         # return x * boundary_condition

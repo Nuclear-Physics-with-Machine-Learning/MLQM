@@ -128,19 +128,23 @@ class BaseAlgorithm(object):
 
 
     @tf.function
-    def compute_O_observables(self, flattened_jacobian, energy):
+    def compute_O_observables(self, flattened_jacobian, energy, w_of_x):
 
         # dspi_i is the reduction of the jacobian over all walkers.
         # In other words, it's the mean gradient of the parameters with respect to inputs.
         # This is effectively the measurement of O^i in the paper.
-        dpsi_i = tf.reduce_mean(flattened_jacobian, axis=0)
-        dpsi_i = tf.reshape(dpsi_i, [-1,1])
+        normed_fj = flattened_jacobian / (w_of_x )
 
+
+        dpsi_i = tf.reduce_mean(normed_fj, axis=0)
+        dpsi_i = tf.reshape(dpsi_i, [-1,1])
         # To compute <O^m O^n>
-        dpsi_ij = tf.linalg.matmul(flattened_jacobian, flattened_jacobian, transpose_a = True) / self.n_walkers_per_observation
+        dpsi_ij = tf.linalg.matmul(normed_fj, normed_fj, transpose_a = True) / self.n_walkers_per_observation
 
         # Computing <O^m H>:
-        dpsi_i_EL = tf.linalg.matmul(tf.reshape(energy, [1,self.n_walkers_per_observation]), flattened_jacobian)
+        e_reshaped = tf.reshape(energy, [1,self.n_walkers_per_observation])
+
+        dpsi_i_EL = tf.linalg.matmul(e_reshaped, normed_fj)
         # This makes this the same shape as the other tensors
         dpsi_i_EL = tf.reshape(dpsi_i_EL, [-1, 1])
 
@@ -162,7 +166,7 @@ class BaseAlgorithm(object):
     def equilibrate(self, n_equilibrations):
 
         kicker = tf.random.normal
-        kicker_params = {"mean": 0.0, "stddev" : 0.4}
+        kicker_params = {"mean": 0.0, "stddev" : 1.6}
 
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=n_equilibrations)
 
@@ -182,8 +186,7 @@ class BaseAlgorithm(object):
 
 
     #
-    @tf.function
-    # @profile
+    # @tf.function
     def recompute_energy(self, test_wavefunction, current_psi, ):
 
         estimator = Estimator()
@@ -204,6 +207,12 @@ class BaseAlgorithm(object):
             # print("New energy: ", energy)
             # print("New psi: ", w_of_x)
 
+            # print("next_x[0][0:10]: ", next_x[0][0:10])
+            #
+            # print("w_of_x[0][0:10]: ", w_of_x[0][0:10])
+            # print("this_current_psi[0][0:10]: ", this_current_psi[0][0:10])
+            # print("(w_of_x[0] / this_current_psi[0])[0:10]: ", (w_of_x[0] / this_current_psi[0])[0:10])
+            # exit()
             # overlap of wavefunctions:
             wavefunction_ratio = [ next_psi / (curr_psi + 1e-16) for next_psi, curr_psi in zip(w_of_x, this_current_psi) ]
             probability_ratio  = [ tf.reshape(wf_ratio**2, energy[i].shape) for i, wf_ratio in enumerate(wavefunction_ratio) ]
@@ -269,7 +278,6 @@ class BaseAlgorithm(object):
 
         return dp_i, S_ij
 
-    @profile
     def walk_and_accumulate_observables(self,
             estimator,
             _wavefunction,
@@ -312,9 +320,10 @@ class BaseAlgorithm(object):
             # Get the current walker locations:
             x_current, spin, isospin  = _sampler.sample()
             # Compute the observables:
+            # Here, perhaps we can compute the d_i of obs_energy:
+
             energy, energy_jf, ke_jf, ke_direct, pe, w_of_x = \
                 self.hamiltonian.energy(_wavefunction, x_current, spin, isospin)
-
 
             # R is computed but it needs to be WRT the center of mass of all particles
             # So, mean subtract if needed:
@@ -377,7 +386,10 @@ class BaseAlgorithm(object):
                 # print("obs_pe: ",        obs_pe)
 
 
-                dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(flattened_jacobian[i_obs], obs_energy)
+                dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(
+                    flattened_jacobian[i_obs], obs_energy, w_of_x[i_obs])
+
+
 
                 # print("dpsi_i: ", dpsi_i)
                 # print("dpsi_i_EL: ", dpsi_i_EL)
@@ -438,7 +450,7 @@ class BaseAlgorithm(object):
 
 
         kicker = tf.random.normal
-        kicker_params = {"mean": 0.0, "stddev" : 0.2}
+        kicker_params = {"mean": 0.0, "stddev" : 0.6}
 
 
         # We need to know how many times to loop over the walkers and metropolis step.

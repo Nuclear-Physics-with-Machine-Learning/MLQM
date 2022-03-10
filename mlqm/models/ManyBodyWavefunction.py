@@ -245,9 +245,9 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         return slater_matrix
 
 
-    @tf.function
     # @tf.function(jit_compile=True)
     # @profile
+    @tf.function
     def __call__(self, inputs, spin=None, isospin=None, training=True):
 
 
@@ -259,9 +259,6 @@ class ManyBodyWavefunction(tf.keras.models.Model):
             xinputs = inputs - mean[:,None,:]
         else:
             xinputs = inputs
-
-
-
 
         correlation = self.correlator(xinputs)
         # return tf.math.exp(correlation)

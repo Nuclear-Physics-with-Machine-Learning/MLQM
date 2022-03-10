@@ -458,8 +458,8 @@ class MetropolisSampler(object):
 
         return walkers, spin_walkers, acceptance
 
-    # @tf.function
-    @profile
+    @tf.function
+    # @profile
     def internal_kicker_spin_isospin(self,
         shape,
         walkers,
@@ -589,7 +589,7 @@ class MetropolisSampler(object):
         '''
         Pick two indexes, per row, and swap the values
         '''
-
+        # TODO: speed up this function
         # First thing to do is generate a set of pairs of indexes, for every row.
 
         # First, select indexes:

@@ -301,16 +301,18 @@ class exec(object):
             # Note that tensorflow adds '.index' and '.data-...' to the name
             tf_p = pathlib.Path(str(self.model_name) + ".index")
 
+            this_save_path = self.save_path / pathlib.Path("checkpoint/")
             # Check for tensorflow first:
 
             model_restored = False
             tf_found_path = None
-            for source_path in [self.save_path, pathlib.Path('./')]:
+            for source_path in [this_save_path, pathlib.Path('./')]:
                 if (source_path / tf_p).is_file():
                     # Note: we use the original path without the '.index' added
                     tf_found_path = source_path / pathlib.Path(self.model_name)
                     logger.info(f"Resolved weights path is {tf_found_path}")
                     break
+
 
             if tf_found_path is None:
                 raise OSError(f"{self.model_name} not found.")
@@ -347,7 +349,7 @@ class exec(object):
             # We get here only if one method restored.
             # Attempt to restore a global step and optimizer but it's not necessary
             try:
-                with open(self.save_path / pathlib.Path("global_step.pkl"), 'rb') as _f:
+                with open(this_save_path / pathlib.Path("global_step.pkl"), 'rb') as _f:
                     self.global_step = pickle.load(file=_f)
             except:
                 logger.info("Could not restore a global_step or an optimizer state.  Starting over with restored weights only.")
@@ -380,7 +382,6 @@ class exec(object):
             logger.debug(excep)
             pass
 
-
         if MPI_AVAILABLE and hvd.size() > 1:
             logger.info("Broadcasting initial model and optimizer state.")
             # We have to broadcast the wavefunction parameter here:
@@ -398,10 +399,22 @@ class exec(object):
         self.sr_worker.equilibrate(self.config.sampler.n_thermalize)
         logger.info("Finished thermalization.")
 
+        x, spin, isospin = self.sr_worker.sampler.sample()
+
+
+        # w = self.sr_worker.wavefunction
+
+        # pre_swap = w(x, spin,isospin)
+        # x = tf.stack([x[:,1,:], x[:,0,:]], axis=1)
+        # spin = tf.stack([spin[:,1], spin[:,0]],  axis=1)
+        # isospin = tf.stack([isospin[:,1], isospin[:,0]],  axis=1)
+        # post_swap = w(x, spin, isospin)
+        # assert ((pre_swap + post_swap).numpy() < 1e-8).all()
+
         # Now, call once to compile:
-        logger.info("About to compile.")
-        self.sr_worker.compile()
-        logger.info("Finished compilation.")
+        # logger.info("About to compile.")
+        # self.sr_worker.compile()
+        # logger.info("Finished compilation.")
 
         checkpoint_iteration = 2000
 

@@ -34,9 +34,9 @@ class FlatOptimizer(BaseAlgorithm):
         ):
 
         BaseAlgorithm.__init__(self,
-            sampler, 
-            wavefunction, 
-            adaptive_wavefunction, 
+            sampler,
+            wavefunction,
+            adaptive_wavefunction,
             hamiltonian,
             optimizer_config,
             sampler_config)
@@ -45,7 +45,7 @@ class FlatOptimizer(BaseAlgorithm):
 
 
     def compute_updates_and_metrics(self, current_psi):
-    
+
         eps = self.optimizer_config.epsilon
         delta = self.optimizer_config.delta
         delta_p, opt_metrics, next_energy = self.flat_optimizer(current_psi, eps, delta)
@@ -66,6 +66,7 @@ class FlatOptimizer(BaseAlgorithm):
 
         # Unpack the gradients
         gradients = self.unflatten_weights_or_gradients(self.flat_shape, self.correct_shape, dp_i)
+
 
         original_weights = self.wavefunction.trainable_variables
 
@@ -92,4 +93,3 @@ class FlatOptimizer(BaseAlgorithm):
         }
 
         return gradients,  delta_metrics, next_energy
-

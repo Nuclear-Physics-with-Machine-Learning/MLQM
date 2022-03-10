@@ -59,6 +59,8 @@ class AdaptiveDeltaOptimizer(BaseAlgorithm):
                 self.estimator["dpsi_i_EL"]
                 )
 
+        # print(f_i)
+
         S_ij = self.gradient_calc.S_ij(
                 self.estimator['dpsi_ij'],
                 self.estimator['dpsi_i']
@@ -84,6 +86,8 @@ class AdaptiveDeltaOptimizer(BaseAlgorithm):
         # Now iterate over delta values to optimize the step size:
         delta_max = tf.constant(self.optimizer_config.delta_max, dtype=S_ij.dtype)
         delta_min = tf.constant(self.optimizer_config.delta_min, dtype=S_ij.dtype)
+
+        # print("delta_p: ", delta_p)
 
         # take the current energy as the starting miniumum:
         energy_min = self.estimator['energy'] + 1
@@ -137,6 +141,9 @@ class AdaptiveDeltaOptimizer(BaseAlgorithm):
 
             par_dist = self.gradient_calc.par_dist(delta_options[i_e_min]*dp_i, S_ij)
 
+            print("par_dist - acoses[i_e_min]:", par_dist - acoses[i_e_min])
+            print("par_dist + acoses[i_e_min]:", par_dist - acoses[i_e_min])
+
             ratio = tf.abs(par_dist - acoses[i_e_min]) / tf.abs(par_dist + acoses[i_e_min])
 
             #
@@ -144,7 +151,8 @@ class AdaptiveDeltaOptimizer(BaseAlgorithm):
             # print(hvd.rank(), " Delta: ", delta_options[i_e_min], ", par_dist: ", par_dist)
             # print(hvd.rank(), " Delta: ", delta_options[i_e_min], ", acos: ", acos)
 
-            if par_dist < 0.1 and acoses[i_e_min] < 0.1  and overlaps[i_e_min] > 0.9 and ratio < 0.4:
+            if par_dist < 0.1 and acoses[i_e_min] < 0.1  and overlaps[i_e_min] > 0.9:
+            # if par_dist < 0.1 and acoses[i_e_min] < 0.1  and overlaps[i_e_min] > 0.9 and ratio < 0.4:
                 found = True
                 final_overlap = overlaps[i_e_min]
                 next_energy = energies[i_e_min]

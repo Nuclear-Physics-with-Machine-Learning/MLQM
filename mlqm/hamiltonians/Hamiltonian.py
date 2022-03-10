@@ -61,7 +61,7 @@ class Hamiltonian(object):
 
         # Contract d2_w_dx over spatial dimensions and particles:
 
-        internal_arg = tf.reshape( (1./(w_of_x+1e-8))**2, (-1,) )
+        internal_arg = tf.reshape( (1./(w_of_x))**2, (-1,) )
 
         ke_jf = (self.HBAR**2 / (2 * M)) * internal_arg * tf.reduce_sum(dw_dx**2, axis=(1,2))
 
@@ -82,7 +82,7 @@ class Hamiltonian(object):
             tf.Tensor - potential energy of shape [1]
         """
 
-        inverse_w = tf.reshape(1/(w_of_x+1e-8), (-1,) )
+        inverse_w = tf.reshape(1/(w_of_x), (-1,) )
         summed_d2 = tf.reduce_sum(d2w_dx2, axis=(1,2))
 
         ke = -(self.HBAR**2 / (2 * M)) * inverse_w * summed_d2
@@ -118,11 +118,25 @@ class Hamiltonian(object):
         # We have to extract the diagonal of the jacobian, which comes out with shape
         # [nwalkers, nparticles, dimension, nwalkers, nparticles, dimension]
 
+        # The indexes represent partial derivative indexes, so,
+        # d2w_dx2[i_w, n1,d1, n2, d2] represents the second derivative of the
+        # wavefunction at dimension d1
+
         # This is the full hessian computation:
         d2w_dx2 = tape.batch_jacobian(dw_dx, inputs)
 
-        # And this contracts:
-        d2w_dx2 = tf.einsum("wpdpd->wpd",d2w_dx2)
+        # print(d2w_dx2)
+
+        # Extract the diagonal parts:
+        d2w_dx2 = tf.vectorized_map(tf.linalg.tensor_diag_part, d2w_dx2)
+
+        # # And this contracts:
+        # d2w_dx2 = tf.einsum("wpdpd->wpd",d2w_dx2)
+        #
+        # print("First einsum: ", d2w_dx2[0])
+        #
+        # print("Method diff 0: ", d2w_dx2_t[0] - d2w_dx2[0])
+        # # TODO: test that the second derivative is correct with finite differences
 
         return w_of_x, dw_dx, d2w_dx2
 
@@ -208,7 +222,6 @@ class Hamiltonian(object):
         # return None
 
     # @tf.function
-    @profile
     def energy(self,
         wavefunction : tf.keras.models.Model,
         inputs       : tf.Tensor,
