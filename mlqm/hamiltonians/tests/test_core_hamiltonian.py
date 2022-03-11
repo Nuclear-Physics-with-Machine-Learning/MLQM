@@ -247,12 +247,15 @@ def test_hamiltonian(nwalkers, nparticles, ndim, spin, iso_spin):
     c = OmegaConf.structured(c)
     w = ManyBodyWavefunction(ndim, nparticles, c,
         n_spin_up = n_spin_up, n_protons = n_protons,
-        use_spin = True, use_isospin = True
+        use_spin = spin, use_isospin = iso_spin
     )
 
 
 
     inputs, spins, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
+
+    print(spins)
+    print(isospins)
 
     #mean subtract:
     xinputs = tf.convert_to_tensor(
@@ -358,5 +361,5 @@ def test_hamiltonian(nwalkers, nparticles, ndim, spin, iso_spin):
 
 
 if __name__ == "__main__":
-    test_hamiltonian_analytic(3,2,3)
-    # test_hamiltonian(1,2,3,False, False)
+    # test_hamiltonian_analytic(3,2,3)
+    test_hamiltonian(10,2,3,True, True)

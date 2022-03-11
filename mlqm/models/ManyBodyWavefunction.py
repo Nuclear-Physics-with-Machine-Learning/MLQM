@@ -127,6 +127,19 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         # After doing the additions, it is imperative to apply a factor of 0.5!
 
+    @tf.function
+    def compute_row(self, _wavefunction, _input):
+        # Use the vectorized_map function to map over particles:
+        transposed_inputs = tf.transpose(_input, perm=(1,0,2))
+        # print(transposed_inputs)
+        # mapped_values = (this_input)
+        temp_value = tf.vectorized_map(\
+            lambda x : _wavefunction(x), transposed_inputs)
+        temp_value = tf.reshape(temp_value,(transposed_inputs.shape[0], -1))
+        # )
+        # print("temp_value: ", temp_value)
+        temp_value = tf.transpose(temp_value)
+        return temp_value
 
     @tf.function
     def compute_spatial_slater(self, _xinputs):
@@ -151,21 +164,9 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # In other words, columns (y, 3rd index) share the particle
         # and rows (x, 2nd index) share the state
 
-        @tf.function
-        def compute_row(_wavefunction, _input):
-            # Use the vectorized_map function to map over particles:
-            transposed_inputs = tf.transpose(_input, perm=(1,0,2))
-            # print(transposed_inputs)
-            # mapped_values = (this_input)
-            temp_value = tf.vectorized_map(\
-                lambda x : _wavefunction(x), transposed_inputs)
-            temp_value = tf.reshape(temp_value,(transposed_inputs.shape[0], -1))
-            # )
-            # print("temp_value: ", temp_value)
-            temp_value = tf.transpose(temp_value)
-            return temp_value
 
-        slater_rows = [compute_row(w, _xinputs) for w in self.spatial_nets]
+
+        slater_rows = [self.compute_row(w, _xinputs) for w in self.spatial_nets]
         # for j_state_function in range(self.nparticles):
             # slater_rows.append([])
             #
@@ -198,14 +199,8 @@ class ManyBodyWavefunction(tf.keras.models.Model):
     @tf.function
     def compute_isospin_slater(self, isospin):
 
-        # print("  Isospin: ", isospin)
-        # print("  self.isospin_spinor_2d", self.isospin_spinor_2d)
-
         repeated_isospin_spinor = tf.tile(isospin, multiples = (1, self.nparticles))
-        # print("  repeated_isospin_spinor: ", repeated_isospin_spinor)
         repeated_isospin_spinor = tf.reshape(repeated_isospin_spinor, (-1, self.nparticles, self.nparticles))
-        # repeated_isospin_spinor = tf.transpose(repeated_isospin_spinor, perm=(0,2,1))
-        # print("  repeated_isospin_spinor: ", repeated_isospin_spinor)
         isospin_slater = tf.pow(0.5*(repeated_isospin_spinor + self.isospin_spinor_2d), 2)
 
         return isospin_slater
@@ -216,12 +211,12 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
 
         spatial_slater = self.compute_spatial_slater(inputs)
-        # print("spatial_slater: ", spatial_slater)
-        spin_slater = self.compute_spin_slater(spin)
-        # print("spin_slater: ", spin_slater)
-        isospin_slater = self.compute_isospin_slater(isospin)
-        # print("isospin_slater: ", isospin_slater)
-        # print("spin-isospin slater: ", spin_slater * isospin_slater)
+        if self.use_spin:
+            spin_slater = self.compute_spin_slater(spin)
+            spatial_slater *= spin_slater
+        if self.use_isospin:
+            isospin_slater = self.compute_isospin_slater(isospin)
+            spatial_slater *= isospin_slater
 
         # Compute the determinant here
         # Determinant is not pos def
@@ -236,13 +231,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # log(psi) = U(X) + log(sign(det(S)) +log(abs(det(S)))
         #
 
-        # slater_matrix = spin_slater * isospin_slater
-        # print("spin_slater: ", spin_slater)
-        # print("isospin_slater: ", isospin_slater)
-        # print("spatial_slater: ", spatial_slater)
-        slater_matrix = spin_slater * isospin_slater * spatial_slater
-        # print("slater_matrix: ", slater_matrix)
-        return slater_matrix
+        return spatial_slater
 
 
     # @tf.function(jit_compile=True)
@@ -265,6 +254,8 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         if self.use_spin or self.use_isospin:
             slater_matrix = self.construct_slater_matrix(xinputs, spin, isospin)
+            # sign, logdet = tf.linalg.slogdet(slater_matrix)
+            # det = sign * tf.exp(logdet)
             det = tf.linalg.det(slater_matrix)
             # print("Det: ", det)
             wavefunction = tf.math.exp(correlation) * tf.reshape(det, (-1, 1))

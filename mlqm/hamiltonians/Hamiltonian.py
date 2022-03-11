@@ -100,6 +100,9 @@ class Hamiltonian(object):
         spin : tf.Tensor,
         isospin : tf.Tensor = None):
 
+        n_walkers = inputs.shape[0]
+        n_particles = inputs.shape[1]
+        n_dim = inputs.shape[2]
 
         # Turning off all tape watching except for the inputs:
         # Using the outer-most tape to watch the computation of the first derivative:
@@ -111,7 +114,10 @@ class Hamiltonian(object):
                 w_of_x = wavefunction(inputs, spin, isospin, training=True)
                 # w_of_x = tf.reshape(sign, (-1, 1)) * tf.exp(logw_of_x)
             # Get the derivative of logw_of_x with respect to inputs
-            dw_dx = second_tape.gradient(w_of_x, inputs)
+            print(w_of_x)
+            dw_dx = second_tape.batch_jacobian(w_of_x, inputs)
+            dw_dx = tf.reshape(dw_dx, (n_walkers, n_particles, n_dim))
+            print(dw_dx)
 
         # Get the derivative of dlogw_dx with respect to inputs (aka second derivative)
 
@@ -127,11 +133,11 @@ class Hamiltonian(object):
 
         # print(d2w_dx2)
 
-        # Extract the diagonal parts:
-        d2w_dx2 = tf.vectorized_map(tf.linalg.tensor_diag_part, d2w_dx2)
+        # # Extract the diagonal parts:
+        # d2w_dx2 = tf.vectorized_map(tf.linalg.tensor_diag_part, d2w_dx2)
 
         # # And this contracts:
-        # d2w_dx2 = tf.einsum("wpdpd->wpd",d2w_dx2)
+        d2w_dx2 = tf.einsum("wpdpd->wpd",d2w_dx2)
         #
         # print("First einsum: ", d2w_dx2[0])
         #
