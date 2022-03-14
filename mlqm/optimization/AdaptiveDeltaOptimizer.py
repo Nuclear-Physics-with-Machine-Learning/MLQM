@@ -151,8 +151,8 @@ class AdaptiveDeltaOptimizer(BaseAlgorithm):
             # print(hvd.rank(), " Delta: ", delta_options[i_e_min], ", par_dist: ", par_dist)
             # print(hvd.rank(), " Delta: ", delta_options[i_e_min], ", acos: ", acos)
 
-            if par_dist < 0.1 and acoses[i_e_min] < 0.1  and overlaps[i_e_min] > 0.9:
-            # if par_dist < 0.1 and acoses[i_e_min] < 0.1  and overlaps[i_e_min] > 0.9 and ratio < 0.4:
+            # if par_dist < 0.1 and acoses[i_e_min] < 0.1  and overlaps[i_e_min] > 0.9:
+            if par_dist < 0.1 and acoses[i_e_min] < 0.1  and overlaps[i_e_min] > 0.9 and ratio < 0.4:
                 found = True
                 final_overlap = overlaps[i_e_min]
                 next_energy = energies[i_e_min]

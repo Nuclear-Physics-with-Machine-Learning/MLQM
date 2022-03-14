@@ -7,7 +7,7 @@ class GradientCalculator(object):
 
     @tf.function
     def f_i(self, dpsi_i, energy, dpsi_i_EL):
-        return dpsi_i * energy - dpsi_i_EL
+        return (dpsi_i * energy - dpsi_i_EL)
 
     @tf.function
     def S_ij(self, dpsi_ij, dpsi_i):
@@ -34,7 +34,7 @@ class GradientCalculator(object):
         return S_ij_d
 
 
-    
+
     def cast(self, *args):
 
         return (tf.cast(a, self.dtype) if a.dtype != self.dtype else a for a in args)

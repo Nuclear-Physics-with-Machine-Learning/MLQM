@@ -129,13 +129,14 @@ class BaseAlgorithm(object):
         # dspi_i is the reduction of the jacobian over all walkers.
         # In other words, it's the mean gradient of the parameters with respect to inputs.
         # This is effectively the measurement of O^i in the paper.
-        normed_fj = flattened_jacobian / (w_of_x )
+        normed_fj = flattened_jacobian
+        # normed_fj = flattened_jacobian / (w_of_x )
 
 
         dpsi_i = tf.reduce_mean(normed_fj, axis=0)
         dpsi_i = tf.reshape(dpsi_i, [-1,1])
         # To compute <O^m O^n>
-        dpsi_ij = tf.linalg.matmul(normed_fj, normed_fj, transpose_a = True) / self.n_walkers_per_observation
+        dpsi_ij = tf.linalg.matmul(normed_fj, flattened_jacobian, transpose_a = True) / self.n_walkers_per_observation
 
         # Computing <O^m H>:
         e_reshaped = tf.reshape(energy, [1,self.n_walkers_per_observation])
@@ -361,14 +362,14 @@ class BaseAlgorithm(object):
                 obs_ke_direct   = ke_direct[i_obs]  / self.n_walkers_per_observation
                 obs_pe          = pe[i_obs]         / self.n_walkers_per_observation
 
-              
+
 
                 dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(
                     flattened_jacobian[i_obs], obs_energy, w_of_x[i_obs])
 
 
 
-                # 
+                #
                 # Accumulate variables:
 
                 self.estimator.accumulate('energy',  tf.reduce_sum(obs_energy))
@@ -422,7 +423,7 @@ class BaseAlgorithm(object):
 
 
         kicker = tf.random.normal
-        kicker_params = {"mean": 0.0, "stddev" : 0.6}
+        kicker_params = {"mean": 0.0, "stddev" : 0.2}
 
 
         # We need to know how many times to loop over the walkers and metropolis step.

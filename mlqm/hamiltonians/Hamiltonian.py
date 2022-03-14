@@ -62,6 +62,7 @@ class Hamiltonian(object):
         # Contract d2_w_dx over spatial dimensions and particles:
 
         internal_arg = tf.reshape( (1./(w_of_x))**2, (-1,) )
+        print(internal_arg)
 
         ke_jf = (self.HBAR**2 / (2 * M)) * internal_arg * tf.reduce_sum(dw_dx**2, axis=(1,2))
 
@@ -111,8 +112,8 @@ class Hamiltonian(object):
                 w_of_x = wavefunction(inputs, spin, isospin, training=True)
                 # w_of_x = tf.reshape(sign, (-1, 1)) * tf.exp(logw_of_x)
             # Get the derivative of logw_of_x with respect to inputs
-            dw_dx = second_tape.batch_jacobian(w_of_x, inputs)
-            dw_dx = tf.reshape(dw_dx, (n_walkers, n_particles, n_dim))
+            dw_dx = second_tape.gradient(w_of_x, inputs)
+            # dw_dx = tf.reshape(dw_dx, (n_walkers, n_particles, n_dim))
 
         # Get the derivative of dlogw_dx with respect to inputs (aka second derivative)
 
