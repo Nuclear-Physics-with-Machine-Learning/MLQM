@@ -50,7 +50,7 @@ class ResidualBlock(DenseBlock):
 
         return inputs + x
 
-class DeepSetsWavefunction(tf.keras.models.Model):
+class DeepSetsCorrelator(tf.keras.models.Model):
     """Create a neural network eave function in N dimensions
 
     Boundary condition, if not supplied, is gaussian in every dimension
@@ -185,7 +185,7 @@ class DeepSetsWavefunction(tf.keras.models.Model):
         # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
         boundary_condition = -self.confinement * tf.reduce_sum(xinputs**2, axis=(1,2))
         boundary_condition = tf.reshape(boundary_condition, [-1,1])
-        return x + boundary_condition
+        return tf.math.exp(x + boundary_condition)
 
     def n_parameters(self):
         return tf.reduce_sum( [ tf.reduce_prod(p.shape) for p in self.trainable_variables ])

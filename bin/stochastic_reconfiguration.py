@@ -60,7 +60,7 @@ from mlqm import hamiltonians
 from mlqm.samplers     import Estimator
 from mlqm.optimization import GradientCalculator, StochasticReconfiguration
 from mlqm import DEFAULT_TENSOR_TYPE
-from mlqm.models import DeepSetsWavefunction
+from mlqm.models import DeepSetsCorrelator
 
 
 
@@ -114,8 +114,8 @@ class exec(object):
         wavefunction_config = self.config['wavefunction']
 
         # Create a wavefunction:
-        wavefunction = DeepSetsWavefunction(self.config.dimension, self.config.nparticles, wavefunction_config)
-        adaptive_wavefunction = DeepSetsWavefunction(self.config.dimension, self.config.nparticles, wavefunction_config)
+        wavefunction = DeepSetsCorrelator(self.config.dimension, self.config.nparticles, wavefunction_config)
+        adaptive_wavefunction = DeepSetsCorrelator(self.config.dimension, self.config.nparticles, wavefunction_config)
 
         # Run the wave function once to initialize all its weights
         tf.summary.trace_on(graph=True, profiler=False)

@@ -51,7 +51,7 @@ class MetropolisSampler(object):
         '''
         # Make sure to wrap in tf.Variable for back prop calculations
         # Before returning, append the current walkers to the walker history:
-        
+
         self.walker_history.append(self.walkers)
         return  self.walkers
 
@@ -122,7 +122,8 @@ class MetropolisSampler(object):
         current_wavefunction = wavefunction(walkers)
 
         # Generate a long set of random number from which we will pull:
-        random_numbers = tf.math.log(tf.random.uniform(shape = [nkicks,shape[0],1], dtype=dtype))
+        # random_numbers = tf.math.log(tf.random.uniform(shape = [nkicks,shape[0],1], dtype=dtype))
+        random_numbers = tf.random.uniform(shape = [nkicks,shape[0],1], dtype=dtype)
 
         # Generate a long list of kicks:
         # print(shape)
@@ -134,12 +135,12 @@ class MetropolisSampler(object):
         #  ONly one pair gets swapped at a time
         #  Change the isospin of a pair as well.
         #  The spin coordinate is 2 dimensions per particle: spin and isospin (each up/down)
-        #  
+        #
 
         # Computing modulus square of wavefunction in new vs old coordinates
         #  - this kicks randomly with a guassian, and has an acceptance probaility
         # However, what we can do instead is to add a drift term
-        # Instead of kicking with a random gaussian, we compute the derivative 
+        # Instead of kicking with a random gaussian, we compute the derivative
         # with respect to X.
         # Multiply it by sigma^2
         # Then, clip the drift so it is not too large.
@@ -150,7 +151,7 @@ class MetropolisSampler(object):
 
         # Spin typically thermalizes first.
         # Fewer spin configurations allowed due to total spin conservation
-        # 
+        #
 
         for i_kick in tf.range(nkicks):
             # Create a kick:
@@ -164,7 +165,7 @@ class MetropolisSampler(object):
 
 
             # Probability is the ratio of kicked **2 to original
-            probability = 2 * (kicked_wavefunction - current_wavefunction)
+            probability = kicked_wavefunction**2  /  (current_wavefunction**2 + 1e-16)
             # Acceptance is whether the probability for that walker is greater than
             # a random number between [0, 1).
             # Pull the random numbers and create a boolean array

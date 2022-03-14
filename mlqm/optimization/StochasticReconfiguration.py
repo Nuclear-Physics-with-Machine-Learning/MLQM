@@ -107,19 +107,23 @@ class StochasticReconfiguration(object):
 
 
     @tf.function
-    def compute_O_observables(self, flattened_jacobian, energy):
+    def compute_O_observables(self, flattened_jacobian, energy, w_of_x):
 
         # dspi_i is the reduction of the jacobian over all walkers.
         # In other words, it's the mean gradient of the parameters with respect to inputs.
         # This is effectively the measurement of O^i in the paper.
-        dpsi_i = tf.reduce_mean(flattened_jacobian, axis=0)
+
+
+        normed_j = flattened_jacobian / w_of_x
+
+        dpsi_i = tf.reduce_mean(normed_j, axis=0)
         dpsi_i = tf.reshape(dpsi_i, [-1,1])
 
         # To compute <O^m O^n>
-        dpsi_ij = tf.linalg.matmul(flattened_jacobian, flattened_jacobian, transpose_a = True) / self.n_walkers_per_observation
+        dpsi_ij = tf.linalg.matmul(normed_j, normed_j, transpose_a = True) / self.n_walkers_per_observation
 
         # Computing <O^m H>:
-        dpsi_i_EL = tf.linalg.matmul(tf.reshape(energy, [1,self.n_walkers_per_observation]), flattened_jacobian)
+        dpsi_i_EL = tf.linalg.matmul(tf.reshape(energy, [1,self.n_walkers_per_observation]), normed_j)
         # This makes this the same shape as the other tensors
         dpsi_i_EL = tf.reshape(dpsi_i_EL, [-1, 1])
 
@@ -155,7 +159,7 @@ class StochasticReconfiguration(object):
         kicker_params = {"mean": 0.0, "stddev" : 0.2}
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=1)
         x_current  = self.sampler.sample()
-        energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = self.hamiltonian.energy(self.wavefunction, x_current)
+        energy, energy_jf, ke_jf, ke_direct, pe, w_of_x = self.hamiltonian.energy(self.wavefunction, x_current)
 
 
     #
@@ -168,20 +172,20 @@ class StochasticReconfiguration(object):
         for next_x, this_current_psi in zip(self.sampler.get_all_walkers(), current_psi):
 
             # Compute the observables:
-            energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = \
+            energy, energy_jf, ke_jf, ke_direct, pe, w_of_x = \
                 self.hamiltonian.energy(test_wavefunction, next_x)
 
             # Here, we split the energy and other objects into sizes of nwalkers_per_observation
             # if self.n_concurrent_obs_per_rank != 1:
             next_x     = tf.split(next_x,    self.n_concurrent_obs_per_rank, axis=0)
             energy     = tf.split(energy,    self.n_concurrent_obs_per_rank, axis=0)
-            logw_of_x  = tf.split(logw_of_x, self.n_concurrent_obs_per_rank, axis=0)
+            w_of_x  = tf.split(w_of_x, self.n_concurrent_obs_per_rank, axis=0)
 
             # print("New energy: ", energy)
-            # print("New psi: ", logw_of_x)
+            # print("New psi: ", w_of_x)
 
             # overlap of wavefunctions:
-            wavefunction_ratio = [ tf.math.exp((next_psi - curr_psi)) for next_psi, curr_psi in zip(logw_of_x, this_current_psi) ]
+            wavefunction_ratio = [ tf.math.exp((next_psi - curr_psi)) for next_psi, curr_psi in zip(w_of_x, this_current_psi) ]
             probability_ratio  = [ tf.reshape(wf_ratio**2, energy[i].shape) for i, wf_ratio in enumerate(wavefunction_ratio) ]
 
             # print("wavefunction_ratio: ", wavefunction_ratio)
@@ -611,7 +615,7 @@ class StochasticReconfiguration(object):
             # Get the current walker locations:
             x_current  = _sampler.sample()
             # Compute the observables:
-            energy, energy_jf, ke_jf, ke_direct, pe, logw_of_x = self.hamiltonian.energy(_wavefunction, x_current)
+            energy, energy_jf, ke_jf, ke_direct, pe, w_of_x = self.hamiltonian.energy(_wavefunction, x_current)
 
 
             # R is computed but it needs to be WRT the center of mass of all particles
@@ -633,12 +637,12 @@ class StochasticReconfiguration(object):
             ke_jf      = tf.split(ke_jf,     self.n_concurrent_obs_per_rank, axis=0)
             ke_direct  = tf.split(ke_direct, self.n_concurrent_obs_per_rank, axis=0)
             pe         = tf.split(pe,        self.n_concurrent_obs_per_rank, axis=0)
-            logw_of_x  = tf.split(logw_of_x, self.n_concurrent_obs_per_rank, axis=0)
+            w_of_x     = tf.split(w_of_x,    self.n_concurrent_obs_per_rank, axis=0)
 
-            # print("Original logw_of_x: ", logw_of_x)
+            # print("Original w_of_x: ", w_of_x)
             # print("Original energy: ", energy)
 
-            current_psi.append(logw_of_x)
+            current_psi.append(w_of_x)
 
 
             # For each observation, we compute the jacobian.
@@ -656,6 +660,7 @@ class StochasticReconfiguration(object):
                 obs_ke_jf       = ke_jf[i_obs]      / self.n_walkers_per_observation
                 obs_ke_direct   = ke_direct[i_obs]  / self.n_walkers_per_observation
                 obs_pe          = pe[i_obs]         / self.n_walkers_per_observation
+                obs_w_of_x      = w_of_x[i_obs]
 
                 # print("obs_energy: ",    obs_energy)
                 # print("obs_energy_jf: ", obs_energy_jf)
@@ -664,7 +669,8 @@ class StochasticReconfiguration(object):
                 # print("obs_pe: ",        obs_pe)
 
 
-                dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(flattened_jacobian[i_obs], obs_energy)
+                dpsi_i, dpsi_ij, dpsi_i_EL = \
+                    self.compute_O_observables(flattened_jacobian[i_obs], obs_energy, obs_w_of_x)
 
                 # print("dpsi_i: ", dpsi_i)
                 # print("dpsi_i_EL: ", dpsi_i_EL)
