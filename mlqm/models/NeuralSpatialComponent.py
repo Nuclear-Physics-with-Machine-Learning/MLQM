@@ -99,14 +99,9 @@ class NeuralSpatialComponent(tf.keras.models.Model):
     # @tf.function(jit_compile=True)
     def __call__(self, inputs, training=None):
         # return tf.constant(1.0, dtype=tf.float64)
-        # print("Inputs shape:", inputs.shape)
-        # print("Inputs:", inputs)
         x = inputs
         for layer in self.net:
             x = layer(x)
-        # boundary_condition = -self.confinement * tf.reduce_sum(inputs**2, axis=(1,))
-        # boundary_condition = tf.reshape(boundary_condition, [-1,1])
-        # return x * boundary_condition
         return x
 
     def n_parameters(self):

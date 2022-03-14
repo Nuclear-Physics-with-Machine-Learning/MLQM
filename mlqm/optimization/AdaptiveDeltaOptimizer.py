@@ -49,7 +49,7 @@ class AdaptiveDeltaOptimizer(BaseAlgorithm):
 
         return delta_p, opt_metrics, next_energy
 
-    @profile
+    # @profile
     def optimize_delta(self, current_psi, eps):
 
         # Get the natural gradients and S_ij
@@ -141,8 +141,8 @@ class AdaptiveDeltaOptimizer(BaseAlgorithm):
 
             par_dist = self.gradient_calc.par_dist(delta_options[i_e_min]*dp_i, S_ij)
 
-            print("par_dist - acoses[i_e_min]:", par_dist - acoses[i_e_min])
-            print("par_dist + acoses[i_e_min]:", par_dist - acoses[i_e_min])
+            # print("par_dist - acoses[i_e_min]:", par_dist - acoses[i_e_min])
+            # print("par_dist + acoses[i_e_min]:", par_dist - acoses[i_e_min])
 
             ratio = tf.abs(par_dist - acoses[i_e_min]) / tf.abs(par_dist + acoses[i_e_min])
 

@@ -253,7 +253,6 @@ class MetropolisSampler(object):
 
         # Drop the model to reduced precision for this:
         # params = wavefunction.parameters()
-        # print(params)
 
         # reduced_wf = tf.cast(wavefunction, dtype=self.dtype)
         # wavefunction.cast(self.dtype)
@@ -354,7 +353,6 @@ class MetropolisSampler(object):
 
         # Drop the model to reduced precision for this:
         # params = wavefunction.parameters()
-        # print(params)
 
         # reduced_wf = tf.cast(wavefunction, dtype=self.dtype)
         # wavefunction.cast(self.dtype)
@@ -482,7 +480,6 @@ class MetropolisSampler(object):
 
         # Drop the model to reduced precision for this:
         # params = wavefunction.parameters()
-        # print(params)
 
         # reduced_wf = tf.cast(wavefunction, dtype=self.dtype)
         # wavefunction.cast(self.dtype)

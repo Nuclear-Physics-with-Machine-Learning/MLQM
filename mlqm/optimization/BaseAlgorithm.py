@@ -93,7 +93,6 @@ class BaseAlgorithm(object):
         tape = tf.GradientTape()
         # n_walkers = x_current.shape[0]
 
-        # print("Doing forward pass")
         with tape:
             wpsi = wavefunction(x_current, spin, isospin)
 
@@ -108,10 +107,7 @@ class BaseAlgorithm(object):
             jac[i] = jac[i] / tf.reshape(wpsi, [-1, *new_shape])
         # jac = tape.jacobian(wpsi, wavefunction.trainable_variables, parallel_iterations = MAX_PARALLEL_ITERATIONS)
         #
-        # for var, j in zip(wavefunction.trainable_variables, jac):
-        #     print(var.shape, j)
-        #
-        # print(jac)
+
         # Grab the original shapes ([1:] means everything except first dim):
         # get the flattened shapes:
         flat_shape = [[-1, tf.reduce_prod(js)] for js in jac_shape]
@@ -204,27 +200,14 @@ class BaseAlgorithm(object):
             energy     = tf.split(energy, self.n_concurrent_obs_per_rank, axis=0)
             w_of_x     = tf.split(w_of_x, self.n_concurrent_obs_per_rank, axis=0)
 
-            # print("New energy: ", energy)
-            # print("New psi: ", w_of_x)
-
-            # print("next_x[0][0:10]: ", next_x[0][0:10])
-            #
-            # print("w_of_x[0][0:10]: ", w_of_x[0][0:10])
-            # print("this_current_psi[0][0:10]: ", this_current_psi[0][0:10])
-            # print("(w_of_x[0] / this_current_psi[0])[0:10]: ", (w_of_x[0] / this_current_psi[0])[0:10])
-            # exit()
             # overlap of wavefunctions:
             wavefunction_ratio = [ next_psi / (curr_psi + 1e-16) for next_psi, curr_psi in zip(w_of_x, this_current_psi) ]
             probability_ratio  = [ tf.reshape(wf_ratio**2, energy[i].shape) for i, wf_ratio in enumerate(wavefunction_ratio) ]
 
-            # print("wavefunction_ratio: ", wavefunction_ratio)
-            # print("probability_ratio: ", probability_ratio)
 
             for i_obs in range(self.n_concurrent_obs_per_rank):
                 obs_energy = probability_ratio[i_obs] * energy[i_obs]
 
-                # print(tf.reduce_sum(obs_energy))
-                # print(tf.reduce_sum(obs_energy) / tf.reduce_sum(probability_ratio[i_obs]))
 
                 estimator.accumulate("energy", tf.reduce_sum(obs_energy))
                 estimator.accumulate("weight", tf.reduce_sum(probability_ratio[i_obs]))
@@ -272,7 +255,7 @@ class BaseAlgorithm(object):
                 dp_i = self.gradient_calc.pd_solve(S_ij, eps, f_i)
                 break
             except tf.errors.InvalidArgumentError:
-                print("Cholesky solve failed, continuing with higher regularization")
+                logger.debug("Cholesky solve failed, continuing with higher regularization")
                 eps *= 2.
             continue
 
@@ -357,7 +340,6 @@ class BaseAlgorithm(object):
             pe         = tf.split(pe,        self.n_concurrent_obs_per_rank, axis=0)
             w_of_x     = tf.split(w_of_x,    self.n_concurrent_obs_per_rank, axis=0)
 
-            # print("Original energy: ", energy)
 
             current_psi.append(w_of_x)
 
@@ -379,24 +361,14 @@ class BaseAlgorithm(object):
                 obs_ke_direct   = ke_direct[i_obs]  / self.n_walkers_per_observation
                 obs_pe          = pe[i_obs]         / self.n_walkers_per_observation
 
-                # print("obs_energy: ",    obs_energy)
-                # print("obs_energy_jf: ", obs_energy_jf)
-                # print("obs_ke_jf: ",     obs_ke_jf)
-                # print("obs_ke_direct: ", obs_ke_direct)
-                # print("obs_pe: ",        obs_pe)
-
+              
 
                 dpsi_i, dpsi_ij, dpsi_i_EL = self.compute_O_observables(
                     flattened_jacobian[i_obs], obs_energy, w_of_x[i_obs])
 
 
 
-                # print("dpsi_i: ", dpsi_i)
-                # print("dpsi_i_EL: ", dpsi_i_EL)
-                # print("dpsi_ij: ", dpsi_ij)
-
-                # print("flattened_jacobian: ", flattened_jacobian)
-
+                # 
                 # Accumulate variables:
 
                 self.estimator.accumulate('energy',  tf.reduce_sum(obs_energy))
@@ -441,7 +413,7 @@ class BaseAlgorithm(object):
         raise Exception("Must be implemented in child class")
 
     # @tf.function
-    @profile
+    # @profile
     def sr_step(self, n_thermalize):
 
         metrics = {}
@@ -499,9 +471,6 @@ class BaseAlgorithm(object):
             / (self.n_observable_measurements-1))
         error_jf = tf.sqrt((self.estimator["energy2_jf"] - self.estimator["energy_jf"]**2) \
             / (self.n_observable_measurements-1))
-
-        # for key in self.estimator:
-        #     print(f"{key}: {self.estimator[key]}")
 
 
         metrics['energy/energy']     = self.estimator["energy"]

@@ -57,7 +57,6 @@ mlqm_dir = os.path.dirname(os.path.abspath(__file__))
 mlqm_dir = os.path.dirname(mlqm_dir)
 sys.path.insert(0,mlqm_dir)
 
-print(sys.path)
 
 from mlqm.config import Config
 from mlqm import hamiltonians
@@ -363,7 +362,7 @@ class exec(object):
         for device in physical_devices:
             tf.config.experimental.set_memory_growth(device, True)
 
-    @profile
+    # @profile
     def run(self):
 
 

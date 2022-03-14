@@ -3,9 +3,9 @@ import time
 import tensorflow as tf
 import numpy
 
-@profile
+# @profile
 def swap_loop_basic(n_swaps, input_tensor):
-    # @profile
+    @profile
     @tf.function
     def swap_random_indexes(input_tensor):
         '''
@@ -39,10 +39,10 @@ def swap_loop_basic(n_swaps, input_tensor):
         input_tensor = swap_random_indexes(input_tensor)
 
 
-@profile
+# @profile
 def swap_loop_opt(n_swaps, input_tensor):
 
-    # @profile
+    @profile
     @tf.function
     def swap_random_indexes_opt(input_tensor, first_index, swap_indexes):
         '''
@@ -93,10 +93,10 @@ def swap_loop_opt(n_swaps, input_tensor):
         input_tensor = swap_random_indexes_opt(input_tensor, first_index, swap_indexes[i])
 
 
-@profile
+# @profile
 def swap_loop_ale(n_swaps, input_tensor, possible_swap_pairs):
 
-    @profile
+    # @profile
     # @tf.function
     def swap_random_indexes_opt(input_tensor, first_index, swap_indexes_f, swap_indexes_s):
         '''
