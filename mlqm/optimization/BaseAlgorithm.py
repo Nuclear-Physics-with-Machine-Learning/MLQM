@@ -136,7 +136,7 @@ class BaseAlgorithm(object):
         dpsi_i = tf.reduce_mean(normed_fj, axis=0)
         dpsi_i = tf.reshape(dpsi_i, [-1,1])
         # To compute <O^m O^n>
-        dpsi_ij = tf.linalg.matmul(normed_fj, flattened_jacobian, transpose_a = True) / self.n_walkers_per_observation
+        dpsi_ij = tf.linalg.matmul(normed_fj, normed_fj, transpose_a = True) / self.n_walkers_per_observation
 
         # Computing <O^m H>:
         e_reshaped = tf.reshape(energy, [1,self.n_walkers_per_observation])

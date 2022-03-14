@@ -212,7 +212,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
     # @tf.function(jit_compile=True)
     # @profile
     @tf.function
-    def __call__(self, inputs, spin=None, isospin=None, training=True):
+    def __call__(self, inputs, spin=None, isospin=None):
 
 
         n_walkers = inputs.shape[0]
@@ -264,15 +264,15 @@ class ManyBodyWavefunction(tf.keras.models.Model):
     def custom_determinant(self, _matrix, rank):
 
 
-        
+
         # Here is a custom, maybe slower, determinant implementation.
         # It operates over the batch size
-        
+
         # The matrix should be a size [N, m, m] where N is the batch size.
-                
+
         # Implementing this recursively, so start with the base case:
-        
-        if rank == 1: 
+
+        if rank == 1:
             return tf.reshape(_matrix, (-1,))
         else:
             # Need to get the submatrixes:
@@ -284,5 +284,5 @@ class ManyBodyWavefunction(tf.keras.models.Model):
                 contribution =  sub_det
                 det += contribution
                 sign *= -1.
-            
+
             return det

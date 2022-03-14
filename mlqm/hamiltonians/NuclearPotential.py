@@ -135,9 +135,9 @@ class NuclearPotential(Hamiltonian):
 
         Arguments:
             inputs {[type]} -- walker coordinates (shape is [nwalkers, nparticles, dimension])
-            logw_of_x {[type]} -- computed wave function at each walker
-            dlogw_dx {[type]} -- first derivative of wavefunction at each walker
-            d2logw_dx2 {[type]} -- second derivative of wavefunction at each walker
+            w_of_x {[type]} -- computed wave function at each walker
+            dw_dx {[type]} -- first derivative of wavefunction at each walker
+            d2w_dx2 {[type]} -- second derivative of wavefunction at each walker
 
         Raises:
             NotImplementedError -- [description]
