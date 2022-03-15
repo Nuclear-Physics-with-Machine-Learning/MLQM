@@ -71,19 +71,43 @@ class BaseAlgorithm(object):
     @tf.function
     def batched_jacobian(self, nobs, x_current_arr, spin_arr, isospin_arr, wavefunction, jac_fnc):
         ret_jac = []
+        if not self.use_spin:
+            print(spin_arr)
+            # spin_arr = [None] * nobs
+        if not self.use_isospin:
+            isospin_arr = [None] * nobs
+
+        # # Stack up the objects to allow vectorized map_
+        # spin_arr = tf.stack(spin_arr)
+        # isospin_arr = tf.stack(isospin_arr)
+        # x_current_arr = tf.stack(x_current_arr)
+        #
+        # jac = lambda x : jac_fnc(x[0],x[1],x[2],wavefunction)
+        #
+        # print(x_current_arr.shape)
+        # print(spin_arr.shape)
+        # print(isospin_arr.shape)
+        #
+        #
+        # flattened_jacobian = tf.vectorized_map(
+        #     jac, (x_current_arr, spin_arr, isospin_arr)
+        # )
+        #
+        # print("2 flattened_jacobian.shape: ", flattened_jacobian.shape)
+        # print("flat_shape.shape: ", flat_shape.shape)
+        # ret_jac = tf.split(flattened_jacobian, nobs)
+        # flat_shape = flat_shape[0]
+        #
+        # print("len(ret_jac): ", len(ret_jac))
+        #
         for i in range(nobs):
-            if self.use_spin:
-                spin = spin_arr[i]
-            else:
-                spin = None
-            if self.use_isospin:
-                isospin = isospin_arr[i]
-            else:
-                isospin = None
 
             flattened_jacobian, flat_shape = jac_fnc(
-                x_current_arr[i], spin, isospin, wavefunction)
+                x_current_arr[i], spin_arr[i], isospin_arr[i], wavefunction)
             ret_jac.append(flattened_jacobian)
+        # print("flat_shape: ", flat_shape)
+        # print("len(ret_jac): ", len(ret_jac))
+
 
         return ret_jac, flat_shape
 
@@ -92,13 +116,13 @@ class BaseAlgorithm(object):
     def jacobian(self, x_current, spin, isospin, wavefunction):
         tape = tf.GradientTape()
         # n_walkers = x_current.shape[0]
-
         with tape:
             wpsi = wavefunction(x_current, spin, isospin)
 
 
         jac = tape.jacobian(wpsi, wavefunction.trainable_variables)
         jac_shape = [j.shape[1:] for j in jac]
+
 
         # Normalize the jacobian estimation by the wavefunction:
 
@@ -183,7 +207,7 @@ class BaseAlgorithm(object):
 
 
     #
-    # @tf.function
+    @tf.function
     def recompute_energy(self, test_wavefunction, current_psi, ):
 
         estimator = Estimator()

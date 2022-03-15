@@ -19,8 +19,8 @@ class DenseBlock(tf.keras.models.Model):
             bias_initializer   = tf.keras.initializers.RandomNormal,
             )
 
-
-    def __call__(self, inputs):
+    @tf.function(jit_compile=True)
+    def __call__(self, inputs, training=None, mask=None):
 
         x = self.layer(inputs)
         return x
@@ -38,6 +38,7 @@ class ResidualBlock(DenseBlock):
         DenseBlock.__init__(self, n_output, use_bias, activation)
 
 
+    @tf.function(jit_compile=True)
     def __call__(self, inputs):
 
         x = self.layer(inputs)

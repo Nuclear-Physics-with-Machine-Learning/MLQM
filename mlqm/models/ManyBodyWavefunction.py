@@ -120,7 +120,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         # After doing the additions, it is imperative to apply a factor of 0.5!
 
-    @tf.function
+    @tf.function(jit_compile=True)
     def compute_row(self, _wavefunction, _input):
         # Use the vectorized_map function to map over particles:
         transposed_inputs = tf.transpose(_input, perm=(1,0,2))
@@ -131,7 +131,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         temp_value = tf.transpose(temp_value)
         return temp_value
 
-    @tf.function
+    @tf.function(jit_compile=True)
     def compute_spatial_slater(self, _xinputs):
         # We get individual response for every particle in the slater determinant
         # The axis of the particles is 1 (nwalkers, nparticles, ndim)
@@ -163,7 +163,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         return spatial_slater
 
-    @tf.function
+    @tf.function(jit_compile=True)
     def compute_spin_slater(self, spin):
         repeated_spin_spinor = tf.tile(spin, multiples = (1, self.nparticles))
         repeated_spin_spinor = tf.reshape(repeated_spin_spinor, (-1, self.nparticles, self.nparticles))
@@ -171,7 +171,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         return spin_slater
 
-    @tf.function
+    @tf.function(jit_compile=True)
     def compute_isospin_slater(self, isospin):
 
         repeated_isospin_spinor = tf.tile(isospin, multiples = (1, self.nparticles))
@@ -181,7 +181,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         return isospin_slater
 
     # @tf.function
-    @tf.function
+    @tf.function(jit_compile=True)
     def construct_slater_matrix(self, inputs, spin, isospin):
 
 
@@ -211,7 +211,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
     # @tf.function(jit_compile=True)
     # @profile
-    @tf.function
+    @tf.function(jit_compile=True)
     def __call__(self, inputs, spin=None, isospin=None):
 
 
@@ -251,7 +251,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         return tf.reshape(wavefunction, (-1, 1))
 
-    @tf.function(experimental_relax_shapes=True)
+    @tf.function(jit_compile=True, experimental_relax_shapes=True)
     def sub_matrix(self, batch_matrix, row, column):
         left = batch_matrix[:,0:row,:]
         right = batch_matrix[:,row+1:,:]
@@ -260,7 +260,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         bottom = row_removed[:,:,column+1:]
         return tf.concat((top, bottom), axis=2)
 
-    @tf.function(experimental_relax_shapes=True)
+    @tf.function(jit_compile=True, experimental_relax_shapes=True)
     def custom_determinant(self, _matrix, rank):
 
 

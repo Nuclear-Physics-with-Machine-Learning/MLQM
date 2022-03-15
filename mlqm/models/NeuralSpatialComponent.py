@@ -95,7 +95,7 @@ class NeuralSpatialComponent(tf.keras.models.Model):
         # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
 
 
-    @tf.function
+    @tf.function(jit_compile=True)
     # @tf.function(jit_compile=True)
     def __call__(self, inputs, training=None):
         # return tf.constant(1.0, dtype=tf.float64)

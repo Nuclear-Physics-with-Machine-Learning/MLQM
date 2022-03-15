@@ -43,7 +43,7 @@ class FlatOptimizer(BaseAlgorithm):
 
 
 
-
+    @profile
     def compute_updates_and_metrics(self, current_psi):
 
         eps = self.optimizer_config.epsilon
@@ -52,7 +52,7 @@ class FlatOptimizer(BaseAlgorithm):
 
         return delta_p, opt_metrics, next_energy
 
-
+    @profile
     def flat_optimizer(self, current_psi, eps, delta):
 
         dpsi_i    = self.estimator['dpsi_i']

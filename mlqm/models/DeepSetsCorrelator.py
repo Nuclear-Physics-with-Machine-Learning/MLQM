@@ -58,9 +58,9 @@ class DeepSetsCorrelator(tf.keras.models.Model):
 
 
 
-        self.individual_net = tf.keras.models.Sequential()
+        self.individual_net = []
 
-        self.individual_net.add(
+        self.individual_net.append(
             DenseBlock(n_filters_per_layer,
                 use_bias   = bias,
                 activation = activation)
@@ -73,35 +73,35 @@ class DeepSetsCorrelator(tf.keras.models.Model):
             else:
                 _activation = activation
             if residual:
-                self.individual_net.add(
+                self.individual_net.append(
                     ResidualBlock(n_filters_per_layer,
                         use_bias    = bias,
                         activation = _activation)
                     )
             else:
-                self.individual_net.add(
+                self.individual_net.append(
                     DenseBlock(n_filters_per_layer,
                         use_bias    = bias,
                         activation = _activation)
                     )
 
 
-        self.aggregate_net = tf.keras.models.Sequential()
+        self.aggregate_net = []
 
         for l in range(n_layers):
             if residual:
-                self.aggregate_net.add(
+                self.aggregate_net.append(
                     ResidualBlock(n_filters_per_layer,
                         use_bias    = bias,
                         activation = activation)
                     )
             else:
-                self.aggregate_net.add(
+                self.aggregate_net.append(
                     DenseBlock(n_filters_per_layer,
                         use_bias    = bias,
                         activation = activation)
                     )
-        self.aggregate_net.add(tf.keras.layers.Dense(1,
+        self.aggregate_net.append(tf.keras.layers.Dense(1,
             use_bias = False))
 
         self.confinement   = tf.constant(
@@ -121,7 +121,24 @@ class DeepSetsCorrelator(tf.keras.models.Model):
 
         return new_ob
 
-    @tf.function()
+    # @tf.function()
+    @tf.function(jit_compile=True)
+    def call_individual_net(self, inputs):
+        x = inputs
+        for l in self.individual_net:
+            x = l(x)
+        return x
+
+    # @tf.function()
+    @tf.function(jit_compile=True)
+    def call_aggregate_net(self, inputs):
+        x = inputs
+        for l in self.aggregate_net:
+            x = l(x)
+        return x
+
+    # @tf.function()
+    @tf.function(jit_compile=True)
     def __call__(self, inputs, training=None):
         """
         If mean subtraction happens, it is in the call one layer up!
@@ -140,11 +157,11 @@ class DeepSetsCorrelator(tf.keras.models.Model):
         ################################################
         # Improved efficiency:
         transposed_inputs = tf.transpose(inputs, perm=(1,0,2))
-        latent_space = tf.vectorized_map(lambda x : self.individual_net(x), transposed_inputs)
+        latent_space = tf.vectorized_map(lambda x : self.call_individual_net(x), transposed_inputs)
         x = tf.reduce_sum(latent_space, axis=0)
 
 
-        x = self.aggregate_net(x)
+        x = self.call_aggregate_net(x)
 
         # # Compute the initial boundary condition, which the network will slowly overcome
         # # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
