@@ -187,7 +187,7 @@ class BaseAlgorithm(object):
     def equilibrate(self, n_equilibrations):
 
         kicker = tf.random.normal
-        kicker_params = {"mean": 0.0, "stddev" : 1.6}
+        kicker_params = {"mean": 0.0, "stddev" : 0.6}
 
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=n_equilibrations)
 
@@ -207,8 +207,9 @@ class BaseAlgorithm(object):
 
 
     #
-    @tf.function
-    def recompute_energy(self, test_wavefunction, current_psi, ):
+    # @tf.function
+    @profile
+    def recompute_energy(self, test_wavefunction, current_psi):
 
         estimator = Estimator()
         estimator.clear()

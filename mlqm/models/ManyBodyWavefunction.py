@@ -181,7 +181,8 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         return isospin_slater
 
     # @tf.function
-    @tf.function(jit_compile=True)
+    # @tf.function(jit_compile=True)
+    @profile
     def construct_slater_matrix(self, inputs, spin, isospin):
 
 
@@ -210,8 +211,8 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
 
     # @tf.function(jit_compile=True)
-    # @profile
-    @tf.function(jit_compile=True)
+    @profile
+    # @tf.function(jit_compile=True)
     def __call__(self, inputs, spin=None, isospin=None):
 
 
@@ -251,7 +252,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         return tf.reshape(wavefunction, (-1, 1))
 
-    @tf.function(jit_compile=True, experimental_relax_shapes=True)
+    # @tf.function(jit_compile=True, experimental_relax_shapes=True)
     def sub_matrix(self, batch_matrix, row, column):
         left = batch_matrix[:,0:row,:]
         right = batch_matrix[:,row+1:,:]
@@ -260,7 +261,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         bottom = row_removed[:,:,column+1:]
         return tf.concat((top, bottom), axis=2)
 
-    @tf.function(jit_compile=True, experimental_relax_shapes=True)
+    # @tf.function(jit_compile=True, experimental_relax_shapes=True)
     def custom_determinant(self, _matrix, rank):
 
 

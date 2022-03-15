@@ -113,5 +113,5 @@ def test_wavefunction_asymmetry(nwalkers, nparticles, ndim, n_spin_up, n_protons
 
 if __name__ == "__main__":
     # test_wavefunction_asymmetry(2,2,3,2,1)
-    test_wavefunction_asymmetry(2,3,3,2,2)
-    
+    for i in range(10):
+        test_wavefunction_asymmetry(2,3,3,2,2)

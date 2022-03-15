@@ -93,7 +93,8 @@ class Hamiltonian(object):
 
         return ke
 
-    @tf.function
+    # @tf.function
+    @profile
     def compute_derivatives(self,
         wavefunction : tf.keras.models.Model,
         inputs : tf.Tensor,
@@ -112,9 +113,11 @@ class Hamiltonian(object):
             with tf.GradientTape() as second_tape:
                 second_tape.watch(inputs)
                 w_of_x = wavefunction(inputs, spin, isospin)
+                print(w_of_x)
             # Get the derivative of w_of_x with respect to inputs
             dw_dx = second_tape.gradient(w_of_x, inputs)
 
+        print(dw_dx)
         # Get the derivative of dw_dx with respect to inputs (aka second derivative)
 
         # We have to extract the diagonal of the jacobian, which comes out with shape
@@ -133,7 +136,7 @@ class Hamiltonian(object):
         return w_of_x, dw_dx, d2w_dx2
 
 
-    @tf.function
+    # @tf.function
     def compute_energies(self, inputs, spin, isospin, w_of_x, dw_dx, d2w_dx2):
         '''Compute PE, KE_JF, and KE_direct
 
@@ -160,7 +163,8 @@ class Hamiltonian(object):
         return pe, ke_jf, ke_direct
         # return None
 
-    @tf.function
+    # @tf.function
+    @profile
     def energy(self,
         wavefunction : tf.keras.models.Model,
         inputs       : tf.Tensor,

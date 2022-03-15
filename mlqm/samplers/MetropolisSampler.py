@@ -169,7 +169,6 @@ class MetropolisSampler(object):
         self.spin_walker_history    = []
         self.isospin_walker_history = []
 
-    @profile
     def kick(self,
         wavefunction : tf.keras.models.Model,
         kicker : callable,
@@ -231,9 +230,7 @@ class MetropolisSampler(object):
         # Send back the acceptance:
         return acceptance
 
-    # @tf.function(experimental_compile=False)
-    @profile
-    # @tf.function
+    @tf.function(jit_compile=True)
     def internal_kicker(self,
         shape,
         walkers,
@@ -299,9 +296,7 @@ class MetropolisSampler(object):
         for i_kick in tf.range(nkicks):
 
             # Create a kick:
-            kick = kicks[i_kick]
-            # kick = kicker(shape=shape, **kicker_params, dtype=dtype)
-            kicked = walkers + kick
+            kicked = walkers + tf.gather(kicks, i_kick)
 
             # Compute the values of the wave function, which should be of shape
             # [nwalkers, 1]
@@ -309,12 +304,12 @@ class MetropolisSampler(object):
 
 
             # Probability is the ratio of kicked **2 to original
-            probability = tf.math.pow(kicked_wavefunction, 2) / tf.math.pow(current_wavefunction, 2)
+            probability = tf.math.pow(kicked_wavefunction / current_wavefunction,2)
             # Acceptance is whether the probability for that walker is greater than
             # a random number between [0, 1).
             # Pull the random numbers and create a boolean array
             # accept      = probability >  tf.random.uniform(shape=[shape[0],1])
-            accept      = probability >  random_numbers[i_kick]
+            accept      = probability >  tf.gather(random_numbers, i_kick)
             # accept      = probability >  tf.math.log(tf.random.uniform(shape=[shape[0],1]))
 
             # Grab the kicked wavefunction in the places it is new, to speed up metropolis:
@@ -328,11 +323,11 @@ class MetropolisSampler(object):
 
             walkers = tf.where(tf.reshape(accept, (-1,1,1)), kicked, walkers)
 
-            acceptance = tf.reduce_mean(tf.cast(accept, dtype))
+            acceptance = tf.reduce_mean(tf.cast(accept, dtype=dtype))
 
         return walkers, acceptance
 
-    @tf.function
+    @tf.function(jit_compile=True)
     def internal_kicker_spin(self,
         shape,
         walkers,
@@ -409,27 +404,25 @@ class MetropolisSampler(object):
 
             # Get kicked spin coordinates
             kicked_spins = self.swap_random_indexes_opt(
-                spin_walkers, first_index,
-                spin_swap_indexes_f[i_kick], spin_swap_indexes_s[i_kick])
-
-            # Create a kick:
-            kick = kicks[i_kick]
+                spin_walkers,
+                first_index,
+                tf.gather(spin_swap_indexes_f, i_kick),
+                tf.gather(spin_swap_indexes_s, i_kick))
             # kick = kicker(shape=shape, **kicker_params, dtype=dtype)
-            kicked = walkers + kick
+            kicked = walkers + tf.gather(kicks, i_kick)
 
             # Compute the values of the wave function, which should be of shape
             # [nwalkers, 1]
-            kicked_wavefunction = wavefunction(kicked,
-                kicked_spins)
+            kicked_wavefunction = wavefunction(kicked, kicked_spins)
 
 
             # Probability is the ratio of kicked **2 to original
-            probability = tf.math.pow(kicked_wavefunction, 2) / tf.math.pow(current_wavefunction, 2)
+            probability = tf.math.pow(kicked_wavefunction / current_wavefunction,2)
             # Acceptance is whether the probability for that walker is greater than
             # a random number between [0, 1).
             # Pull the random numbers and create a boolean array
             # accept      = probability >  tf.random.uniform(shape=[shape[0],1])
-            accept      = probability >  random_numbers[i_kick]
+            accept      = probability > tf.gather(random_numbers, i_kick)
             # accept      = probability >  tf.math.log(tf.random.uniform(shape=[shape[0],1]))
 
             # Grab the kicked wavefunction in the places it is new, to speed up metropolis:
@@ -453,12 +446,11 @@ class MetropolisSampler(object):
 
 
 
-            acceptance = tf.reduce_mean(tf.cast(accept, dtype))
+            acceptance = tf.reduce_mean(tf.cast(accept, dtype=dtype))
 
         return walkers, spin_walkers, acceptance
 
     @tf.function(jit_compile=True)
-    # @profile
     def internal_kicker_spin_isospin(self,
         shape,
         walkers,
@@ -540,13 +532,13 @@ class MetropolisSampler(object):
 
             # Get kicked spin coordinates
             kicked_spins = self.swap_random_indexes_opt(
-                spin_walkers, 
-                first_index, 
-                tf.gather(spin_swap_indexes_f, i_kick), 
+                spin_walkers,
+                first_index,
+                tf.gather(spin_swap_indexes_f, i_kick),
                 tf.gather(spin_swap_indexes_s, i_kick))
             kicked_isospins = self.swap_random_indexes_opt(
-                isospin_walkers, 
-                first_index, 
+                isospin_walkers,
+                first_index,
                 tf.gather(isospin_swap_indexes_f, i_kick),
                 tf.gather(isospin_swap_indexes_s, i_kick))
 
@@ -562,7 +554,7 @@ class MetropolisSampler(object):
             # Probability is the ratio of kicked **2 to original
             # probability = kicked_wavefunction  / current_wavefunction
             probability = tf.math.pow(kicked_wavefunction / current_wavefunction,2)
-            
+
             # Acceptance is whether the probability for that walker is greater than
             # a random number between [0, 1).
             # Pull the random numbers and create a boolean array
@@ -574,23 +566,18 @@ class MetropolisSampler(object):
 
             # We need to broadcast accept to match the right shape
             # Needs to come out to the shape [nwalkers, nparticles, ndim]
-            # spatial_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:])])
-            # spatial_accept = tf.reshape(spatial_accept, shape)
             walkers = tf.where(tf.reshape(accept, (-1,1,1)), kicked, walkers)
 
-
-            # spin_accept = tf.tile(accept, [1,tf.reduce_prod(shape[1:-1])])
             spin_walkers = tf.where(tf.reshape(accept, (-1,1)),kicked_spins,spin_walkers )
             isospin_walkers = tf.where(tf.reshape(accept,(-1,1)),kicked_isospins,isospin_walkers )
 
-
-            acceptance = tf.reduce_mean(tf.cast(accept, dtype))
+            acceptance = tf.reduce_mean(tf.cast(accept, dtype=dtype))
 
         return walkers, spin_walkers, isospin_walkers, acceptance
 
 
     # @profile
-    @tf.function()  
+    @tf.function()
     def swap_random_indexes_opt(self, input_tensor, first_index, swap_indexes_f, swap_indexes_s):
         '''
         Pick two indexes, per row, and swap the values
@@ -602,13 +589,9 @@ class MetropolisSampler(object):
         first_swap_indexes  = tf.stack([first_index, swap_indexes_f], axis=-1)
         second_swap_indexes = tf.stack([first_index, swap_indexes_s], axis=-1)
 
-
         # Gather the values:
         first_index_value  = tf.gather_nd(input_tensor, first_swap_indexes)
         second_index_value = tf.gather_nd(input_tensor, second_swap_indexes)
-
-
-
 
         # Now, have to _set_ the new indexes
         swapped_tensor = tf.tensor_scatter_nd_update(input_tensor, first_swap_indexes, second_index_value)
@@ -632,4 +615,3 @@ class MetropolisSampler(object):
         spin_swap_indexes_f = tf.gather(swap_index_i, spin_swap_indexes)
         spin_swap_indexes_s = tf.gather(swap_index_j, spin_swap_indexes)
         return spin_swap_indexes_f, spin_swap_indexes_s
-    

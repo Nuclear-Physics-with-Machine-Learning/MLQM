@@ -29,7 +29,7 @@ from mlqm.models import ManyBodyWavefunction
 from mlqm.config import ManyBodyCfg
 
 # For the hamiltonian:
-from mlqm.hamiltonians import Hamiltonian
+from mlqm.hamiltonians import Hamiltonian, NuclearPotential
 from mlqm.config import NuclearHamiltonian as H_config
 
 # Generate fake particles
@@ -210,10 +210,40 @@ def test_hamiltonian(nwalkers, nparticles, ndim, spin, iso_spin):
         print("2nd difference: ", w_prime_prime_fd - second_target)
         assert (numpy.abs(w_prime_prime_fd - second_target) < kick_size ).all()
 
-        #
+@pytest.mark.parametrize('nwalkers', [10])
+@pytest.mark.parametrize('nparticles', [2,3,4,5])
+@pytest.mark.parametrize('ndim', [1,2,3])
+@pytest.mark.parametrize('spin', [True])
+@pytest.mark.parametrize('iso_spin', [True])
+def test_energies(nwalkers, nparticles, ndim, spin, iso_spin):
+
+    n_spin_up = 2
+    n_protons = 1
+    c = ManyBodyCfg()
+
+    c = OmegaConf.structured(c)
+    w = ManyBodyWavefunction(ndim, nparticles, c,
+        n_spin_up = n_spin_up, n_protons = n_protons,
+        use_spin = spin, use_isospin = iso_spin
+    )
 
 
+
+    inputs, spins, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
+
+    hc = OmegaConf.structured(H_config())
+
+    h = NuclearPotential(hc)
+
+    inputs = tf.convert_to_tensor(inputs)
+    spins = tf.convert_to_tensor(spins)
+    isospins = tf.convert_to_tensor(isospins)
+
+    energy, energy_jf, ke_jf, ke_direct, pe, w_of_x = h.energy(w, inputs, spins, isospins)
+
+    assert (ke_direct > 0).numpy().all()
+    # assert (pe <= 0).numpy().all()
 
 if __name__ == "__main__":
     # test_hamiltonian_analytic(3,2,3)
-    test_hamiltonian(10,2,3,True, True)
+    test_energies(10,2,3,True, True)
