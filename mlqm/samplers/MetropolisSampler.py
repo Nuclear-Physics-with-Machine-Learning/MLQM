@@ -457,8 +457,8 @@ class MetropolisSampler(object):
 
         return walkers, spin_walkers, acceptance
 
-    # @tf.function
-    @profile
+    @tf.function(jit_compile=True)
+    # @profile
     def internal_kicker_spin_isospin(self,
         shape,
         walkers,
@@ -491,7 +491,8 @@ class MetropolisSampler(object):
         acceptance = tf.convert_to_tensor(0.0, dtype=dtype)
         # Calculate the current wavefunction value:
         current_wavefunction = wavefunction(
-            walkers, spin_walkers, isospin_walkers)
+                    walkers, spin_walkers, isospin_walkers)
+
 
         # Generate a long set of random number from which we will pull:
         random_numbers = tf.random.uniform(shape = [nkicks,shape[0],1], dtype=dtype)
@@ -534,31 +535,39 @@ class MetropolisSampler(object):
         # Fewer spin configurations allowed due to total spin conservation
         #
 
-        for i_kick in range(nkicks):
+        for i_kick in tf.range(nkicks):
+
 
             # Get kicked spin coordinates
-            kicked_spins = self.swap_random_indexes_opt(spin_walkers, first_index, spin_swap_indexes_f[i_kick], spin_swap_indexes_s[i_kick])
-            kicked_isospins = self.swap_random_indexes_opt(isospin_walkers, first_index, isospin_swap_indexes_f[i_kick], isospin_swap_indexes_s[i_kick])
+            kicked_spins = self.swap_random_indexes_opt(
+                spin_walkers, 
+                first_index, 
+                tf.gather(spin_swap_indexes_f, i_kick), 
+                tf.gather(spin_swap_indexes_s, i_kick))
+            kicked_isospins = self.swap_random_indexes_opt(
+                isospin_walkers, 
+                first_index, 
+                tf.gather(isospin_swap_indexes_f, i_kick),
+                tf.gather(isospin_swap_indexes_s, i_kick))
 
 
             # Create a kick:
-            kick = kicks[i_kick]
-            # kick = kicker(shape=shape, **kicker_params, dtype=dtype)
-            kicked = walkers + kick
+            kicked = walkers + tf.gather(kicks, i_kick)
 
             # Compute the values of the wave function, which should be of shape
             # [nwalkers, 1]
             kicked_wavefunction = wavefunction(kicked,
-                kicked_spins, kicked_isospins)
-
+                    kicked_spins, kicked_isospins)
 
             # Probability is the ratio of kicked **2 to original
-            probability = tf.math.pow(kicked_wavefunction, 2) / tf.math.pow(current_wavefunction, 2)
+            # probability = kicked_wavefunction  / current_wavefunction
+            probability = tf.math.pow(kicked_wavefunction / current_wavefunction,2)
+            
             # Acceptance is whether the probability for that walker is greater than
             # a random number between [0, 1).
             # Pull the random numbers and create a boolean array
             # accept      = probability >  tf.random.uniform(shape=[shape[0],1])
-            accept      = probability >  random_numbers[i_kick]
+            accept      = probability >  tf.gather(random_numbers, i_kick)
             # accept      = probability >  tf.math.log(tf.random.uniform(shape=[shape[0],1]))
             # Grab the kicked wavefunction in the places it is new, to speed up metropolis:
             current_wavefunction = tf.where(accept, kicked_wavefunction, current_wavefunction)
@@ -580,8 +589,8 @@ class MetropolisSampler(object):
         return walkers, spin_walkers, isospin_walkers, acceptance
 
 
-    @profile
-    # @tf.function
+    # @profile
+    @tf.function()  
     def swap_random_indexes_opt(self, input_tensor, first_index, swap_indexes_f, swap_indexes_s):
         '''
         Pick two indexes, per row, and swap the values
@@ -589,41 +598,26 @@ class MetropolisSampler(object):
         # TODO: speed up this function
         # First thing to do is generate a set of pairs of indexes, for every row.
 
-        print("Start swap")
-        print("input_tensor: ", input_tensor)
-        print("first_index: ", first_index)
-        print("swap_indexes_f: ", swap_indexes_f)
-        print("swap_indexes_s: ", swap_indexes_s)
+        # # First, select indexes:
+        first_swap_indexes  = tf.stack([first_index, swap_indexes_f], axis=-1)
+        second_swap_indexes = tf.stack([first_index, swap_indexes_s], axis=-1)
 
-        # First, select indexes:
-        second_swap_indexes = tf.stack([first_index, swap_indexes_f], axis=-1)
-        first_swap_indexes  = tf.stack([first_index, swap_indexes_s], axis=-1)
-
-        print("second_swap_indexes: ", second_swap_indexes)
-        print("first_swap_indexes: ", first_swap_indexes)
 
         # Gather the values:
         first_index_value  = tf.gather_nd(input_tensor, first_swap_indexes)
         second_index_value = tf.gather_nd(input_tensor, second_swap_indexes)
 
-        print("first_index_value: ", first_index_value)
-        print("second_index_value: ", second_index_value)
 
-        # a = tf.gather_nd(input_tensor, [first_index, swap_indexes_f])
-        a = tf.gather(input_tensor, swap_indexes_f, axis=0)
-        print("a: ", a)
+
 
         # Now, have to _set_ the new indexes
         swapped_tensor = tf.tensor_scatter_nd_update(input_tensor, first_swap_indexes, second_index_value)
         swapped_tensor = tf.tensor_scatter_nd_update(swapped_tensor, second_swap_indexes, first_index_value)
 
-        print("swapped_tensor: ", swapped_tensor)
-        print("end swap")
-
         return swapped_tensor
 
 
-    @tf.function()
+    @tf.function(jit_compile=True)
     def generate_swap_first_and_second(self, nkicks, nwalkers,swap_index_i, swap_index_j):
 
 
@@ -638,3 +632,4 @@ class MetropolisSampler(object):
         spin_swap_indexes_f = tf.gather(swap_index_i, spin_swap_indexes)
         spin_swap_indexes_s = tf.gather(swap_index_j, spin_swap_indexes)
         return spin_swap_indexes_f, spin_swap_indexes_s
+    

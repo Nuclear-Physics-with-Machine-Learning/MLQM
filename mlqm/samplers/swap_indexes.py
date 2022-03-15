@@ -24,7 +24,8 @@ from mlqm.samplers import MetropolisSampler
 n_walkers  = 5
 n_dim      = 3
 nparticles = 3
-nkicks     = 2
+nkicks     = 2000
+n_runs     = 10
 
 sampler = MetropolisSampler(
     n           = n_dim,
@@ -69,11 +70,27 @@ start_values = wavefunction(x, spin, isospin)
 print("Mean x: ", tf.reduce_mean(x))
 print("Var x: ", tf.math.reduce_std(x))
 
-acceptance = sampler.kick(wavefunction, kicker, kick_args, nkicks=1)
-start = time.time()
-
+# Compilation: 
 acceptance = sampler.kick(wavefunction, kicker, kick_args, nkicks=nkicks)
-print(f"time for {nkicks} kicks: ", time.time() - start)
+
+# warmup run:
+acceptance = sampler.kick(wavefunction, kicker, kick_args, nkicks=nkicks)
+acceptance = sampler.kick(wavefunction, kicker, kick_args, nkicks=nkicks)
+
+# Real measurement:
+tf.profiler.experimental.start('logdir')
+times = []
+for i in range(n_runs):
+    start = time.time()
+    # with tf.profiler.experimental.Trace('walk', step_num=i, _r=1):
+    acceptance = sampler.kick(wavefunction, kicker, kick_args, nkicks=nkicks)
+    times.append(time.time() - start)
+tf.profiler.experimental.stop()
+
+duration = tf.reduce_sum(times)
+print(times)
+
+print(f"time for {n_runs} x {nkicks} kicks: {duration:.3f} (average {duration/n_runs:.3f})")
 
 print("Acceptance: ", acceptance)
 
