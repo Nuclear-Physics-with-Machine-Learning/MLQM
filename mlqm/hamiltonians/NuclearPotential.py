@@ -126,7 +126,7 @@ class NuclearPotential(Hamiltonian):
         # print(pe)
         return pe
 
-    # @tf.function()
+    @tf.function()
     # @tf.function(experimental_compile=False)
     def compute_energies(self, inputs, spin, isospin, w_of_x, dw_dx, d2w_dx2):
         '''Compute PE, KE_JF, and KE_direct

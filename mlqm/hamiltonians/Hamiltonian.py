@@ -160,7 +160,7 @@ class Hamiltonian(object):
         return pe, ke_jf, ke_direct
         # return None
 
-    # @tf.function
+    @tf.function
     def energy(self,
         wavefunction : tf.keras.models.Model,
         inputs       : tf.Tensor,
