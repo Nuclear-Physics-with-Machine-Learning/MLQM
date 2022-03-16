@@ -135,9 +135,7 @@ class exec(object):
             )
 
 
-        # print(x)
-        # print(spin)
-        # print(isospin)
+ 
         # Run the wave function once to initialize all its weights
         tf.summary.trace_on(graph=True, profiler=False)
         _ = wavefunction(x, spin, isospin)

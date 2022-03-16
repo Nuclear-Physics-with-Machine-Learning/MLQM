@@ -154,9 +154,12 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         # In other words, columns (y, 3rd index) share the particle
         # and rows (x, 2nd index) share the state
 
+        nwalkers   = _xinputs.shape[0]
+        nparticles = _xinputs.shape[1]
 
-
-        slater_rows = [self.compute_row(w, _xinputs) for w in self.spatial_nets]
+        # for i in range(nparticles):
+        #     
+        slater_rows = [ tf.reshape(n(_xinputs),  (nwalkers, nparticles)) for n in self.spatial_nets]
 
         spatial_slater = tf.stack(slater_rows, axis=-1)
         spatial_slater = tf.transpose(spatial_slater, perm=(0,2,1))
@@ -180,9 +183,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
         return isospin_slater
 
-    # @tf.function
-    # @tf.function(jit_compile=True)
-    @profile
+    @tf.function
     def construct_slater_matrix(self, inputs, spin, isospin):
 
 
@@ -211,8 +212,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
 
     # @tf.function(jit_compile=True)
-    @profile
-    # @tf.function(jit_compile=True)
+    @tf.function(jit_compile=True)
     def __call__(self, inputs, spin=None, isospin=None):
 
 

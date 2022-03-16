@@ -156,10 +156,13 @@ class DeepSetsCorrelator(tf.keras.models.Model):
 
         ################################################
         # Improved efficiency:
-        transposed_inputs = tf.transpose(inputs, perm=(1,0,2))
-        latent_space = tf.vectorized_map(lambda x : self.call_individual_net(x), transposed_inputs)
-        x = tf.reduce_sum(latent_space, axis=0)
+        # transposed_inputs = tf.transpose(inputs, perm=(1,0,2))
+        # latent_space = tf.vectorized_map(lambda x : self.call_individual_net(x), transposed_inputs)        
+        # x = tf.reduce_sum(latent_space, axis=0)
 
+        # Even better efficiency:
+        latent_space = self.call_individual_net(inputs)
+        x = tf.reduce_sum(latent_space, axis=1)
 
         x = self.call_aggregate_net(x)
 

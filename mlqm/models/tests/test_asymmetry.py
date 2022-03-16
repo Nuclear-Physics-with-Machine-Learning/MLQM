@@ -104,8 +104,8 @@ def test_wavefunction_asymmetry(nwalkers, nparticles, ndim, n_spin_up, n_protons
 
 
     inputs, spins, isospins = swap_particles(inputs, spins, isospins, i, j)
-
-    a_prime = w(inputs, spins, isospins).numpy()
+    for i in range(10):
+        a_prime = w(inputs, spins, isospins).numpy()
     print("a_prime: ", a_prime)
     # By switching two particles, we should have inverted the sign.
     assert (a + a_prime < 1e-8 ).all()
@@ -113,5 +113,4 @@ def test_wavefunction_asymmetry(nwalkers, nparticles, ndim, n_spin_up, n_protons
 
 if __name__ == "__main__":
     # test_wavefunction_asymmetry(2,2,3,2,1)
-    for i in range(10):
-        test_wavefunction_asymmetry(2,3,3,2,2)
+    test_wavefunction_asymmetry(2,3,3,2,2)
