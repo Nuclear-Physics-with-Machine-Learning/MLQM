@@ -72,8 +72,7 @@ class BaseAlgorithm(object):
     def batched_jacobian(self, nobs, x_current_arr, spin_arr, isospin_arr, wavefunction, jac_fnc):
         ret_jac = []
         if not self.use_spin:
-            print(spin_arr)
-            # spin_arr = [None] * nobs
+            spin_arr = [None] * nobs
         if not self.use_isospin:
             isospin_arr = [None] * nobs
 
@@ -84,29 +83,20 @@ class BaseAlgorithm(object):
         #
         # jac = lambda x : jac_fnc(x[0],x[1],x[2],wavefunction)
         #
-        # print(x_current_arr.shape)
-        # print(spin_arr.shape)
-        # print(isospin_arr.shape)
-        #
         #
         # flattened_jacobian = tf.vectorized_map(
         #     jac, (x_current_arr, spin_arr, isospin_arr)
         # )
         #
-        # print("2 flattened_jacobian.shape: ", flattened_jacobian.shape)
-        # print("flat_shape.shape: ", flat_shape.shape)
         # ret_jac = tf.split(flattened_jacobian, nobs)
         # flat_shape = flat_shape[0]
         #
-        # print("len(ret_jac): ", len(ret_jac))
         #
         for i in range(nobs):
 
             flattened_jacobian, flat_shape = jac_fnc(
                 x_current_arr[i], spin_arr[i], isospin_arr[i], wavefunction)
             ret_jac.append(flattened_jacobian)
-        # print("flat_shape: ", flat_shape)
-        # print("len(ret_jac): ", len(ret_jac))
 
 
         return ret_jac, flat_shape
