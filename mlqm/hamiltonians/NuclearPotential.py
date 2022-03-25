@@ -67,7 +67,7 @@ class NuclearPotential(Hamiltonian):
             'd' : 3.0,
             'o' : 1.83039397
         }
-        
+
         # for the two body interactions:
         self.C01 = tf.constant(C01_dict[parameters.model], dtype=DEFAULT_TENSOR_TYPE)
         self.C10 = tf.constant(C10_dict[parameters.model], dtype=DEFAULT_TENSOR_TYPE)
@@ -85,7 +85,7 @@ class NuclearPotential(Hamiltonian):
         alpha_3body = (cE / (fpi)**4) * ((self.HBAR)**6 / (pi**3 * self.R3**6) )
 
         self.alpha_3body = tf.constant(tf.sqrt(alpha_3body), dtype = DEFAULT_TENSOR_TYPE)
-        # self.ce3b = jnp.sqrt( self.ce3b / lamchi / fpi**4 * self.hc / jnp.pi**3 / self.R3**6 )   
+        # self.ce3b = jnp.sqrt( self.ce3b / lamchi / fpi**4 * self.hc / jnp.pi**3 / self.R3**6 )
 
         # if self.vkr == 2.0:
         #     self.v0r  = tf.constant(-133.3431,     dtype = DEFAULT_TENSOR_TYPE)
@@ -116,7 +116,7 @@ class NuclearPotential(Hamiltonian):
         v_c         = (3./16.) * (     self.C01 * c1_r +     self.C10 * c0_r)
         v_sigma     = (1./16.) * (-3.* self.C01 * c1_r +     self.C10 * c0_r)
         v_tau       = (1./16.) * (     self.C01 * c1_r - 3.* self.C10 * c0_r)
-        v_sigma_tau = (1./16.) * (     self.C01 * c1_r +     self.C10 * c0_r)
+        v_sigma_tau = -(1./16.) * (     self.C01 * c1_r +     self.C10 * c0_r)
 
         return v_c, v_sigma, v_tau, v_sigma_tau
 
@@ -131,8 +131,11 @@ class NuclearPotential(Hamiltonian):
     @tf.function()
     def swap_by_index(self, *, tensor, index_1, index_2):
 
+        shape = tensor.shape
+        dim_0 = tf.range(shape[0])
+
         copy_tensor = tf.identity(tensor)
-        dim_0 = tf.constant(tf.range(tensor.shape[0]))
+        # dim_0 = tf.constant(range(tensor.shape[0]))
         index_i = tf.stack([dim_0, tf.constant(index_1, shape=dim_0.shape)], axis=1)
         index_j = tf.stack([dim_0, tf.constant(index_2, shape=dim_0.shape)], axis=1)
 
@@ -186,9 +189,9 @@ class NuclearPotential(Hamiltonian):
         gr3b = [tf.zeros(shape=[nwalkers], dtype=DEFAULT_TENSOR_TYPE) for p in range(nparticles)]
         V_ijk = tf.zeros(shape=[nwalkers], dtype=DEFAULT_TENSOR_TYPE) # three body potential terms
         v_ij  = tf.zeros(shape=[nwalkers], dtype=DEFAULT_TENSOR_TYPE) # 2 body potential terms:
-        
+
         w_of_x = wavefunction(inputs, spin, isospin)
-        
+
         # Here we compute the pair-wise interaction terms
         for i in range (nparticles-1):
             for j in range (i+1,nparticles):
@@ -198,14 +201,14 @@ class NuclearPotential(Hamiltonian):
                 r_ij = tf.sqrt(tf.reduce_sum(x_ij**2,axis=1))
                 # Compute the Vrr and Vrs terms for this pair of particles:
                 v_c, v_sigma, v_tau, v_sigma_tau = self.pionless_2b(r_ij=r_ij)
-   
+
                 ##
-                ## TODO: ADD V_EM 
+                ## TODO: ADD V_EM
                 ##
                 v_em = self.potential_em(r_ij=r_ij)
 
                 # Now, we need to exchange the spin and isospin of this pair of particles
-              
+
                 swapped_spin    = self.swap_by_index(tensor=spin, index_1=i, index_2=j)
                 swapped_isospin = self.swap_by_index(tensor=isospin, index_1=i, index_2=j)
 
@@ -215,14 +218,18 @@ class NuclearPotential(Hamiltonian):
                 w_of_x_swap_isospin = wavefunction(inputs, spin,         swapped_isospin)
                 w_of_x_swap_both    = wavefunction(inputs, swapped_spin, swapped_isospin)
 
-
                 # Now compute several ratios:
-                ratio_swapped_spin    = tf.reshape(2*w_of_x_swap_spin    / w_of_x - 1, (-1))
-                ratio_swapped_isospin = tf.reshape(2*w_of_x_swap_isospin / w_of_x - 1, (-1))
-                ratio_swapped_both    = tf.reshape(2*w_of_x_swap_both    / w_of_x - 1, (-1))
+                ratio_swapped_spin    = w_of_x_swap_spin    / w_of_x
+                ratio_swapped_isospin = w_of_x_swap_isospin / w_of_x
+                ratio_swapped_both    = w_of_x_swap_both    / w_of_x
+
+                spin_factor     = tf.reshape(2*ratio_swapped_spin - 1,      (-1,))
+                isospin_factor  = tf.reshape(2*ratio_swapped_isospin - 1,   (-1,))
+                both_factor     = tf.reshape(4*ratio_swapped_both - 2*ratio_swapped_spin - 2*ratio_swapped_isospin + 1,  (-1,))
+
 
                 # Em force only applies to protons, so apply that:
-                proton = (1./4)*(1+isospin[:,i])*(1 + isospin[:,j])
+                proton = (1./4)*(1 + isospin[:,i])*(1 + isospin[:,j])
 
                 # We accumulate the pairwise interaction of these two nucleons:
                 # print("v_c.shape: ", v_c.shape)
@@ -231,17 +238,17 @@ class NuclearPotential(Hamiltonian):
                 # print("v_sigma.shape: ", v_sigma.shape)
                 # print("v_ij.shape: ", v_ij.shape)
                 # print("ratio_swapped_spin.shape: ", ratio_swapped_spin.shape)
-                v_ij += v_sigma     * ratio_swapped_spin
+                v_ij += v_sigma     * spin_factor
                 # print("v_ij: ", v_ij)
                 # print("v_tau.shape: ", v_tau.shape)
                 # print("v_ij.shape: ", v_ij.shape)
                 # print("w_of_x_swap_isospin.shape: ", ratio_swapped_isospin.shape)
-                v_ij += v_tau       * ratio_swapped_isospin
+                v_ij += v_tau       * isospin_factor
                 # print("v_ij: ", v_ij)
                 # print("v_sigma_tau.shape: ", v_sigma_tau.shape)
                 # print("v_ij.shape: ", v_ij.shape)
                 # print("w_of_x_swap_both.shape: ", ratio_swapped_both.shape)
-                v_ij += v_sigma_tau * ratio_swapped_both
+                v_ij += v_sigma_tau * both_factor
                 # print("v_ij: ", v_ij)
                 # print("v_em.shape: ", v_em.shape)
                 # print("v_ij.shape: ", v_ij.shape)
@@ -252,7 +259,7 @@ class NuclearPotential(Hamiltonian):
                 # vt_ij = vr_ij[1] * ( 2 * Pt_ij - 1 )
                 # vs_ij = vr_ij[2] * ( 2 * Ps_ij - 1 )
                 # vst_ij = vr_ij[3] * ( 4 * Pst_ij - 2 * Pt_ij - 2 * Ps_ij + 1 )
-                
+
                 # vem_ij = ( 1 + sz[self.ip[k],1] ) * ( 1 + sz[self.jp[k],1] ) / 4 * vrem_ij
 
 
@@ -268,7 +275,7 @@ class NuclearPotential(Hamiltonian):
         # stack up gr3b:
         gr3b = tf.stack(gr3b, axis=1)
         V_ijk += 0.5 * tf.reduce_sum(gr3b**2, axis = 1)
-        
+
         pe = v_ij + V_ijk
 
         # print(pe)

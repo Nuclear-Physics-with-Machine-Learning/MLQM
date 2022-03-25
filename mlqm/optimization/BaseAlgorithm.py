@@ -177,7 +177,7 @@ class BaseAlgorithm(object):
     def equilibrate(self, n_equilibrations):
 
         kicker = tf.random.normal
-        kicker_params = {"mean": 0.0, "stddev" : 0.6}
+        kicker_params = {"mean": 0.0, "stddev" : 0.4}
 
         acceptance = self.sampler.kick(self.wavefunction, kicker, kicker_params, nkicks=n_equilibrations)
 

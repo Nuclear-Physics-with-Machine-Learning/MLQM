@@ -135,7 +135,7 @@ class exec(object):
             )
 
 
- 
+
         # Run the wave function once to initialize all its weights
         tf.summary.trace_on(graph=True, profiler=False)
         _ = wavefunction(x, spin, isospin)
@@ -431,8 +431,7 @@ class exec(object):
 
             start = time.time()
 
-            ##### \\\\ TODO : thermalize should be more like 1000
-            metrics = self.sr_worker.sr_step(n_thermalize = 10)
+            metrics = self.sr_worker.sr_step(n_thermalize = 1000)
 
             # Check if we've reached a better energy:
             if metrics['energy/energy'] < best_energy:
