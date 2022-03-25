@@ -198,7 +198,6 @@ class BaseAlgorithm(object):
 
     #
     # @tf.function
-    @profile
     def recompute_energy(self, test_wavefunction, current_psi):
 
         estimator = Estimator()
@@ -277,7 +276,6 @@ class BaseAlgorithm(object):
 
         return dp_i, S_ij
 
-    @profile
     def walk_and_accumulate_observables(self,
             estimator,
             _wavefunction,
@@ -430,7 +428,6 @@ class BaseAlgorithm(object):
         raise Exception("Must be implemented in child class")
 
     # @tf.function
-    @profile
     def sr_step(self, n_thermalize):
 
         metrics = {}

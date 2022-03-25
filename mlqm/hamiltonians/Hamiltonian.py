@@ -30,7 +30,7 @@ class Hamiltonian(object):
         self.HBAR = tf.constant(1.0, dtype = DEFAULT_TENSOR_TYPE)
 
     @tf.function
-    def potential_energy(self, *, inputs, spin, isospin=None):
+    def potential_energy(self, *, wavefunction, inputs, spin, isospin=None):
         """Return potential energy
 
         Calculate and return the PE.
@@ -134,7 +134,7 @@ class Hamiltonian(object):
 
 
     @tf.function
-    def compute_energies(self, inputs, spin, isospin, w_of_x, dw_dx, d2w_dx2):
+    def compute_energies(self, wavefunction, inputs, spin, isospin, w_of_x, dw_dx, d2w_dx2):
         '''Compute PE, KE_JF, and KE_direct
 
         Placeholder for a user to implement their calculation of the energies.
@@ -190,7 +190,7 @@ class Hamiltonian(object):
             self.compute_derivatives(wavefunction, inputs, spin, isospin)
 
         pe, ke_jf, ke_direct = self.compute_energies(
-            inputs, spin, isospin, w_of_x, dw_dx, d2w_dx2)
+            wavefunction, inputs, spin, isospin, w_of_x, dw_dx, d2w_dx2)
 
         # Total energy computations:
         energy    = tf.squeeze(pe+ke_direct)

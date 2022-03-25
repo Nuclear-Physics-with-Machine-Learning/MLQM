@@ -21,10 +21,10 @@ model_name: ${hamiltonian.form}_${nparticles}part_${dimension}D.model
 
 @dataclass
 class Sampler:
-    n_thermalize:              int = 1000
-    n_void_steps:              int = 200
+    n_thermalize:              int = 10
+    n_void_steps:              int = 20
     n_observable_measurements: int = 5
-    n_walkers_per_observation: int = 500
+    n_walkers_per_observation: int = 50
     n_concurrent_obs_per_rank: int = 5
     use_spin:                 bool = True
     use_isospin:              bool = True

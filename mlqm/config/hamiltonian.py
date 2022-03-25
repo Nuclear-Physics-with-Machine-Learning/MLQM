@@ -12,7 +12,10 @@ class SpinConf:
 
     Units are set as integer multiples of hbar/2 (the spin of a single particle)
     """
+    # Total spin of 2 means two particles, etc.
     total_spin:   int = 1
+
+    # Z projection of 1 means 1 particle is up, etc.
     z_projection: int = 1
 
     def __post_init__(self):
@@ -31,7 +34,7 @@ class Potential(Enum):
 class Hamiltonian:
     mass:     float = 1.0
     form: Potential = MISSING
-    spin:  SpinConf = SpinConf()
+    spin:  SpinConf = SpinConf(2,2)
 
 @dataclass
 class NuclearHamiltonian(Hamiltonian):
@@ -39,10 +42,10 @@ class NuclearHamiltonian(Hamiltonian):
     This class describes a nuclear hamiltonian.
     Total particles is set elsewhere, so only need to specify how many protons
     """
+    model:      str = 'o' # pick from ['a', 'b', 'c', 'd', 'o']
     mass:     float =  938.95
     form: Potential = Potential.NuclearPotential
-    Z:          int = 1 # number of protons
-    isospin: SpinConf = SpinConf(1,1)
+    isospin: SpinConf = SpinConf(2,1)
 
 @dataclass
 class AtomicHamiltonian(Hamiltonian):

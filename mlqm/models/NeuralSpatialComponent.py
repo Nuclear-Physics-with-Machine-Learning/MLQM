@@ -13,7 +13,7 @@ class NeuralSpatialComponent(tf.keras.models.Model):
     Extends:
         tf.keras.models.Model
     """
-    def __init__(self, ndim : int, nparticles: int, configuration: dict):
+    def __init__(self, configuration: dict):
         '''Deep Sets wavefunction for symmetric particle wavefunctions
 
         Implements a deep set network for multiple particles in the same system
@@ -29,12 +29,6 @@ class NeuralSpatialComponent(tf.keras.models.Model):
             Exception -- [description]
         '''
         tf.keras.models.Model.__init__(self)
-
-        self.ndim = ndim
-        if self.ndim < 1 or self.ndim > 3:
-           raise Exception("Dimension must be 1, 2, or 3 for DeepSetsWavefunction")
-
-        self.nparticles = nparticles
 
         self.config = configuration
 

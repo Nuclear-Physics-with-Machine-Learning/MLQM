@@ -119,8 +119,8 @@ class exec(object):
             self.config.dimension,
             self.config.nparticles,
             wavefunction_config,
-            n_spin_up   = 2*self.config.hamiltonian.spin.z_projection,
-            n_protons   = self.config.hamiltonian.Z,
+            n_spin_up   = self.config.hamiltonian.spin.z_projection,
+            n_protons   = self.config.hamiltonian.isospin.z_projection,
             use_spin    = self.config.sampler.use_spin,
             use_isospin = self.config.sampler.use_isospin,
             )
@@ -128,8 +128,8 @@ class exec(object):
             self.config.dimension,
             self.config.nparticles,
             wavefunction_config,
-            n_spin_up   = 2*self.config.hamiltonian.spin.z_projection,
-            n_protons   = self.config.hamiltonian.Z,
+            n_spin_up   = self.config.hamiltonian.spin.z_projection,
+            n_protons   = self.config.hamiltonian.isospin.z_projection,
             use_spin    = self.config.sampler.use_spin,
             use_isospin = self.config.sampler.use_isospin,
             )
@@ -259,8 +259,8 @@ class exec(object):
             nwalkers    = n_walkers,
             initializer = tf.random.normal,
             init_params = {"mean": 0.0, "stddev" : 0.2},
-            n_spin_up   = 2*self.config.hamiltonian.spin.z_projection,
-            n_protons   = self.config.hamiltonian.Z,
+            n_spin_up   = self.config.hamiltonian.spin.z_projection,
+            n_protons   = self.config.hamiltonian.isospin.z_projection,
             use_spin    = self.config.sampler.use_spin,
             use_isospin = self.config.sampler.use_isospin,
             dtype       = DEFAULT_TENSOR_TYPE)
@@ -431,7 +431,8 @@ class exec(object):
 
             start = time.time()
 
-            metrics = self.sr_worker.sr_step(n_thermalize = 1000)
+            ##### \\\\ TODO : thermalize should be more like 1000
+            metrics = self.sr_worker.sr_step(n_thermalize = 10)
 
             # Check if we've reached a better energy:
             if metrics['energy/energy'] < best_energy:

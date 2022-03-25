@@ -119,6 +119,7 @@ class MetropolisSampler(object):
             self.isospin_walker_history = []
 
 
+
     def gen_possible_swaps(self, n_particles):
         '''
             # Create a list of all possible swaps.

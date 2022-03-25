@@ -68,9 +68,8 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         if self.use_spin or self.use_isospin:
             for i in range(self.nparticles):
                 self.spatial_nets.append(NeuralSpatialComponent(
-                    ndim          = self.ndim,
-                    nparticles    = self.nparticles,
-                    configuration = self.config.spatial_cfg)
+                        configuration = self.config.spatial_cfg
+                    )
                 )
         # for i_particle in range(self.nparticles):
         #     if i_particle < 4:
