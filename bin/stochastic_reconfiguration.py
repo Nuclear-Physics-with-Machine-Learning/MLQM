@@ -139,7 +139,12 @@ class exec(object):
         # Run the wave function once to initialize all its weights
         tf.summary.trace_on(graph=True, profiler=False)
         _ = wavefunction(x, spin, isospin)
+
         _ = adaptive_wavefunction(x, spin, isospin)
+
+        # For states with spin, we need to randomly initialize
+        # until all wavefunction values are not zeros.
+        sampler.initialize_spin_till_non_zero(wavefunction)
 
         tf.summary.trace_export("graph")
         tf.summary.trace_off()

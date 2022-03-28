@@ -123,7 +123,7 @@ class NuclearPotential(Hamiltonian):
     @tf.function()
     def pionless_3b(self, *,  r_ij, nwalkers):
         # pot_3b = tf.zeros(shape=(nwalkers), dtype=DEFAULT_TENSOR_TYPE)
-        x = r_ij / self.R_3
+        x = r_ij / self.R3
         vr = tf.exp(-x**2)
         pot_3b = vr * self.alpha_3body
         return pot_3b

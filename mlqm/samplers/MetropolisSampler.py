@@ -1,6 +1,10 @@
 import tensorflow as tf
 import numpy
 
+import logging
+logger = logging.getLogger()
+
+import time
 
 class MetropolisSampler(object):
     """Metropolis Sampler in N dimension
@@ -51,8 +55,10 @@ class MetropolisSampler(object):
 
         self.walker_history = []
 
-        self.use_spin = use_spin
+        self.use_spin    = use_spin
         self.use_isospin = use_isospin
+        self.n_spin_up   = n_spin_up
+        self.n_protons   = n_protons
 
         if self.use_spin or self.use_isospin:
             self.possible_swap_pairs = self.gen_possible_swaps(self.nparticles)
@@ -63,26 +69,8 @@ class MetropolisSampler(object):
             self.use_spin = True
             self.spin_size = (self.nwalkers, self.nparticles)
 
-
             #  Run the initalize to get the first locations:
-            #  The initializer sets a random number of particles in each walker
-            #  to the spin up state in order to create a total z sping as specified.
-
-            # Note that we initialize with NUMPY for ease of indexing and shuffling
-            init_walkers = numpy.zeros(shape=self.spin_size) - 1
-            for i in range(n_spin_up):
-                init_walkers[:,i] += 2
-
-            # Shuffle the spin up particles on each axis:
-
-            # How to compute many permutations at once?
-            #  Answer from https://stackoverflow.com/questions/5040797/shuffling-numpy-array-along-a-given-axis
-            # Bottom line: gen random numbers for each axis, sort only in that axis,
-            # and apply the permutations
-            idx = numpy.random.rand(*init_walkers.shape).argsort(axis=1)
-            init_walkers = numpy.take_along_axis(init_walkers, idx, axis=1)
-
-            self.spin_walkers = tf.Variable(init_walkers)
+            self.spin_walkers = self.initialize_spin_vector(self.spin_size, n_spin_up)
             self.spin_walker_history = []
         else:
             self.spin_walkers = None
@@ -91,34 +79,68 @@ class MetropolisSampler(object):
         #  Initialize the spin if needed:
         if self.use_isospin and n_protons != 0:
             self.use_isospin = True
-            self.isospin_size = (self.nwalkers, self.nparticles)
-
 
             #  Run the initalize to get the first locations:
-            #  The initializer sets a random number of particles in each walker
-            #  to the spin up state in order to create a total z sping as specified.
-
-            # Note that we initialize with NUMPY for ease of indexing and shuffling
-            init_walkers = numpy.zeros(shape=self.isospin_size) -1
-            for i in range(n_protons):
-                init_walkers[:,i] += 2
-
-            # Shuffle the spin up particles on each axis:
-
-            # How to compute many permutations at once?
-            #  Answer from https://stackoverflow.com/questions/5040797/shuffling-numpy-array-along-a-given-axis
-            # Bottom line: gen random numbers for each axis, sort only in that axis,
-            # and apply the permutations
-            idx = numpy.random.rand(*init_walkers.shape).argsort(axis=1)
-            init_walkers = numpy.take_along_axis(init_walkers, idx, axis=1)
-
-            self.isospin_walkers = tf.Variable(init_walkers)
+            self.isospin_walkers = self.initialize_spin_vector(self.spin_size, n_protons)
             self.isospin_walker_history = []
         else:
             self.isospin_walkers = None
             self.isospin_walker_history = []
 
+    def initialize_spin_vector(self, shape, n_z):
+        
+        #  The initializer sets a random number of particles in each walker
+        #  to the spin up state in order to create a total z sping as specified.
 
+        # Note that we initialize with NUMPY for ease of indexing and shuffling
+        _init_walkers = numpy.zeros(shape=shape) - 1
+        for i in range(n_z):
+            _init_walkers[:,i] += 2
+
+        # Shuffle the spin up particles on each axis:
+
+        # How to compute many permutations at once?
+        #  Answer from https://stackoverflow.com/questions/5040797/shuffling-numpy-array-along-a-given-axis
+        # Bottom line: gen random numbers for each axis, sort only in that axis,
+        # and apply the permutations
+        idx = numpy.random.rand(*_init_walkers.shape).argsort(axis=1)
+        _init_walkers = numpy.take_along_axis(_init_walkers, idx, axis=1)
+
+        return tf.Variable(_init_walkers)
+
+    def initialize_spin_till_non_zero(self, wavefunction):
+
+        # First, get all the wavefunction values:
+        x, spin, isospin = self.sample()
+
+        w_of_x = wavefunction(x, spin,isospin)
+
+        # For all the non-zero locations, we do nothing.
+        # For the zero-locations, we shuffle the spin component:
+        zero_locs = w_of_x == 0
+
+
+        n_zero = tf.reduce_sum(tf.cast(zero_locs, tf.int32))
+
+        i = 0
+        start = time.time()
+        while n_zero != 0:
+            # Generate enough fresh samples to replace everything:
+            # (We ignore locations that are already non zero)
+            fresh_samples = self.initialize_spin_vector(
+                shape = self.spin_size, 
+                n_z   = self.n_spin_up)
+
+            spin = tf.where(zero_locs, fresh_samples, spin)
+
+            #recompute the zero locations:
+            w_of_x = wavefunction(x, spin,isospin)
+            zero_locs = w_of_x == 0
+            n_zero = tf.reduce_sum(tf.cast(zero_locs, tf.int32))
+            i += 1
+        logger.info(f"Spin non-zero init converged after {i} iterations in {time.time() - start:.3f} seconds")
+        # Finally, reset the walker history to throw away all the samples we did:
+        self.reset_history()
 
     def gen_possible_swaps(self, n_particles):
         '''
