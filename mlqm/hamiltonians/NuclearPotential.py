@@ -82,7 +82,7 @@ class NuclearPotential(Hamiltonian):
         cE = 1.0786
         fpi = 92.4
         pi = 3.14159
-        alpha_3body = (cE / (fpi)**4) * ((self.HBAR)**6 / (pi**3 * self.R3**6) )
+        alpha_3body = (cE/ 1000. / (fpi)**4) * ((self.HBAR)**6 / (pi**3 * self.R3**6) )
 
         self.alpha_3body = tf.constant(tf.sqrt(alpha_3body), dtype = DEFAULT_TENSOR_TYPE)
         # self.ce3b = jnp.sqrt( self.ce3b / lamchi / fpi**4 * self.hc / jnp.pi**3 / self.R3**6 )
