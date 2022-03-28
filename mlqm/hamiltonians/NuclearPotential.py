@@ -113,10 +113,10 @@ class NuclearPotential(Hamiltonian):
         c1_r = (1./(self.c_pref * self.R1**3 )) * tf.exp(- tf.pow((r_ij / self.R1), 2))
 
         # Computing several functions here (A26 to A29 in https://arxiv.org/pdf/2102.02327.pdf):
-        v_c         = (3./16.) * (     self.C01 * c1_r +     self.C10 * c0_r)
-        v_sigma     = (1./16.) * (-3.* self.C01 * c1_r +     self.C10 * c0_r)
-        v_tau       = (1./16.) * (     self.C01 * c1_r - 3.* self.C10 * c0_r)
-        v_sigma_tau = -(1./16.) * (     self.C01 * c1_r +     self.C10 * c0_r)
+        v_c         = self.HBAR * (3./16.) * (     self.C01 * c1_r +     self.C10 * c0_r)
+        v_sigma     = self.HBAR * (1./16.) * (-3.* self.C01 * c1_r +     self.C10 * c0_r)
+        v_tau       = self.HBAR * (1./16.) * (     self.C01 * c1_r - 3.* self.C10 * c0_r)
+        v_sigma_tau = self.HBAR * -(1./16.) * (     self.C01 * c1_r +     self.C10 * c0_r)
 
         return v_c, v_sigma, v_tau, v_sigma_tau
 
