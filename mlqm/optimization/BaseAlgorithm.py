@@ -319,7 +319,6 @@ class BaseAlgorithm(object):
             x_current, spin, isospin  = _sampler.sample()
             # Compute the observables:
             # Here, perhaps we can compute the d_i of obs_energy:
-
             energy, energy_jf, ke_jf, ke_direct, pe, w_of_x = \
                 self.hamiltonian.energy(_wavefunction, x_current, spin, isospin)
 

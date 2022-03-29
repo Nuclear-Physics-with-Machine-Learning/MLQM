@@ -435,7 +435,6 @@ class exec(object):
 
 
             start = time.time()
-
             metrics = self.sr_worker.sr_step(n_thermalize = 1000)
 
             # Check if we've reached a better energy:

@@ -2,6 +2,7 @@ import os, sys, pathlib
 from dataclasses import dataclass, field
 import numpy
 import pytest
+import time
 
 import tensorflow as tf
 
@@ -239,9 +240,19 @@ def test_energies(nwalkers, nparticles, ndim, spin, iso_spin):
     spins = tf.convert_to_tensor(spins)
     isospins = tf.convert_to_tensor(isospins)
 
+    start = time.time()
     energy, energy_jf, ke_jf, ke_direct, pe, w_of_x = h.energy(w, inputs, spins, isospins)
 
-    assert (ke_direct > 0).numpy().all()
+    print(f"First run: {time.time() - start:.3f}")
+
+    start = time.time()
+    energy, energy_jf, ke_jf, ke_direct, pe, w_of_x = h.energy(w, inputs, spins, isospins)
+
+    print(f"Second run: {time.time() - start:.3f}")
+
+    print(ke_direct)
+
+    assert (ke_direct >= 0).numpy().all()
     # assert (pe <= 0).numpy().all()
 
 if __name__ == "__main__":

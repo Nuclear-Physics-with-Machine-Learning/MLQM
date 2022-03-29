@@ -121,8 +121,7 @@ class NuclearPotential(Hamiltonian):
         return v_c, v_sigma, v_tau, v_sigma_tau
 
     @tf.function()
-    def pionless_3b(self, *,  r_ij, nwalkers):
-        # pot_3b = tf.zeros(shape=(nwalkers), dtype=DEFAULT_TENSOR_TYPE)
+    def pionless_3b(self, *,  r_ij):
         x = r_ij / self.R3
         vr = tf.exp(-x**2)
         pot_3b = vr * self.alpha_3body
@@ -154,6 +153,56 @@ class NuclearPotential(Hamiltonian):
         br  = self.b * r_m
         f_coul = 1 - (1 + (11./16.)*br + (3./16)*tf.pow(br,2) + (1./48)*tf.pow(br,3))*tf.exp(-br)
         return self.alpha * self.HBAR * f_coul / r_m
+
+    @tf.function()
+    def potential_pairwise(self, w_of_x, wavefunction, inputs, spin, isospin, i, j):
+        # Difference in ij coordinates:
+        x_ij = inputs[:,i,:]-inputs[:,j,:]
+        # Take the magnitude of that difference across dimensions
+        r_ij = tf.sqrt(tf.reduce_sum(x_ij**2,axis=1))
+        # Compute the Vrr and Vrs terms for this pair of particles:
+        v_c, v_sigma, v_tau, v_sigma_tau = self.pionless_2b(r_ij=r_ij)
+
+        ##
+        ## TODO: ADD V_EM
+        ##
+        v_em = self.potential_em(r_ij=r_ij)
+
+        # Now, we need to exchange the spin and isospin of this pair of particles
+
+        swapped_spin    = self.swap_by_index(tensor=spin, index_1=i, index_2=j)
+        swapped_isospin = self.swap_by_index(tensor=isospin, index_1=i, index_2=j)
+
+
+        # Compute the wavefunction under all these exchanges:
+        w_of_x_swap_spin    = wavefunction(inputs, swapped_spin, isospin)
+        w_of_x_swap_isospin = wavefunction(inputs, spin,         swapped_isospin)
+        w_of_x_swap_both    = wavefunction(inputs, swapped_spin, swapped_isospin)
+
+        # Now compute several ratios:
+        ratio_swapped_spin    = w_of_x_swap_spin    / w_of_x
+        ratio_swapped_isospin = w_of_x_swap_isospin / w_of_x
+        ratio_swapped_both    = w_of_x_swap_both    / w_of_x
+
+        spin_factor     = tf.reshape(2*ratio_swapped_spin - 1,      (-1,))
+        isospin_factor  = tf.reshape(2*ratio_swapped_isospin - 1,   (-1,))
+        both_factor     = tf.reshape(4*ratio_swapped_both - 2*ratio_swapped_spin - 2*ratio_swapped_isospin + 1,  (-1,))
+
+
+        # Em force only applies to protons, so apply that:
+        proton = (1./4)*(1 + isospin[:,i])*(1 + isospin[:,j])
+
+        # We accumulate the pairwise interaction of these two nucleons:
+        v_ij = v_c
+        v_ij += v_sigma     * spin_factor
+        v_ij += v_tau       * isospin_factor
+        v_ij += v_sigma_tau * both_factor
+        v_ij += v_em        * proton
+
+        t_ij = self.pionless_3b(r_ij=r_ij)
+
+        return v_ij, t_ij
+
 
     @tf.function()
     def potential_energy(self, *, wavefunction, inputs, spin, isospin):
@@ -194,78 +243,13 @@ class NuclearPotential(Hamiltonian):
 
         # Here we compute the pair-wise interaction terms
         for i in range (nparticles-1):
-            for j in range (i+1,nparticles):
-                # Difference in ij coordinates:
-                x_ij = inputs[:,i,:]-inputs[:,j,:]
-                # Take the magnitude of that difference across dimensions
-                r_ij = tf.sqrt(tf.reduce_sum(x_ij**2,axis=1))
-                # Compute the Vrr and Vrs terms for this pair of particles:
-                v_c, v_sigma, v_tau, v_sigma_tau = self.pionless_2b(r_ij=r_ij)
+            for j in range(i+1,nparticles):
 
-                ##
-                ## TODO: ADD V_EM
-                ##
-                v_em = self.potential_em(r_ij=r_ij)
-
-                # Now, we need to exchange the spin and isospin of this pair of particles
-
-                swapped_spin    = self.swap_by_index(tensor=spin, index_1=i, index_2=j)
-                swapped_isospin = self.swap_by_index(tensor=isospin, index_1=i, index_2=j)
-
-
-                # Compute the wavefunction under all these exchanges:
-                w_of_x_swap_spin    = wavefunction(inputs, swapped_spin, isospin)
-                w_of_x_swap_isospin = wavefunction(inputs, spin,         swapped_isospin)
-                w_of_x_swap_both    = wavefunction(inputs, swapped_spin, swapped_isospin)
-
-                # Now compute several ratios:
-                ratio_swapped_spin    = w_of_x_swap_spin    / w_of_x
-                ratio_swapped_isospin = w_of_x_swap_isospin / w_of_x
-                ratio_swapped_both    = w_of_x_swap_both    / w_of_x
-
-                spin_factor     = tf.reshape(2*ratio_swapped_spin - 1,      (-1,))
-                isospin_factor  = tf.reshape(2*ratio_swapped_isospin - 1,   (-1,))
-                both_factor     = tf.reshape(4*ratio_swapped_both - 2*ratio_swapped_spin - 2*ratio_swapped_isospin + 1,  (-1,))
-
-
-                # Em force only applies to protons, so apply that:
-                proton = (1./4)*(1 + isospin[:,i])*(1 + isospin[:,j])
-
-                # We accumulate the pairwise interaction of these two nucleons:
-                # print("v_c.shape: ", v_c.shape)
-                # print("v_c: ", v_c)
-                v_ij += v_c
-                # print("v_sigma.shape: ", v_sigma.shape)
-                # print("v_ij.shape: ", v_ij.shape)
-                # print("ratio_swapped_spin.shape: ", ratio_swapped_spin.shape)
-                v_ij += v_sigma     * spin_factor
-                # print("v_ij: ", v_ij)
-                # print("v_tau.shape: ", v_tau.shape)
-                # print("v_ij.shape: ", v_ij.shape)
-                # print("w_of_x_swap_isospin.shape: ", ratio_swapped_isospin.shape)
-                v_ij += v_tau       * isospin_factor
-                # print("v_ij: ", v_ij)
-                # print("v_sigma_tau.shape: ", v_sigma_tau.shape)
-                # print("v_ij.shape: ", v_ij.shape)
-                # print("w_of_x_swap_both.shape: ", ratio_swapped_both.shape)
-                v_ij += v_sigma_tau * both_factor
-                # print("v_ij: ", v_ij)
-                # print("v_em.shape: ", v_em.shape)
-                # print("v_ij.shape: ", v_ij.shape)
-                v_ij += v_em        * proton
-                # print("v_ij: ", v_ij)
-                # print("v_ij.shape: ", v_ij.shape)
-
-                # vt_ij = vr_ij[1] * ( 2 * Pt_ij - 1 )
-                # vs_ij = vr_ij[2] * ( 2 * Ps_ij - 1 )
-                # vst_ij = vr_ij[3] * ( 4 * Pst_ij - 2 * Pt_ij - 2 * Ps_ij + 1 )
-
-                # vem_ij = ( 1 + sz[self.ip[k],1] ) * ( 1 + sz[self.jp[k],1] ) / 4 * vrem_ij
-
+                this_v_ij, t_ij = self.potential_pairwise(w_of_x, wavefunction, inputs, spin, isospin, i, j)
+                v_ij += this_v_ij
 
                 if (nparticles > 2 ):
                    # Compute the 3 particle component which runs cyclically
-                   t_ij = self.pionless_3b(r_ij=r_ij, nwalkers=nwalkers)
                    gr3b[i] += t_ij
                    gr3b[j] += t_ij
                    # gr3b[i] = gr3b[:,i].assign(gr3b[:,i] + t_ij)

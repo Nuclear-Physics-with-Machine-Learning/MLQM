@@ -2,14 +2,13 @@ defaults:
   - base_config
   - _self_
 
+run_id: 4He
 nparticles: 4
-save_path: output/${hamiltonian.form.name}/${nparticles}particles/${dimension}D/${optimizer.form}.${run_id}/
+save_path: output/${hamiltonian.form}/${nparticles}particles/${dimension}D/${optimizer.form}.${run_id}/
 hamiltonian:
   spin:
-    total_spin: 4
+    total_spin: ${nparticles}
     z_projection: 2
   isospin:
-    total_spin: 4
+    total_spin: ${nparticles}
     z_projection: 2
-
-    
