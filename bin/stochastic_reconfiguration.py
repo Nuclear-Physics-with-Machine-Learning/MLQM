@@ -112,6 +112,7 @@ class exec(object):
 
         x, spin, isospin = sampler.sample()
 
+
         wavefunction_config = self.config['wavefunction']
 
         # Create a wavefunction:
@@ -145,6 +146,10 @@ class exec(object):
         # For states with spin, we need to randomly initialize
         # until all wavefunction values are not zeros.
         sampler.initialize_spin_till_non_zero(wavefunction)
+
+        # Compile the hamiltonian functions for the nuclear potential:
+        hamiltonian.compile_functions(x, spin, isospin, wavefunction)
+
 
         tf.summary.trace_export("graph")
         tf.summary.trace_off()
