@@ -103,11 +103,41 @@ class NuclearPotential(Hamiltonian):
         #     self.ar3b = tf.constant(51.5038930567, dtype = DEFAULT_TENSOR_TYPE)
         #     logger.info(f"Using vkr = {self.vkr}")
 
+    @staticmethod
+    def gen_possible_swaps(n_particles):
+        '''
+            # Create a list of all possible swaps.
+            # With n particles, there are n_particles * (n_particles - 1) / 2 possible
+            # swaps.  We can generate them all at once.
+            # Note that swapping particles i and j is equal to swapping particles j and i.
 
 
-    @tf.function()
-    def pionless_2b(self, *, r_ij):
+            # Say, n = 4
+            # 0 -> 1
+            # 0 -> 2
+            # 0 -> 3
+            # 1 -> 2
+            # 1 -> 3
+            # 2 -> 3
 
+        '''
+        swap_i = []
+        swap_j = []
+        max_index = n_particles
+        i = 0
+        while i < n_particles:
+            for j in range(i + 1, max_index):
+                swap_i.append(i)
+                swap_j.append(j)
+            i += 1
+
+        return tf.convert_to_tensor(swap_i), tf.convert_to_tensor(swap_j)
+
+
+
+    def pionless_2b(self, r_ij):
+
+        logger.info("pionless_2b")
         # These C functions are equation 2.7 from https://arxiv.org/pdf/2102.02327.pdf
         c0_r = (1./(self.c_pref * self.R0**3 )) * tf.exp(- tf.pow((r_ij / self.R0), 2))
         c1_r = (1./(self.c_pref * self.R1**3 )) * tf.exp(- tf.pow((r_ij / self.R1), 2))
@@ -121,26 +151,30 @@ class NuclearPotential(Hamiltonian):
         return v_c, v_sigma, v_tau, v_sigma_tau
 
     @tf.function()
-    def pionless_3b(self, *,  r_ij):
+    def pionless_3b(self, r_ij):
+        logger.info("pionless_3b")
         x = r_ij / self.R3
         vr = tf.exp(-x**2)
         pot_3b = vr * self.alpha_3body
         return pot_3b
 
-    @tf.function()
-    def swap_by_index(self, *, tensor, index_1, index_2):
 
+    @staticmethod
+    def swap_by_index(pair, tensor):
+        logger.debug("swap_by_index")
         shape = tensor.shape
         dim_0 = tf.range(shape[0])
 
+        ones = tf.ones(shape=dim_0.shape, dtype=pair.dtype)
+
         copy_tensor = tf.identity(tensor)
         # dim_0 = tf.constant(range(tensor.shape[0]))
-        index_i = tf.stack([dim_0, tf.constant(index_1, shape=dim_0.shape)], axis=1)
-        index_j = tf.stack([dim_0, tf.constant(index_2, shape=dim_0.shape)], axis=1)
+        index_i = tf.stack([dim_0, tf.gather(pair, 0)*ones], axis=1)
+        index_j = tf.stack([dim_0, tf.gather(pair, 1)*ones], axis=1)
 
         # Replace this with gather if too slow:
-        s_i = tensor[:,index_1]
-        s_j = tensor[:,index_2]
+        s_i = tensor[:,tf.gather(pair, 0)]
+        s_j = tensor[:,tf.gather(pair, 1)]
 
         copy_tensor = tf.tensor_scatter_nd_update(copy_tensor, index_i, s_j)
         copy_tensor = tf.tensor_scatter_nd_update(copy_tensor, index_j, s_i)
@@ -148,18 +182,24 @@ class NuclearPotential(Hamiltonian):
         return copy_tensor
 
     @tf.function()
-    def potential_em(self, *, r_ij):
+    def potential_em(self, r_ij):
+        logger.info("potential_em")
         r_m = tf.maximum(r_ij, 0.0001)
         br  = self.b * r_m
         f_coul = 1 - (1 + (11./16.)*br + (3./16)*tf.pow(br,2) + (1./48)*tf.pow(br,3))*tf.exp(-br)
         return self.alpha * self.HBAR * f_coul / r_m
 
-    @tf.function()
-    def potential_pairwise(self, w_of_x, wavefunction, inputs, spin, isospin, i, j):
+    # @tf.function(experimental_relax_shapes=True)
+    def potential_pairwise(self, w_of_x, inputs, spin, isospin, pair):
+        logger.info("Potential Pairwise")
         # Difference in ij coordinates:
-        x_ij = inputs[:,i,:]-inputs[:,j,:]
+        i = tf.gather(pair, 0); j = tf.gather(pair, 1);
+        x_ij = tf.gather(inputs, i, axis=1) - tf.gather(inputs, j, axis=1)
         # Take the magnitude of that difference across dimensions
         r_ij = tf.sqrt(tf.reduce_sum(x_ij**2,axis=1))
+
+
+
         # Compute the Vrr and Vrs terms for this pair of particles:
         v_c, v_sigma, v_tau, v_sigma_tau = self.pionless_2b(r_ij=r_ij)
 
@@ -170,14 +210,14 @@ class NuclearPotential(Hamiltonian):
 
         # Now, we need to exchange the spin and isospin of this pair of particles
 
-        swapped_spin    = self.swap_by_index(tensor=spin, index_1=i, index_2=j)
-        swapped_isospin = self.swap_by_index(tensor=isospin, index_1=i, index_2=j)
+        swapped_spin    = self.swap_by_index(pair, tensor=spin)
+        swapped_isospin = self.swap_by_index(pair, tensor=isospin)
 
 
         # Compute the wavefunction under all these exchanges:
-        w_of_x_swap_spin    = wavefunction(inputs, swapped_spin, isospin)
-        w_of_x_swap_isospin = wavefunction(inputs, spin,         swapped_isospin)
-        w_of_x_swap_both    = wavefunction(inputs, swapped_spin, swapped_isospin)
+        w_of_x_swap_spin    = self.wavefunction(inputs, swapped_spin, isospin)
+        w_of_x_swap_isospin = self.wavefunction(inputs, spin,         swapped_isospin)
+        w_of_x_swap_both    = self.wavefunction(inputs, swapped_spin, swapped_isospin)
 
         # Now compute several ratios:
         ratio_swapped_spin    = w_of_x_swap_spin    / w_of_x
@@ -200,6 +240,7 @@ class NuclearPotential(Hamiltonian):
         v_ij += v_em        * proton
 
         t_ij = self.pionless_3b(r_ij=r_ij)
+        logger.info("DONE - Potential Pairwise")
 
         return v_ij, t_ij
 
@@ -215,6 +256,8 @@ class NuclearPotential(Hamiltonian):
         Returns:
             tf.Tensor - potential energy of shape [1]
         """
+
+        logger.info("potential_energy")
 
         # Potential calculation
 
@@ -241,20 +284,23 @@ class NuclearPotential(Hamiltonian):
 
         w_of_x = wavefunction(inputs, spin, isospin)
 
+        # We need to flatten this loop.
+
         # Here we compute the pair-wise interaction terms
-        for i in range (nparticles-1):
-            for j in range(i+1,nparticles):
+        for pair in self.swaps:
 
-                this_v_ij, t_ij = self.potential_pairwise(w_of_x, wavefunction, inputs, spin, isospin, i, j)
-                v_ij += this_v_ij
+            this_v_ij, t_ij = self.potential_pairwise(w_of_x, inputs, spin, isospin, pair)
+            v_ij += this_v_ij
 
-                if (nparticles > 2 ):
-                   # Compute the 3 particle component which runs cyclically
-                   gr3b[i] += t_ij
-                   gr3b[j] += t_ij
-                   # gr3b[i] = gr3b[:,i].assign(gr3b[:,i] + t_ij)
-                   # gr3b = gr3b[:,j].assign(gr3b[:,j] + t_ij)
-                   V_ijk -= t_ij**2
+            if (nparticles > 2 ):
+                i = tf.gather(pair, 0)
+                j = tf.gather(pair, 1)
+                # Compute the 3 particle component which runs cyclically
+                gr3b[i] += t_ij
+                gr3b[j] += t_ij
+                # gr3b[i] = gr3b[:,i].assign(gr3b[:,i] + t_ij)
+                # gr3b = gr3b[:,j].assign(gr3b[:,j] + t_ij)
+                V_ijk -= t_ij**2
 
         # stack up gr3b:
         gr3b = tf.stack(gr3b, axis=1)
@@ -264,6 +310,67 @@ class NuclearPotential(Hamiltonian):
 
         # print(pe)
         return pe
+
+    def compile_functions(self, inputs, spin, isospin, wavefunction):
+        '''
+        Replace important function calls with JIT'd versions all at once so
+        they don't get traced many times.
+        '''
+        logger.info("Compiling hamiltonian functions!")
+
+        # First, generate all the swaps:
+        n_particles = spin.shape[-1]
+        self.swaps = self.gen_possible_swaps(n_particles)
+
+        example_pair = self.swaps[0]
+
+        spec = [
+            tf.TensorSpec(example_pair.shape, example_pair.dtype),
+            tf.TensorSpec(spin.shape, spin.dtype),
+        ]
+
+        # This function only ever swaps spin/isospin, so replace it safely:
+        self.swap_by_index = tf.function(self.swap_by_index, input_signature=spec, jit_compile=True)
+
+        #  Call it once to compile it
+        self.swap_by_index(example_pair, spin)
+
+        # pionless_2b(self, r_ij)
+        x_ij = tf.gather(inputs, 0, axis=1) - tf.gather(inputs, 1, axis=1)
+        r_ij = tf.sqrt(tf.reduce_sum(x_ij**2,axis=1))
+
+        spec = [
+            tf.TensorSpec(r_ij.shape, r_ij.dtype),
+        ]
+        self.pionless_2b = tf.function(self.pionless_2b, input_signature = spec, jit_compile=True)
+        _ = self.pionless_2b(r_ij)
+
+        self.potential_em =  tf.function(self.potential_em, input_signature = spec, jit_compile=True)
+        _ = self.potential_em(r_ij)
+
+        self.pionless_3b =  tf.function(self.pionless_3b, input_signature = spec, jit_compile=True)
+        _ = self.pionless_3b(r_ij)
+
+
+
+        # Simulate the wavefunction so we can trace the pair-wise potential:
+        self.wavefunction = wavefunction
+        w_of_x = self.wavefunction(inputs, spin, isospin)
+
+        spec = [
+            tf.TensorSpec(w_of_x.shape, w_of_x.dtype),
+            tf.TensorSpec(inputs.shape, inputs.dtype),
+            tf.TensorSpec(spin.shape, spin.dtype),
+            tf.TensorSpec(isospin.shape, isospin.dtype),
+            tf.TensorSpec(example_pair.shape, example_pair.dtype),
+        ]
+        self.potential_pairwise = tf.function(self.potential_pairwise, input_signature=spec, jit_compile=True)
+
+        # Now, compile the pairwise potential:
+        _ = self.potential_pairwise(w_of_x, inputs, spin, isospin, example_pair)
+
+        logger.info("Finished compiling hamiltonian functions.")
+
 
     @tf.function()
     # @tf.function(experimental_compile=False)
@@ -286,6 +393,7 @@ class NuclearPotential(Hamiltonian):
             ke_jf -- JF Kinetic energy
             ke_direct -- 2nd deriv computation of potential energy
         '''
+        logger.info("compute_energies")
 
         # Potential energy depends only on the wavefunction
         pe = self.potential_energy(wavefunction = wavefunction, inputs=inputs, spin=spin, isospin=isospin)

@@ -2,6 +2,11 @@ defaults:
   - base_config
   - _self_
 
+sampler:
+  n_observable_measurements: 20
+  n_walkers_per_observation: 500
+  n_concurrent_obs_per_rank: 20
+
 run_id: 4He
 nparticles: 4
 save_path: output/${hamiltonian.form}/${nparticles}particles/${dimension}D/${optimizer.form}.${run_id}/

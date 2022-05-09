@@ -256,5 +256,5 @@ def test_energies(nwalkers, nparticles, ndim, spin, iso_spin):
     # assert (pe <= 0).numpy().all()
 
 if __name__ == "__main__":
-    # test_hamiltonian_analytic(3,2,3)
-    test_energies(10,2,3,True, True)
+    test_hamiltonian(3,2,3,1,2)
+    # test_energies(10,2,3,True, True)

@@ -160,6 +160,9 @@ class Hamiltonian(object):
         return pe, ke_jf, ke_direct
         # return None
 
+    def compile_functions(self, inputs, spin, isospin):
+        raise NotImplementedError("Please implement this function in the derived class.")
+
     @tf.function
     def energy(self,
         wavefunction : tf.keras.models.Model,
@@ -182,6 +185,7 @@ class Hamiltonian(object):
             tf.tensor - pe of shape [n_walkers]
         """
 
+        logger.info("energy")
 
         # This function takes the inputs
         # And computes the expectation value of the energy at each input point

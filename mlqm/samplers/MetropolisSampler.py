@@ -88,7 +88,7 @@ class MetropolisSampler(object):
             self.isospin_walker_history = []
 
     def initialize_spin_vector(self, shape, n_z):
-        
+
         #  The initializer sets a random number of particles in each walker
         #  to the spin up state in order to create a total z sping as specified.
 
@@ -128,7 +128,7 @@ class MetropolisSampler(object):
             # Generate enough fresh samples to replace everything:
             # (We ignore locations that are already non zero)
             fresh_samples = self.initialize_spin_vector(
-                shape = self.spin_size, 
+                shape = self.spin_size,
                 n_z   = self.n_spin_up)
 
             spin = tf.where(zero_locs, fresh_samples, spin)
@@ -350,7 +350,7 @@ class MetropolisSampler(object):
 
         return walkers, acceptance
 
-    @tf.function(jit_compile=True)
+    @tf.function(jit_compile=False)
     def internal_kicker_spin(self,
         shape,
         walkers,
@@ -473,7 +473,7 @@ class MetropolisSampler(object):
 
         return walkers, spin_walkers, acceptance
 
-    @tf.function(jit_compile=True)
+    @tf.function(jit_compile=False)
     def internal_kicker_spin_isospin(self,
         shape,
         walkers,

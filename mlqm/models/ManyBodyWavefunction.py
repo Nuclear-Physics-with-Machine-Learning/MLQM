@@ -157,7 +157,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
         nparticles = _xinputs.shape[1]
 
         # for i in range(nparticles):
-        #     
+        #
         slater_rows = [ tf.reshape(n(_xinputs),  (nwalkers, nparticles)) for n in self.spatial_nets]
 
         spatial_slater = tf.stack(slater_rows, axis=-1)
@@ -211,7 +211,7 @@ class ManyBodyWavefunction(tf.keras.models.Model):
 
 
     # @tf.function(jit_compile=True)
-    @tf.function(jit_compile=True)
+    @tf.function(jit_compile=False)
     def __call__(self, inputs, spin=None, isospin=None):
 
 
