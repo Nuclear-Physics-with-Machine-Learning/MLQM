@@ -292,8 +292,13 @@ class exec(object):
         parameters = self.config["hamiltonian"]
         # parameters = { p : parameters[p] for p in parameters.keys() if p != "form"}
 
+        # If it's the nuclear Hamiltonian, add in the number of particles:
+
         # print(hamiltonians.__dict__)
         hamiltonian = hamiltonians.__dict__[parameters.form.name](parameters)
+        if parameters.form.name == "NuclearPotential":
+            hamiltonian.gen_possible_swaps(self.config.nparticles)
+            
 
         return hamiltonian
 

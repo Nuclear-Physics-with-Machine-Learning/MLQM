@@ -131,7 +131,7 @@ class NuclearPotential(Hamiltonian):
                 swap_j.append(j)
             i += 1
 
-        return tf.convert_to_tensor(swap_i), tf.convert_to_tensor(swap_j)
+        return tf.stack([tf.convert_to_tensor(swap_i), tf.convert_to_tensor(swap_j)], axis=-1)
 
 
 
@@ -150,7 +150,6 @@ class NuclearPotential(Hamiltonian):
 
         return v_c, v_sigma, v_tau, v_sigma_tau
 
-    @tf.function()
     def pionless_3b(self, r_ij):
         logger.info("pionless_3b")
         x = r_ij / self.R3
@@ -181,7 +180,6 @@ class NuclearPotential(Hamiltonian):
 
         return copy_tensor
 
-    @tf.function()
     def potential_em(self, r_ij):
         logger.info("potential_em")
         r_m = tf.maximum(r_ij, 0.0001)
@@ -189,10 +187,10 @@ class NuclearPotential(Hamiltonian):
         f_coul = 1 - (1 + (11./16.)*br + (3./16)*tf.pow(br,2) + (1./48)*tf.pow(br,3))*tf.exp(-br)
         return self.alpha * self.HBAR * f_coul / r_m
 
-    # @tf.function(experimental_relax_shapes=True)
     def potential_pairwise(self, w_of_x, inputs, spin, isospin, pair):
         logger.info("Potential Pairwise")
         # Difference in ij coordinates:
+        print(pair)
         i = tf.gather(pair, 0); j = tf.gather(pair, 1);
         x_ij = tf.gather(inputs, i, axis=1) - tf.gather(inputs, j, axis=1)
         # Take the magnitude of that difference across dimensions
@@ -322,7 +320,10 @@ class NuclearPotential(Hamiltonian):
         n_particles = spin.shape[-1]
         self.swaps = self.gen_possible_swaps(n_particles)
 
-        example_pair = self.swaps[0]
+        print(self.swaps)
+        print(self.swaps.shape)
+
+        example_pair = tf.gather(self.swaps, 0)
 
         spec = [
             tf.TensorSpec(example_pair.shape, example_pair.dtype),
@@ -357,6 +358,8 @@ class NuclearPotential(Hamiltonian):
         self.wavefunction = wavefunction
         w_of_x = self.wavefunction(inputs, spin, isospin)
 
+        print(example_pair)
+
         spec = [
             tf.TensorSpec(w_of_x.shape, w_of_x.dtype),
             tf.TensorSpec(inputs.shape, inputs.dtype),
@@ -364,7 +367,7 @@ class NuclearPotential(Hamiltonian):
             tf.TensorSpec(isospin.shape, isospin.dtype),
             tf.TensorSpec(example_pair.shape, example_pair.dtype),
         ]
-        self.potential_pairwise = tf.function(self.potential_pairwise, input_signature=spec, jit_compile=True)
+        self.potential_pairwise = tf.function(self.potential_pairwise, input_signature=spec, jit_compile=False)
 
         # Now, compile the pairwise potential:
         _ = self.potential_pairwise(w_of_x, inputs, spin, isospin, example_pair)

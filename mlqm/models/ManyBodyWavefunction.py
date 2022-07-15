@@ -232,8 +232,8 @@ class ManyBodyWavefunction(tf.keras.models.Model):
             slater_matrix = self.construct_slater_matrix(xinputs, spin, isospin)
             # sign, logdet = tf.linalg.slogdet(slater_matrix)
             # det = sign * tf.exp(logdet)
-            # det = tf.linalg.det(slater_matrix)
-            det = self.custom_determinant(slater_matrix, rank)
+            det = tf.linalg.det(slater_matrix)
+            # det = self.custom_determinant(slater_matrix, rank)
             wavefunction = tf.math.exp(correlation) * tf.reshape(det, (-1, 1))
         else:
             wavefunction = tf.math.exp(correlation)

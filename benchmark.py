@@ -9,9 +9,9 @@ from omegaconf import OmegaConf
 from mlqm import DEFAULT_TENSOR_TYPE
 tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
 
-n_walkers = 10000
-n_kicks   = 500
-n_particles = 10
+n_walkers = 2000
+n_kicks   = 250
+n_particles = 16
 sampler = MetropolisSampler(
         n           = 3,
         nwalkers    = n_walkers,
