@@ -7,11 +7,11 @@ logger = logging.getLogger()
 
 import time
 
-def single_kick(w, current_psi, walkers, params, key):
+def single_kick(w, current_psi, walkers, spin, isospin, params, key):
     # Kick the walkers with a gaussian function
     kicked_walkers = walkers + random.normal(key, shape=walkers.shape)
     # Compute the wavefunction of the kicked walkers:
-    kicked_wavefunction = w.apply(params, kicked_walkers)
+    kicked_wavefunction = w.apply(params, kicked_walkers, spin, isospin)
     # Probability of acceptance is the ratio of wave functions squared
     probability = (kicked_wavefunction / current_psi)**2
     # Accept if the prob is higher than a random uniform number:
@@ -20,18 +20,19 @@ def single_kick(w, current_psi, walkers, params, key):
     current_psi = numpy.where(accept, kicked_wavefunction, current_psi)
     # Need to reshape the accept value to enable broadcasting.
     walkers     = numpy.where(accept.reshape(-1, 1, 1), kicked_walkers, walkers)
+    
     return (current_psi, walkers)
     
 
 single_kick = jit(single_kick, static_argnums=0)
 
-def kick(w, params, walkers, key, n_kicks):
-    current_w_of_x = w.apply(params, walkers)
+def kick(w, params, walkers, spin, isospin, key, n_kicks):
+    current_w_of_x = w.apply(params, walkers, spin, isospin)
     for i_kick in range(n_kicks):
 
         key, subkey = random.split(key)
         current_w_of_x, walkers = \
-            single_kick(w, current_w_of_x, walkers, params, subkey)
+            single_kick(w, current_w_of_x, walkers, spin, isospin, params, subkey)
 
     return walkers
 
@@ -201,8 +202,10 @@ class MetropolisSampler(object):
         self.isospin_walker_history = []
 
 
-    def update(self, x):
+    def update(self, x, spin, isospin):
         self.walkers = x
+        self.spin_walkers = spin
+        self.isospin_walkers = isospin
 
 
     # def kick():

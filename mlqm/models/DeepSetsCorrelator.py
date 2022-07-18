@@ -50,12 +50,7 @@ class DeepSetsCorrelator(nn.Module):
     def __call__(self, x):
 
         inputs = x
-        # # First, do we mean subtract?
-        # if self.mean_subtract:
-        #     mean = x.mean(axis=0)
-        #     inputs = x - mean
-        # else:
-        #     inputs = x
+       
         
         # Apply the individual network, sum over particles:
         individual_response = self.individual_network(inputs).sum(axis=0)
