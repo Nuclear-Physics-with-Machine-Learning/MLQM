@@ -19,8 +19,21 @@ class Sampler:
     n_observable_measurements: int = 10
     n_walkers_per_observation: int = 1000
     n_concurrent_obs_per_rank: int = 10
-    use_spin:                 bool = True
+    n_particles:               int = 4
+    n_dim:                     int = 3
     use_isospin:              bool = True
+    use_spin:                 bool = True
+    n_spin_up:                 int = 1
+    n_protons:                 int = 1
+
+    def __post_init__(self):
+        """
+        Check that the z projection is physical
+        """
+        if abs(self.n_spin_up) > self.n_particles:
+            raise AttributeError("N spin up particles must be less than or equal to total particles")
+        if abs(self.n_protons) > self.n_particles:
+            raise AttributeError("N protons particles must be less than or equal to total particles")
 
 cs = ConfigStore.instance()
 
@@ -50,10 +63,8 @@ class Config:
     sampler:           Sampler = MISSING
 
     run_id:     str = MISSING
-    nparticles: int = 2
-    dimension:  int = 3
     iterations: int = 200
-    save_path:  str = "output/${hamiltonian.form}/${nparticles}particles/${dimension}D/${optimizer}.${run_id}/"
-    model_name: str = "${hamiltonian.form}_${nparticles}part_${dimension}D.model"
+    save_path:  str = "output/${hamiltonian.form}/${sampler.n_particles}particles/${sampler.n_dim}D/${optimizer}.${run_id}/"
+    model_name: str = "${hamiltonian.form}_${sampler.n_particles}part_${sampler.n_dim}D.model"
 
 cs.store(name="base_config", node=Config)

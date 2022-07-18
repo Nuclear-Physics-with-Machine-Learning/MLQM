@@ -2,4 +2,4 @@ defaults:
   - base_config
   - _self_
 
-save_path: output/${hamiltonian.form}/${nparticles}particles/${dimension}D/${optimizer.form}.${run_id}/
+# save_path: output/${hamiltonian.form}/${sampler.n_particles}particles/${sampler.n_dim}D/${optimizer.form}.${run_id}/

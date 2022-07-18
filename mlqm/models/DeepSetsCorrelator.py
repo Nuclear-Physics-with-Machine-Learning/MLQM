@@ -1,210 +1,100 @@
-import numpy
-import tensorflow as tf
-from mlqm import DEFAULT_TENSOR_TYPE
 
+import jax.numpy as numpy
+import jax.random as random
 
-import copy
-#from .ExponentialBoundaryCondition import ExponentialBoundaryCondition
+from jax import vmap, jit
 
-from . building_blocks import ResidualBlock, DenseBlock
-
-class DeepSetsCorrelator(tf.keras.models.Model):
-    """Create a neural network eave function in N dimensions
-
-    Boundary condition, if not supplied, is gaussian in every dimension
-
-    Extends:
-        tf.keras.models.Model
-    """
-    def __init__(self, ndim : int, nparticles: int, configuration: dict):
-        '''Deep Sets wavefunction for symmetric particle wavefunctions
-
-        Implements a deep set network for multiple particles in the same system
-
-        Arguments:
-        :param      ndim:           Number of dimensions
-        :type       ndim:           int
-        :param      nparticles:     Number of particles
-        :type       nparticles:     int
-        :param      configuration:  Configuration parameters of the network
-        :type       configuration:  dict
-
-        Keyword Arguments:
-            boundary_condition {tf.keras.layers.Layer} -- [description] (default: {None})
-
-        Raises:
-            Exception -- [description]
-        '''
-        tf.keras.models.Model.__init__(self)
-
-        self.ndim = ndim
-        if self.ndim < 1 or self.ndim > 3:
-           raise Exception("Dimension must be 1, 2, or 3 for DeepSetsCorrelator")
-
-        self.nparticles = nparticles
-
-        self.config = configuration
-
-        n_filters_per_layer = self.config.n_filters_per_layer
-        n_layers            = self.config.n_layers
-        bias                = self.config.bias
-        residual            = self.config.residual
-
-        try:
-            activation = tf.keras.activations.__getattribute__(self.config['activation'])
-        except Exception as e:
-            print(e)
-            print(f"Could not use the activation {self.config['activation']} - not in tf.keras.activations.")
+import flax.linen as nn
+from typing import Tuple, Sequence
 
 
 
-        self.individual_net = []
 
-        self.individual_net.append(
-            DenseBlock(n_filters_per_layer,
-                use_bias   = bias,
-                activation = activation)
-            )
+class IndividualModule(nn.Module):
+    n_outputs: Tuple[int, ...]
 
-        # The above layer counts as a layer!
-        for l in range(n_layers-1):
-            if l == n_layers - 2:
-                _activation = None
-            else:
-                _activation = activation
-            if residual:
-                self.individual_net.append(
-                    ResidualBlock(n_filters_per_layer,
-                        use_bias    = bias,
-                        activation = _activation)
-                    )
-            else:
-                self.individual_net.append(
-                    DenseBlock(n_filters_per_layer,
-                        use_bias    = bias,
-                        activation = _activation)
-                    )
+    def setup(self):
+        self.layers = [ nn.Dense(n_out) for n_out in self.n_outputs]
+  
+    def __call__(self, x):
+        out = x
+        for layer in self.layers:
+            out = nn.sigmoid(layer(out))
+            
+        return out
+
+class AggregateModule(nn.Module):
+    n_outputs: Tuple[int, ...]
+
+    def setup(self):
+        self.layers = [ nn.Dense(n_out) for n_out in self.n_outputs]
 
 
-        self.aggregate_net = []
-
-        for l in range(n_layers):
-            if residual:
-                self.aggregate_net.append(
-                    ResidualBlock(n_filters_per_layer,
-                        use_bias    = bias,
-                        activation = activation)
-                    )
-            else:
-                self.aggregate_net.append(
-                    DenseBlock(n_filters_per_layer,
-                        use_bias    = bias,
-                        activation = activation)
-                    )
-        self.aggregate_net.append(tf.keras.layers.Dense(1,
-            use_bias = False))
-
-        self.confinement   = tf.constant(
-                self.config.confinement,
-                dtype = DEFAULT_TENSOR_TYPE
-            )
-
-        # self.normalization_exponent = tf.Variable(2.0, dtype=DEFAULT_TENSOR_TYPE)
-        # self.normalization_weight   = tf.Variable(-0.1, dtype=DEFAULT_TENSOR_TYPE)
-
-    def clone(self):
-
-        new_ob = copy.deepcopy(self)
-
-        new_ob.aggregate_net  = tf.keras.models.clone_model(self.aggregate_net)
-        new_ob.individual_net = tf.keras.models.clone_model(self.individual_net)
-
-        return new_ob
-
-    # @tf.function()
-    @tf.function(jit_compile=True)
-    def call_individual_net(self, inputs):
-        x = inputs
-        for l in self.individual_net:
-            x = l(x)
-        return x
-
-    # @tf.function()
-    @tf.function(jit_compile=True)
-    def call_aggregate_net(self, inputs):
-        x = inputs
-        for l in self.aggregate_net:
-            x = l(x)
-        return x
-
-    # @tf.function()
-    @tf.function(jit_compile=True)
-    def __call__(self, inputs, training=None):
-        """
-        If mean subtraction happens, it is in the call one layer up!
-        """
-
-        # ################################################
-        # # Old way
-        # x = []
-        # for p in range(self.nparticles):
-        #     x.append(self.individual_net(inputs[:,p,:]))
-        #     # print("p: ", x[-1].shape)
-        #
-        # x = tf.add_n(x)
-        # ################################################
-
-        ################################################
-        # Improved efficiency:
-        # transposed_inputs = tf.transpose(inputs, perm=(1,0,2))
-        # latent_space = tf.vectorized_map(lambda x : self.call_individual_net(x), transposed_inputs)        
-        # x = tf.reduce_sum(latent_space, axis=0)
-
-        # Even better efficiency:
-        latent_space = self.call_individual_net(inputs)
-        x = tf.reduce_sum(latent_space, axis=1)
-
-        x = self.call_aggregate_net(x)
-
-        # # Compute the initial boundary condition, which the network will slowly overcome
-        # # boundary_condition = tf.math.abs(self.normalization_weight * tf.reduce_sum(xinputs**self.normalization_exponent, axis=(1,2))
-        boundary_condition = -self.confinement * tf.reduce_sum(inputs**2, axis=(1,2))
-        boundary_condition = tf.reshape(boundary_condition, [-1,1])
-        return x + boundary_condition
-        # return x
-
-    def n_parameters(self):
-        return tf.reduce_sum( [ tf.reduce_prod(p.shape) for p in self.trainable_variables ])
-
-    def restore_jax(self, model_path):
-        import pickle
+    def __call__(self, x):
+        out = x
+        for layer in self.layers:
+            out = nn.sigmoid(layer(out))
+            
+        return out.reshape(())
 
 
-        with open(model_path, 'rb') as _f:
-            weights = pickle.load(_f)
+class DeepSetsCorrelator(nn.Module):
+    individual_layers:  Tuple[int, ...]
+    aggregate_layers:   Tuple[int, ...]
+    confinement:        float
 
-        i_this_model = 0
-        i_jax = 0
+    def setup(self):
+        self.individual_network = IndividualModule(self.individual_layers)
+        self.aggregate_network  = AggregateModule(self.aggregate_layers)
+        
+    def __call__(self, x):
+
+        inputs = x
+        # # First, do we mean subtract?
+        # if self.mean_subtract:
+        #     mean = x.mean(axis=0)
+        #     inputs = x - mean
+        # else:
+        #     inputs = x
+        
+        # Apply the individual network, sum over particles:
+        individual_response = self.individual_network(inputs).sum(axis=0)
+        aggregate_response = self.aggregate_network(individual_response)
+        
+        # We also need apply a confinement:
+        boundary = - self.confinement * (inputs**2).sum(axis=(0,1))
+        
+        # Return it flattened to a single value for a single walker:
+        return numpy.exp(aggregate_response + boundary).reshape(())
+        # return numpy.exp(aggregate_response + boundary)
 
 
+def initialize_correlator(walkers, key, config):
 
-        for w in weights:
-            if len(w) == 0:
-                # This is an activation layer
-                continue
-            elif len(w) == 2:
-                # It's a weight and bias:
-                target = self.trainable_variables[i_this_model]
-                target.assign(w[0])
-                i_this_model += 1; i_jax += 1
+    # TODO: build the layers from the config
 
-                target = self.trainable_variables[i_this_model]
-                target.assign(w[1])
-                i_this_model += 1; i_jax += 1
-            else:
-                # This is probably the FINAL layer:
-                t = tf.convert_to_tensor(w)
-                if t.shape == self.trainable_variables[i_this_model].shape:
-                    self.trainable_variables[i_this_model].assign(t)
+    i_layers = [config.n_filters_per_layer for l in range(config.n_layers) ]
+    a_layers = [config.n_filters_per_layer for l in range(config.n_layers) ]
 
-        return
+    a_layers[-1] = 1
+
+
+    correlator = DeepSetsCorrelator(
+        individual_layers = tuple(i_layers),
+        aggregate_layers  = tuple(a_layers),
+        confinement       = config.confinement,
+    )
+
+    correlator_variables = correlator.init(key, walkers[0])
+    # correlator.individual_network.init(key, walkers[0])
+
+    # Call the correlator:
+    c_out = correlator.apply(correlator_variables, walkers[0])
+
+    correlator.apply = jit(vmap(jit(correlator.apply), in_axes=[None, 0]))
+
+    return correlator, correlator_variables
+
+
+    
+

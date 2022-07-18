@@ -18,25 +18,28 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 # os.environ['TF_XLA_FLAGS'] = "--tf_xla_auto_jit=fusible"
 
-import tensorflow as tf
+import jax
+import jax.numpy as numpy
+from jax import random
 # tf.random.set_seed(2)
 
-try:
-    import horovod.tensorflow as hvd
-    hvd.init()
+# try:
+#     import horovod.tensorflow as hvd
+#     hvd.init()
 
-    # This is to force each rank onto it's own GPU:
-    if (hvd.size() != 1 ):
-        # Only set this if there is more than one GPU.  Otherwise, its probably
-        # Set elsewhere
-        gpus = tf.config.list_physical_devices('GPU')
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
-        if hvd and len(gpus) > 0:
-            tf.config.set_visible_devices(gpus[hvd.local_rank() % len(gpus)],'GPU')
-    MPI_AVAILABLE=True
-except:
-    MPI_AVAILABLE=False
+#     # This is to force each rank onto it's own GPU:
+#     if (hvd.size() != 1 ):
+#         # Only set this if there is more than one GPU.  Otherwise, its probably
+#         # Set elsewhere
+#         gpus = tf.config.list_physical_devices('GPU')
+#         for gpu in gpus:
+#             tf.config.experimental.set_memory_growth(gpu, True)
+#         if hvd and len(gpus) > 0:
+#             tf.config.set_visible_devices(gpus[hvd.local_rank() % len(gpus)],'GPU')
+#     MPI_AVAILABLE=True
+# except:
+#     MPI_AVAILABLE=False
+MPI_AVAILABLE=False
 
 
 # Use mixed precision for inference (metropolis walk)
@@ -46,9 +49,6 @@ except:
 
 import logging
 from logging import handlers
-
-
-
 
 
 
@@ -62,6 +62,7 @@ from mlqm.config import Config
 from mlqm import hamiltonians
 from mlqm import DEFAULT_TENSOR_TYPE
 from mlqm.models import ManyBodyWavefunction
+from mlqm.samplers import MetropolisSampler
 
 
 
@@ -106,14 +107,27 @@ class exec(object):
 
         self.set_compute_parameters()
 
+        key = random.PRNGKey(0)
+        key, subkey = random.split(key)
 
-        sampler     = self.build_sampler()
+
+        sampler = MetropolisSampler(
+            self.config.sampler,
+            subkey,
+            "float64"
+        )
+
         hamiltonian = self.build_hamiltonian()
 
         x, spin, isospin = sampler.sample()
 
 
         wavefunction_config = self.config['wavefunction']
+
+        key, subkey = random.split(key)
+
+        wavefunction, parameters = initialize_correlator(x, subkey, c)
+
 
         # Create a wavefunction:
         wavefunction = ManyBodyWavefunction(
@@ -255,28 +269,8 @@ class exec(object):
             logger.setLevel(logging.DEBUG)
 
 
-    def build_sampler(self):
-
-        from mlqm.samplers import MetropolisSampler
-
-        # As an optimization, we increase the number of walkers by n_concurrent_obs_per_rank
-        n_walkers = self.config.sampler["n_walkers_per_observation"] * \
-            self.config.sampler["n_concurrent_obs_per_rank"]
-
-        sampler = MetropolisSampler(
-            n           = self.config.dimension,
-            nparticles  = self.config.nparticles,
-            nwalkers    = n_walkers,
-            initializer = tf.random.normal,
-            init_params = {"mean": 0.0, "stddev" : 0.2},
-            n_spin_up   = self.config.hamiltonian.spin.z_projection,
-            n_protons   = self.config.hamiltonian.isospin.z_projection,
-            use_spin    = self.config.sampler.use_spin,
-            use_isospin = self.config.sampler.use_isospin,
-            dtype       = DEFAULT_TENSOR_TYPE)
 
 
-        return sampler
 
     def check_potential_parameters(self, potential, parameters, config):
 
@@ -367,13 +361,15 @@ class exec(object):
                 logger.info("Could not restore a global_step or an optimizer state.  Starting over with restored weights only.")
 
     def set_compute_parameters(self):
-        tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
-        tf.debugging.set_log_device_placement(False)
-        tf.config.run_functions_eagerly(False)
+        from jax.config import config; config.update("jax_enable_x64", True)
+        return
+        # tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
+        # tf.debugging.set_log_device_placement(False)
+        # tf.config.run_functions_eagerly(False)
 
-        physical_devices = tf.config.list_physical_devices('GPU')
-        for device in physical_devices:
-            tf.config.experimental.set_memory_growth(device, True)
+        # physical_devices = tf.config.list_physical_devices('GPU')
+        # for device in physical_devices:
+        #     tf.config.experimental.set_memory_growth(device, True)
 
     # @profile
     def run(self):

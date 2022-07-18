@@ -1,2 +1,2 @@
 from .Estimator         import Estimator
-from .MetropolisSampler import MetropolisSampler
+from .MetropolisSampler import MetropolisSampler, kick

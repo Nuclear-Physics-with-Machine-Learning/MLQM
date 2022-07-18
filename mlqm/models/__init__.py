@@ -1,3 +1,3 @@
-from .DeepSetsCorrelator     import DeepSetsCorrelator
-from .ManyBodyWavefunction   import ManyBodyWavefunction
-from .NeuralSpatialComponent import NeuralSpatialComponent
+from .DeepSetsCorrelator     import DeepSetsCorrelator, initialize_correlator
+# from .ManyBodyWavefunction   import ManyBodyWavefunction
+# from .NeuralSpatialComponent import NeuralSpatialComponent
