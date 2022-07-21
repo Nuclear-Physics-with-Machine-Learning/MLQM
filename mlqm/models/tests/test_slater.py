@@ -83,47 +83,47 @@ def swap_particles(walkers, spin, isospin, i, j):
 
 
 # def test_wavefunction_spatial_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
-
-@pytest.mark.parametrize('nwalkers', [1, 2, 10])
-@pytest.mark.parametrize('nparticles', [2,3,4])
-@pytest.mark.parametrize('ndim', [3])
-@pytest.mark.parametrize('n_spin_up', [1,2])
-@pytest.mark.parametrize('n_protons', [1,2])
-def test_wavefunction_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
-
-    c = ManyBodyCfg()
-
-    c = OmegaConf.structured(c)
-    w = ManyBodyWavefunction(ndim, nparticles, c,
-        n_spin_up = n_spin_up, n_protons = n_protons,
-        use_spin = True, use_isospin = True
-    )
-
-    inputs, spins, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
-    print("inputs: ", inputs)
-    print("spins: ", spins)
-    print("isospins: ", isospins)
-    a = w.construct_slater_matrix(inputs, spins, isospins)
-    print(a)
-
-    det = tf.linalg.det(a)
-
-    print(det)
-
-    # The determinant can be 0 in cases where the states are not allowed.
-    # assert (det.numpy() !=0).all()
-
-    # We've checked antisymmetry in another test but check it again here
-
-    i , j = numpy.random.choice(range(nparticles), size=2, replace=False)
-    inputs, spins, isospins = swap_particles(inputs, spins, isospins, i, j)
-
-
-
-    swapped_a = w.construct_slater_matrix(inputs, spins, isospins)
-    swapped_det = tf.linalg.det(swapped_a)
-    diff = (swapped_det + det).numpy()
-    assert (diff < 1e-8 ).all()
+#
+# @pytest.mark.parametrize('nwalkers', [1, 2, 10])
+# @pytest.mark.parametrize('nparticles', [2,3,4])
+# @pytest.mark.parametrize('ndim', [3])
+# @pytest.mark.parametrize('n_spin_up', [1,2])
+# @pytest.mark.parametrize('n_protons', [1,2])
+# def test_wavefunction_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
+#
+#     c = ManyBodyCfg()
+#
+#     c = OmegaConf.structured(c)
+#     w = ManyBodyWavefunction(ndim, nparticles, c,
+#         n_spin_up = n_spin_up, n_protons = n_protons,
+#         use_spin = True, use_isospin = True
+#     )
+#
+#     inputs, spins, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
+#     print("inputs: ", inputs)
+#     print("spins: ", spins)
+#     print("isospins: ", isospins)
+#     a = w.construct_slater_matrix(inputs, spins, isospins)
+#     print(a)
+#
+#     det = tf.linalg.det(a)
+#
+#     print(det)
+#
+#     # The determinant can be 0 in cases where the states are not allowed.
+#     # assert (det.numpy() !=0).all()
+#
+#     # We've checked antisymmetry in another test but check it again here
+#
+#     i , j = numpy.random.choice(range(nparticles), size=2, replace=False)
+#     inputs, spins, isospins = swap_particles(inputs, spins, isospins, i, j)
+#
+#
+#
+#     swapped_a = w.construct_slater_matrix(inputs, spins, isospins)
+#     swapped_det = tf.linalg.det(swapped_a)
+#     diff = (swapped_det + det).numpy()
+#     assert (diff < 1e-8 ).all()
 
 
 if __name__ == "__main__":

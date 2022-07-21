@@ -15,18 +15,18 @@ def initialize_wavefunction(walkers, spin, isospin, key, sampler_config, network
 
     spatial_layers = [
         network_config.spatial_cfg.n_filters_per_layer \
-        for l in range(network_config.spatial_cfg.n_layers) 
+        for l in range(network_config.spatial_cfg.n_layers)
     ]
 
     spatial_layers[-1] = 1
 
     i_layers = [
         network_config.deep_sets_cfg.n_filters_per_layer \
-            for l in range(network_config.deep_sets_cfg.n_layers) 
+            for l in range(network_config.deep_sets_cfg.n_layers)
     ]
     a_layers = [
         network_config.deep_sets_cfg.n_filters_per_layer \
-            for l in range(network_config.deep_sets_cfg.n_layers) 
+            for l in range(network_config.deep_sets_cfg.n_layers)
     ]
     a_layers[-1] = 1
 
@@ -50,7 +50,8 @@ def initialize_wavefunction(walkers, spin, isospin, key, sampler_config, network
     w_out = wavefunction.apply(wavefunction_variables, walkers[0], spin[0], isospin[0])
     print(w_out.shape)
 
-    wavefunction.apply = jit(vmap(jit(wavefunction.apply), in_axes=[None, 0, 0, 0]))
+    wavefunction.apply = jit(wavefunction.apply)
+    wavefunction.apply_walkers = jit(vmap(wavefunction.apply, in_axes=[None, 0, 0, 0]))
 
     return wavefunction, wavefunction_variables
 
@@ -66,7 +67,7 @@ class NeuralSpatialComponent(nn.Module):
         out = x
         for layer in self.layers:
             out = nn.sigmoid(layer(out))
-            
+
         return out
 
 
@@ -94,13 +95,13 @@ class ManyBodyWavefunction(nn.Module):
     def setup(self):
 
         # How many particles? Create one network per particle:
-        self.networks = [ 
+        self.networks = [
             NeuralSpatialComponent(self.spatial_layers) \
                 for p in range(self.n_particles)
         ]
 
 
-        self.correlator = DeepSetsCorrelator(        
+        self.correlator = DeepSetsCorrelator(
             individual_layers = self.individual_layers,
             aggregate_layers  = self.aggregate_layers,
             confinement       = self.confinement

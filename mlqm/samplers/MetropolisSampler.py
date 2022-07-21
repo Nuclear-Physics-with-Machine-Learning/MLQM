@@ -11,7 +11,7 @@ def single_kick(w, current_psi, walkers, spin, isospin, params, key):
     # Kick the walkers with a gaussian function
     kicked_walkers = walkers + random.normal(key, shape=walkers.shape)
     # Compute the wavefunction of the kicked walkers:
-    kicked_wavefunction = w.apply(params, kicked_walkers, spin, isospin)
+    kicked_wavefunction = w.apply_walkers(params, kicked_walkers, spin, isospin)
     # Probability of acceptance is the ratio of wave functions squared
     probability = (kicked_wavefunction / current_psi)**2
     # Accept if the prob is higher than a random uniform number:
@@ -20,14 +20,14 @@ def single_kick(w, current_psi, walkers, spin, isospin, params, key):
     current_psi = numpy.where(accept, kicked_wavefunction, current_psi)
     # Need to reshape the accept value to enable broadcasting.
     walkers     = numpy.where(accept.reshape(-1, 1, 1), kicked_walkers, walkers)
-    
+
     return (current_psi, walkers)
-    
+
 
 single_kick = jit(single_kick, static_argnums=0)
 
 def kick(w, params, walkers, spin, isospin, key, n_kicks):
-    current_w_of_x = w.apply(params, walkers, spin, isospin)
+    current_w_of_x = w.apply_walkers(params, walkers, spin, isospin)
     for i_kick in range(n_kicks):
 
         key, subkey = random.split(key)

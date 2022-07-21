@@ -87,7 +87,7 @@ def test_wavefunction_asymmetry(nwalkers, nparticles, ndim, n_spin_up, n_protons
         x, spin, isospin, subkey, sampler_config, c)
 
 
-    a = wavefunction.apply(parameters, x, spin, isospin)
+    a = wavefunction.apply_walkers(parameters, x, spin, isospin)
 
     print("a: ", a)
     key, subkey = random.split(key)
@@ -99,7 +99,7 @@ def test_wavefunction_asymmetry(nwalkers, nparticles, ndim, n_spin_up, n_protons
         = swap_particles(x, spin, isospin, ij)
 
 
-    a_swapped = wavefunction.apply(parameters, x_swapped, spin_swapped, isospin_swapped)
+    a_swapped = wavefunction.apply_walkers(parameters, x_swapped, spin_swapped, isospin_swapped)
 
     print("a_swapped: ", a_swapped)
     # for i in range(10):

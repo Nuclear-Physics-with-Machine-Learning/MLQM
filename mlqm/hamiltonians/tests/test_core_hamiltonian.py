@@ -1,12 +1,12 @@
-import os, sys, pathlib
-from dataclasses import dataclass, field
-import numpy
-import pytest
+from jax import random
+import jax.numpy as numpy
+
+
 import time
-
-import tensorflow as tf
-
-from omegaconf import OmegaConf
+import sys, os
+import pathlib
+from dataclasses import dataclass, field
+import pytest
 
 # Add the mlqm path:
 current_dir = pathlib.Path(__file__).parent.resolve()
@@ -22,147 +22,97 @@ while current_dir != current_dir.root:
 # Here, we break and add the directory to the path:
 sys.path.insert(0,str(current_dir))
 
-from mlqm import DEFAULT_TENSOR_TYPE
-tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
+from mlqm.models import initialize_wavefunction
+from mlqm.samplers import MetropolisSampler, kick
 
-# For the wavefunction:
-from mlqm.models import ManyBodyWavefunction
-from mlqm.config import ManyBodyCfg
-
-# For the hamiltonian:
-from mlqm.hamiltonians import Hamiltonian, NuclearPotential
-from mlqm.config import NuclearHamiltonian as H_config
-
-# Generate fake particles
-#
-# nwalkers = 4
-# nparticles = 2
-# ndim = 3
-
-def generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons):
-
-    inputs = numpy.random.uniform(size=[nwalkers, nparticles, ndim])
+from mlqm.config import ManyBodyCfg, Sampler
+from omegaconf import OmegaConf
 
 
-    # Note that we initialize with NUMPY for ease of indexing and shuffling
-    spin_walkers = numpy.zeros(shape=(nwalkers, nparticles)) - 1
-    for i in range(n_spin_up):
-        if i < spin_walkers.shape[-1]:
-            spin_walkers[:,i] += 2
-
-    # Shuffle the spin up particles on each axis:
-
-    # How to compute many permutations at once?
-    #  Answer from https://stackoverflow.com/questions/5040797/shuffling-numpy-array-along-a-given-axis
-    # Bottom line: gen random numbers for each axis, sort only in that axis,
-    # and apply the permutations
-    idx = numpy.random.rand(*spin_walkers.shape).argsort(axis=1)
-    spin_walkers = numpy.take_along_axis(spin_walkers, idx, axis=1)
-
-    # Note that we initialize with NUMPY for ease of indexing and shuffling
-    isospin_walkers = numpy.zeros(shape=(nwalkers, nparticles)) - 1
-    for i in range(n_protons):
-        if i < isospin_walkers.shape[-1]:
-            isospin_walkers[:,i] += 2
-
-    # Shuffle the spin up particles on each axis:
-
-    # How to compute many permutations at once?
-    #  Answer from https://stackoverflow.com/questions/5040797/shuffling-numpy-array-along-a-given-axis
-    # Bottom line: gen random numbers for each axis, sort only in that axis,
-    # and apply the permutations
-    idx = numpy.random.rand(*isospin_walkers.shape).argsort(axis=1)
-    isospin_walkers = numpy.take_along_axis(isospin_walkers, idx, axis=1)
-
-    return inputs, spin_walkers, isospin_walkers
-
-def swap_particles(walkers, spin, isospin, i, j):
-    # Switch two particles, i != j:
+from jax.config import config; config.update("jax_enable_x64", True)
 
 
-    walkers[:, [i,j], :] = walkers[:, [j,i], :]
-
-    spin[:,[i,j]] = spin[:,[j,i]]
-
-    isospin[:,[i,j]] = isospin[:,[j,i]]
-
-    return walkers, spin, isospin
-
+@pytest.mark.parametrize('seed', [0, time.time()])
 @pytest.mark.parametrize('nwalkers', [10])
 @pytest.mark.parametrize('nparticles', [2,3,4,5])
 @pytest.mark.parametrize('ndim', [1,2,3])
-@pytest.mark.parametrize('spin', [True])
-@pytest.mark.parametrize('iso_spin', [True])
-def test_hamiltonian(nwalkers, nparticles, ndim, spin, iso_spin):
+@pytest.mark.parametrize('n_spin_up', [1,2])
+@pytest.mark.parametrize('n_protons', [1,2])
+def test_hamiltonian(seed, nwalkers, nparticles, ndim, n_spin_up, n_protons):
 
-    n_spin_up = 2
-    n_protons = 1
-    c = ManyBodyCfg()
+    # Create the sampler config:
+    sampler_config = Sampler()
 
+    sampler_config.n_walkers_per_observation = nwalkers
+    sampler_config.n_concurrent_obs_per_rank = 1
+    sampler_config.n_particles  = nparticles
+    sampler_config.n_dim = ndim
+    sampler_config.n_spin_up = n_spin_up
+    sampler_config.n_protons = n_protons
+
+
+    # Initialize the sampler:
+    key = random.PRNGKey(int(seed))
+    key, subkey = random.split(key)
+
+    sampler = MetropolisSampler(
+        sampler_config,
+        subkey,
+        "float64"
+        )
+    x, spin, isospin = sampler.sample()
+
+
+    # Create the wavefunction:
+    key, subkey = random.split(key)
+
+    c = ManyBodyCfg
+    c.mean_subtract=False
     c = OmegaConf.structured(c)
-    w = ManyBodyWavefunction(ndim, nparticles, c,
-        n_spin_up = n_spin_up, n_protons = n_protons,
-        use_spin = spin, use_isospin = iso_spin
-    )
+
+    wavefunction, parameters = initialize_wavefunction(
+        x, spin, isospin, subkey, sampler_config, c)
+
+    w_local = wavefunction.apply_walkers(parameters, x, spin, isospin)
 
 
+    from mlqm.hamiltonians import compute_derivatives, compute_derivatives_single
+    w_of_x, dw_dx, d2w_dx2 = compute_derivatives_single(wavefunction, parameters, x[0], spin[0], isospin[0])
 
-    inputs, spins, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
-
-    print(spins)
-    print(isospins)
-
-    #mean subtract:
-    xinputs = tf.convert_to_tensor(
-        inputs - numpy.reshape(numpy.mean(inputs, axis=1), (nwalkers, 1, ndim)))
-
-    w_local = w(inputs, spins, isospins)
-
-    hc = OmegaConf.structured(H_config())
-
-    h = Hamiltonian(hc)
-
-    w_of_x, dw_dx, d2w_dx2 = h.compute_derivatives(w, xinputs, spins, isospins)
-
-    dw_dx = dw_dx.numpy()
-    d2w_dx2 = d2w_dx2.numpy()
+    w_of_x, dw_dx, d2w_dx2 = compute_derivatives(wavefunction, parameters, x, spin, isospin)
 
     # Make sure we've got the same values of the wavefunction:
-    assert ((w_local - w_of_x).numpy() < 1e-8).all()
+    assert (w_local - w_of_x < 1e-8).all()
 
     # We proceed to check the derivatives with finte difference methods.
 
     # Need a "difference" term:
-    kick = numpy.zeros(shape = inputs.shape)
+    kick = numpy.zeros(shape = x.shape)
     kick_size = 1e-4
 
     # First and second order derivative.  Check it for each dimension.
     for i_dim in range(ndim):
 
         # select a random particle to kick:
-        i_kicked_particle = numpy.random.choice(range(nparticles), size=(nwalkers,))
-        print(i_kicked_particle)
+        key, subkey = random.split(key)
+        i_kicked_particle = random.choice(subkey, nparticles, shape=(nwalkers,))
         # i_kicked_particle = 0
         this_kick = numpy.copy(kick)
         # Have to create an index for walkers to slice:
         walkers = numpy.arange(nwalkers)
         # Only applying to particle 0
-        this_kick[walkers,i_kicked_particle,i_dim] += kick_size
-        kicked_up_input = xinputs + \
-            tf.convert_to_tensor(this_kick, dtype=DEFAULT_TENSOR_TYPE)
+        this_kick = this_kick.at[walkers,i_kicked_particle,i_dim].add(kick_size)
+        kicked_up_input = x + this_kick
 
-        kicked_double_up_input = xinputs + \
-            tf.convert_to_tensor(2*this_kick, dtype=DEFAULT_TENSOR_TYPE)
+        kicked_double_up_input = x + 2*this_kick
         # # Mean subtract:
-        # up_xinputs = kicked_up_input - \
+        # up_x = kicked_up_input - \
         #     numpy.reshape(numpy.mean(kicked_up_input, axis=1), (nwalkers, 1, ndim))
 
-        kicked_down_input = xinputs - \
-            tf.convert_to_tensor(this_kick, dtype=DEFAULT_TENSOR_TYPE)
+        kicked_down_input = x - this_kick
 
-        kicked_double_down_input = xinputs - \
-            tf.convert_to_tensor(2*this_kick, dtype=DEFAULT_TENSOR_TYPE)
-        # down_xinputs = kicked_down_input - \
+        kicked_double_down_input = x - 2*this_kick
+        # down_x = kicked_down_input - \
         #     numpy.reshape(numpy.mean(kicked_down_input, axis=1), (nwalkers, 1, ndim))
 
 
@@ -175,21 +125,22 @@ def test_hamiltonian(nwalkers, nparticles, ndim, spin, iso_spin):
         # the effect of mean subtraction
 
         # Differences:
-        w_up = w(kicked_up_input, spins, isospins)
-        w_down = w(kicked_down_input, spins, isospins)
-        w_up_up = w(kicked_double_up_input, spins, isospins)
-        w_down_down = w(kicked_double_down_input, spins, isospins)
+        w_up = wavefunction.apply_walkers(parameters, kicked_up_input, spin, isospin)
+        w_down = wavefunction.apply_walkers(parameters, kicked_down_input, spin, isospin)
+        w_up_up = wavefunction.apply_walkers(parameters, kicked_double_up_input, spin, isospin)
+        w_down_down = wavefunction.apply_walkers(parameters, kicked_double_down_input, spin, isospin)
 
 
 
         # Use numpy to make slicing easier
-        w_prime_fd = tf.reshape((w_up - w_down) / (2*kick_size), (nwalkers,)).numpy()
+        w_prime_fd = (w_up - w_down) / (2*kick_size)
+        print(w_prime_fd.shape)
         # What about the second derivative?
 
         # https://math.stackexchange.com/questions/3756717/finite-differences-second-derivative-as-successive-application-of-the-first-deri
         # This gives precision of O(kick**4)
         w_prime_prime_num = -w_down_down + 16*w_down - 30* w_of_x + 16 * w_up - w_up_up
-        w_prime_prime_fd = tf.reshape(w_prime_prime_num/ (12 * kick_size**2), (nwalkers,)).numpy()
+        w_prime_prime_fd = w_prime_prime_num/ (12 * kick_size**2)
 
 
 
@@ -256,5 +207,5 @@ def test_energies(nwalkers, nparticles, ndim, spin, iso_spin):
     # assert (pe <= 0).numpy().all()
 
 if __name__ == "__main__":
-    test_hamiltonian(3,2,3,1,2)
+    test_hamiltonian(100,3,2,3,1,1)
     # test_energies(10,2,3,True, True)
