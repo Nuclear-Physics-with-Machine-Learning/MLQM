@@ -16,9 +16,9 @@ from omegaconf import OmegaConf
 
 sampler_config = Sampler()
 
-sampler_config.n_walkers_per_observation = 300
+sampler_config.n_walkers_per_observation = 1000
 sampler_config.n_void_steps = 250
-sampler_config.n_particles  = 2
+sampler_config.n_particles  = 16
 
 sampler_config.n_concurrent_obs_per_rank = 1
 
