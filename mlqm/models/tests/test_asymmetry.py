@@ -1,11 +1,10 @@
-import os, sys, pathlib
+from jax import random
+import jax.numpy as numpy
+
+import sys, os
+import pathlib
 from dataclasses import dataclass, field
-import numpy
 import pytest
-
-import tensorflow as tf
-
-from omegaconf import OmegaConf
 
 # Add the mlqm path:
 current_dir = pathlib.Path(__file__).parent.resolve()
@@ -21,65 +20,30 @@ while current_dir != current_dir.root:
 # Here, we break and add the directory to the path:
 sys.path.insert(0,str(current_dir))
 
+from mlqm.models import initialize_wavefunction
+from mlqm.samplers import MetropolisSampler, kick
 
-from mlqm.models import ManyBodyWavefunction
-from mlqm import DEFAULT_TENSOR_TYPE
-tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
-from mlqm.config import ManyBodyCfg
-
-
-# Generate fake particles
-#
-# nwalkers = 4
-# nparticles = 2
-# ndim = 3
-
-def generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons):
-
-    inputs = numpy.random.uniform(size=[nwalkers, nparticles, ndim])
+from mlqm.config import ManyBodyCfg, Sampler
+from omegaconf import OmegaConf
 
 
-    # Note that we initialize with NUMPY for ease of indexing and shuffling
-    spin_walkers = numpy.zeros(shape=(nwalkers, nparticles)) - 1
-    for i in range(n_spin_up):
-        spin_walkers[:,i] += 2
+from jax.config import config; config.update("jax_enable_x64", True)
 
-    # Shuffle the spin up particles on each axis:
 
-    # How to compute many permutations at once?
-    #  Answer from https://stackoverflow.com/questions/5040797/shuffling-numpy-array-along-a-given-axis
-    # Bottom line: gen random numbers for each axis, sort only in that axis,
-    # and apply the permutations
-    idx = numpy.random.rand(*spin_walkers.shape).argsort(axis=1)
-    spin_walkers = numpy.take_along_axis(spin_walkers, idx, axis=1)
-
-    # Note that we initialize with NUMPY for ease of indexing and shuffling
-    isospin_walkers = numpy.zeros(shape=(nwalkers, nparticles)) - 1
-    for i in range(n_protons):
-        isospin_walkers[:,i] += 2
-
-    # Shuffle the spin up particles on each axis:
-
-    # How to compute many permutations at once?
-    #  Answer from https://stackoverflow.com/questions/5040797/shuffling-numpy-array-along-a-given-axis
-    # Bottom line: gen random numbers for each axis, sort only in that axis,
-    # and apply the permutations
-    idx = numpy.random.rand(*isospin_walkers.shape).argsort(axis=1)
-    isospin_walkers = numpy.take_along_axis(isospin_walkers, idx, axis=1)
-
-    return inputs, spin_walkers, isospin_walkers
-
-def swap_particles(walkers, spin, isospin, i, j):
+def swap_particles(walkers, spin, isospin, ij):
     # Switch two particles, i != j:
 
 
-    walkers[:, [i,j], :] = walkers[:, [j,i], :]
+    new_walkers = walkers.at[:,ij[0],:].set(walkers[:,ij[1],:])
+    new_walkers = new_walkers.at[:,ij[1],:].set(walkers[:,ij[0],:])
 
-    spin[:,[i,j]] = spin[:,[j,i]]
+    new_spin = spin.at[:,ij[0]].set(spin[:,ij[1]])
+    new_spin = new_spin.at[:,ij[1]].set(spin[:,ij[0]])
 
-    isospin[:,[i,j]] = isospin[:,[j,i]]
+    new_isospin = isospin.at[:,ij[0]].set(isospin[:,ij[1]])
+    new_isospin = new_isospin.at[:,ij[1]].set(isospin[:,ij[0]])
 
-    return walkers, spin, isospin
+    return new_walkers, new_spin, new_isospin
 
 
 
@@ -90,27 +54,60 @@ def swap_particles(walkers, spin, isospin, i, j):
 @pytest.mark.parametrize('n_protons', [1,2])
 def test_wavefunction_asymmetry(nwalkers, nparticles, ndim, n_spin_up, n_protons):
 
-    c = ManyBodyCfg()
+    # Create the sampler config:
+    sampler_config = Sampler()
 
+    sampler_config.n_walkers_per_observation = nwalkers
+    sampler_config.n_concurrent_obs_per_rank = 1
+    sampler_config.n_particles  = nparticles
+    sampler_config.n_dim = ndim
+    sampler_config.n_spin_up = n_spin_up
+    sampler_config.n_protons = n_protons
+
+
+    # Initialize the sampler:
+    key = random.PRNGKey(0)
+    key, subkey = random.split(key)
+
+    sampler = MetropolisSampler(
+        sampler_config,
+        subkey,
+        "float64"
+        )
+    x, spin, isospin = sampler.sample()
+
+
+    # Create the wavefunction:
+    key, subkey = random.split(key)
+
+    c = ManyBodyCfg
     c = OmegaConf.structured(c)
-    w = ManyBodyWavefunction(ndim, nparticles, c,
-        n_spin_up = n_spin_up, n_protons = n_protons,
-        use_spin = True, use_isospin = True
-    )
-    inputs, spins, isospins = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
-    a = w(inputs, spins, isospins).numpy()
+
+    wavefunction, parameters = initialize_wavefunction(
+        x, spin, isospin, subkey, sampler_config, c)
+
+
+    a = wavefunction.apply(parameters, x, spin, isospin)
+
     print("a: ", a)
-    i , j = numpy.random.choice(range(nparticles), size=2, replace=False)
+    key, subkey = random.split(key)
+    ij = random.choice(subkey, nparticles, shape=(2,), replace=False)
+
+    print(ij)
+
+    x_swapped, spin_swapped, isospin_swapped \
+        = swap_particles(x, spin, isospin, ij)
 
 
-    inputs, spins, isospins = swap_particles(inputs, spins, isospins, i, j)
-    for i in range(10):
-        a_prime = w(inputs, spins, isospins).numpy()
-    print("a_prime: ", a_prime)
+    a_swapped = wavefunction.apply(parameters, x_swapped, spin_swapped, isospin_swapped)
+
+    print("a_swapped: ", a_swapped)
+    # for i in range(10):
+    #     a_prime = w(inputs, spins, isospins).numpy()
     # By switching two particles, we should have inverted the sign.
-    assert (a + a_prime < 1e-8 ).all()
+    assert (a + a_swapped < 1e-8 ).all()
 
 
 if __name__ == "__main__":
     # test_wavefunction_asymmetry(2,2,3,2,1)
-    test_wavefunction_asymmetry(2,3,3,2,2)
+    test_wavefunction_asymmetry(3,3,3,2,2)

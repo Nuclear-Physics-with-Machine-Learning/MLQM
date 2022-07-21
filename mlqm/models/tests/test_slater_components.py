@@ -1,11 +1,10 @@
-import os, sys, pathlib
+from jax import random
+import jax.numpy as numpy
+
+import sys, os
+import pathlib
 from dataclasses import dataclass, field
-import numpy
 import pytest
-
-import tensorflow as tf
-
-from omegaconf import OmegaConf
 
 # Add the mlqm path:
 current_dir = pathlib.Path(__file__).parent.resolve()
@@ -21,65 +20,31 @@ while current_dir != current_dir.root:
 # Here, we break and add the directory to the path:
 sys.path.insert(0,str(current_dir))
 
+from mlqm.models import initialize_wavefunction
+from mlqm.samplers import MetropolisSampler, kick
 
-from mlqm.models import ManyBodyWavefunction
-from mlqm import DEFAULT_TENSOR_TYPE
-tf.keras.backend.set_floatx(DEFAULT_TENSOR_TYPE)
-from mlqm.config import ManyBodyCfg
-
-
-# Generate fake particles
-#
-# nwalkers = 4
-# nparticles = 2
-# ndim = 3
-
-def generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons):
-
-    inputs = numpy.random.uniform(size=[nwalkers, nparticles, ndim])
+from mlqm.config import ManyBodyCfg, Sampler
+from omegaconf import OmegaConf
 
 
-    # Note that we initialize with NUMPY for ease of indexing and shuffling
-    spin_walkers = numpy.zeros(shape=(nwalkers, nparticles)) - 1
-    for i in range(n_spin_up):
-        spin_walkers[:,i] += 2
+from jax.config import config; config.update("jax_enable_x64", True)
+from jax import vmap
 
-    # Shuffle the spin up particles on each axis:
-
-    # How to compute many permutations at once?
-    #  Answer from https://stackoverflow.com/questions/5040797/shuffling-numpy-array-along-a-given-axis
-    # Bottom line: gen random numbers for each axis, sort only in that axis,
-    # and apply the permutations
-    idx = numpy.random.rand(*spin_walkers.shape).argsort(axis=1)
-    spin_walkers = numpy.take_along_axis(spin_walkers, idx, axis=1)
-
-    # Note that we initialize with NUMPY for ease of indexing and shuffling
-    isospin_walkers = numpy.zeros(shape=(nwalkers, nparticles)) - 1
-    for i in range(n_protons):
-        isospin_walkers[:,i] += 2
-
-    # Shuffle the spin up particles on each axis:
-
-    # How to compute many permutations at once?
-    #  Answer from https://stackoverflow.com/questions/5040797/shuffling-numpy-array-along-a-given-axis
-    # Bottom line: gen random numbers for each axis, sort only in that axis,
-    # and apply the permutations
-    idx = numpy.random.rand(*isospin_walkers.shape).argsort(axis=1)
-    isospin_walkers = numpy.take_along_axis(isospin_walkers, idx, axis=1)
-
-    return inputs, spin_walkers, isospin_walkers
-
-def swap_particles(walkers, spin, isospin, i, j):
+def swap_particles(walkers, spin, isospin, ij):
     # Switch two particles, i != j:
 
 
-    walkers[:, [i,j], :] = walkers[:, [j,i], :]
+    new_walkers = walkers.at[:,ij[0],:].set(walkers[:,ij[1],:])
+    new_walkers = new_walkers.at[:,ij[1],:].set(walkers[:,ij[0],:])
 
-    spin[:,[i,j]] = spin[:,[j,i]]
+    new_spin = spin.at[:,ij[0]].set(spin[:,ij[1]])
+    new_spin = new_spin.at[:,ij[1]].set(spin[:,ij[0]])
 
-    isospin[:,[i,j]] = isospin[:,[j,i]]
+    new_isospin = isospin.at[:,ij[0]].set(isospin[:,ij[1]])
+    new_isospin = new_isospin.at[:,ij[1]].set(isospin[:,ij[0]])
 
-    return walkers, spin, isospin
+    return new_walkers, new_spin, new_isospin
+
 
 
 # def test_wavefunction_spatial_slater(nwalkers, nparticles, ndim, n_spin_up, n_protons):
@@ -92,39 +57,61 @@ def swap_particles(walkers, spin, isospin, i, j):
 @pytest.mark.parametrize('func', ['compute_spatial_slater', 'compute_spin_slater', 'compute_isospin_slater'])
 def test_wavefunction_slater_component(nwalkers, nparticles, ndim, n_spin_up, n_protons, func):
 
+    # Create the sampler config:
+    sampler_config = Sampler()
 
-    # Create a config:
-    c = ManyBodyCfg()
+    sampler_config.n_walkers_per_observation = nwalkers
+    sampler_config.n_concurrent_obs_per_rank = 1
+    sampler_config.n_particles  = nparticles
+    sampler_config.n_dim = ndim
+    sampler_config.n_spin_up = n_spin_up
+    sampler_config.n_protons = n_protons
 
-    # Cast to structured config:
+
+    # Initialize the sampler:
+    key = random.PRNGKey(0)
+    key, subkey = random.split(key)
+
+    sampler = MetropolisSampler(
+        sampler_config,
+        subkey,
+        "float64"
+        )
+    x, spin, isospin = sampler.sample()
+
+
+    # Create the wavefunction:
+    key, subkey = random.split(key)
+
+    c = ManyBodyCfg
     c = OmegaConf.structured(c)
-    # Init the wavefunction object:
-    w = ManyBodyWavefunction(ndim, nparticles, c,
-        n_spin_up = n_spin_up, n_protons = n_protons,
-        use_spin = True, use_isospin = True
-    )
 
-    # Create inputs:
-    inputs, spin, isospin = generate_inputs(nwalkers, nparticles, ndim, n_spin_up, n_protons)
-    # print(inputs)
+    wavefunction, parameters = initialize_wavefunction(
+        x, spin, isospin, subkey, sampler_config, c)
+
+
+    a = wavefunction.apply(parameters, x, spin, isospin)
+
 
     # mean subtract:
-    xinputs = inputs - numpy.reshape(numpy.mean(inputs, axis=1), (nwalkers, 1, ndim))
+    xinputs = x - numpy.reshape(numpy.mean(x, axis=1), (nwalkers, 1, ndim))
+    xinputs = x - x.mean(axis=0)
+    import pdb; pdb.set_trace()
 
     def make_computation(_inputs, _spin, _isospin, w, func):
 
         if func == "compute_spatial_slater":
             # Compute the SPATIAL slater only:
-            _a = w.compute_spatial_slater(_inputs).numpy()
+            _a = vmap(w.compute_spatial_slater(_inputs), in_axes=[None,0])
         elif func == "compute_spin_slater":
             # Spin only
-            _a = w.compute_spin_slater(_spin).numpy()
+            _a = vmap(w.compute_spin_slater(_spin), in_axes=[None,0])
         elif func == "compute_isospin_slater":
             # Isospin only
-            _a = w.compute_isospin_slater(_isospin).numpy()
+            _a = vmap(w.compute_isospin_slater(_isospin), in_axes=[None,0])
         return _a
 
-    a = make_computation(xinputs, spin, isospin, w, func)
+    a = make_computation(xinputs, spin, isospin, wavefunction, func)
     print("a: ", a)
 
     def kick_inputs(_inputs, _spin, _isospin, func):

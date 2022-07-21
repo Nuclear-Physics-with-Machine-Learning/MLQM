@@ -12,8 +12,6 @@ from . DeepSetsCorrelator import DeepSetsCorrelator, initialize_correlator
 def initialize_wavefunction(walkers, spin, isospin, key, sampler_config, network_config):
 
 
-    print(sampler_config)
-    print(network_config)
 
     spatial_layers = [
         network_config.spatial_cfg.n_filters_per_layer \
@@ -21,7 +19,6 @@ def initialize_wavefunction(walkers, spin, isospin, key, sampler_config, network
     ]
 
     spatial_layers[-1] = 1
-    print(spatial_layers)
 
     i_layers = [
         network_config.deep_sets_cfg.n_filters_per_layer \
@@ -173,7 +170,7 @@ class ManyBodyWavefunction(nn.Module):
         spatial_slater = [ n(_xinputs) for n in self.networks]
         # stack the output into a matrix:
         spatial_slater = numpy.concatenate(spatial_slater,axis=1)
-        return spatial_slater
+        return spatial_slater.T
 
     def compute_spin_slater(self, spin, state_matrix):
         repeated_spin_spinor = numpy.tile(spin, reps = (1, self.n_particles))
