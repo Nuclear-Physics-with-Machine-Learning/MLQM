@@ -474,7 +474,10 @@ class exec(object):
 
             if self.global_step % 1 == 0:
                 logger.info(f"step = {self.global_step}, energy = {metrics['energy/energy'].numpy():.3f}, err = {metrics['energy/error'].numpy():.3f}")
-                logger.info(f"step = {self.global_step}, energy_jf = {metrics['energy/energy_jf'].numpy():.3f}, err = {metrics['energy/error_jf'].numpy():.3f}")
+                logger.info(f"step = {self.global_step},     pe = {metrics['energy/pe'].numpy():.3f}, err = {metrics['energy/error_jf'].numpy():.3f}")
+                logger.info(f"step = {self.global_step},     ke = {metrics['energy/ke_direct'].numpy():.3f}, err = {metrics['energy/error_jf'].numpy():.3f}")
+                logger.info(f"step = {self.global_step},      r = {metrics['metropolis/r'].numpy():.3f}, err = {metrics['energy/error_jf'].numpy():.3f}")
+                # logger.info(f"step = {self.global_step}, energy_jf = {metrics['energy/energy_jf'].numpy():.3f}, err = {metrics['energy/error_jf'].numpy():.3f}")
                 logger.info(f"acc  = {metrics['metropolis/acceptance'].numpy():.3f}")
                 logger.info(f"time = {metrics['time']:.3f}")
 

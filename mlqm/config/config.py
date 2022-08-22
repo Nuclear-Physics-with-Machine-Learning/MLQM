@@ -16,9 +16,9 @@ from .optimizer    import Optimizer
 class Sampler:
     n_thermalize:              int = 1000
     n_void_steps:              int = 200
-    n_observable_measurements: int = 10
-    n_walkers_per_observation: int = 1000
-    n_concurrent_obs_per_rank: int = 10
+    n_observable_measurements: int = 2
+    n_walkers_per_observation: int = 100
+    n_concurrent_obs_per_rank: int = 2
     use_spin:                 bool = True
     use_isospin:              bool = True
 
